@@ -1,0 +1,37 @@
+{
+  "name": "core-meme-platform",
+  "version": "1.0.0",
+  "description": "Professional meme token launcher platform on Core blockchain",
+  "private": true,
+  "workspaces": [
+    "backend/*",
+    "telegram-bot",
+    "websocket",
+    "shared",
+    "contracts"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "deploy:contracts": "pnpm --filter @core-meme-platform/contracts deploy:testnet",
+    "verify:contracts": "pnpm --filter @core-meme-platform/contracts verify:testnet",
+    "deploy:mainnet": "pnpm --filter @core-meme-platform/contracts deploy:mainnet",
+    "verify:mainnet": "pnpm --filter @core-meme-platform/contracts verify:mainnet"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "turbo": "^1.11.0",
+    "typescript": "^5.3.0",
+    "hardhat": "^2.22.7",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

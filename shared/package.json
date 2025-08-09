@@ -1,0 +1,19 @@
+{
+  "name": "@core-meme/shared",
+  "version": "1.0.0",
+  "description": "Shared utilities and types for Core Meme Platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "ethers": "^6.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/node": "^20.11.0"
+  }
+}

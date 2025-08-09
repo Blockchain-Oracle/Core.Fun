@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: core-meme-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    networks:
+      - core-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: core-meme-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: core_meme_platform
+      POSTGRES_USER: core_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    networks:
+      - core-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U core_user -d core_meme_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Core API Service
+  core-api:
+    build: 
+      context: ./backend/core-api-service
+      dockerfile: Dockerfile
+    container_name: core-api-service
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: core_meme_platform
+      POSTGRES_USER: core_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
+      CORE_MAINNET_RPC: ${CORE_MAINNET_RPC:-https://rpc.coredao.org}
+      CORE_TESTNET_RPC: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      CORE_SCAN_MAINNET_API: ${CORE_SCAN_MAINNET_API:-https://openapi.coredao.org/api}
+      CORE_SCAN_TESTNET_API: ${CORE_SCAN_TESTNET_API:-https://api.test2.btcs.network/api}
+      CORE_SCAN_API_KEY: ${CORE_SCAN_API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - core-network
+    volumes:
+      - ./backend/core-api-service/logs:/app/logs
+      - ./backend/core-api-service/.env:/app/.env:ro
+    command: sh -c "npm run build && npm start"
+
+  # Blockchain Monitor Service (future)
+  # blockchain-monitor:
+  #   build: ./backend/blockchain-monitor
+  #   container_name: core-blockchain-monitor
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     REDIS_HOST: redis
+  #     POSTGRES_HOST: postgres
+  #   depends_on:
+  #     - redis
+  #     - postgres
+  #     - core-api
+  #   networks:
+  #     - core-network
+
+  # Trading Engine (future)
+  # trading-engine:
+  #   build: ./backend/trading-engine
+  #   container_name: core-trading-engine
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     REDIS_HOST: redis
+  #     POSTGRES_HOST: postgres
+  #   depends_on:
+  #     - redis
+  #     - postgres
+  #     - core-api
+  #   networks:
+  #     - core-network
+
+  # API Gateway (future)
+  # api-gateway:
+  #   build: ./backend/api
+  #   container_name: core-api-gateway
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #   depends_on:
+  #     - core-api
+  #     - redis
+  #   networks:
+  #     - core-network
+
+  # WebSocket Server
+  websocket:
+    build: 
+      context: ./websocket
+      dockerfile: Dockerfile
+    container_name: core-websocket
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: core_meme_platform
+      POSTGRES_USER: core_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
+      CORE_API_URL: http://core-api:3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      core-api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - core-network
+    volumes:
+      - ./websocket/logs:/app/logs
+
+  # Telegram Bot (future)
+  # telegram-bot:
+  #   build: ./backend/telegram-bot
+  #   container_name: core-telegram-bot
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     REDIS_HOST: redis
+  #     POSTGRES_HOST: postgres
+  #     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  #   depends_on:
+  #     - redis
+  #     - postgres
+  #     - core-api
+  #   networks:
+  #     - core-network
+
+  # Web Application (future)
+  # web-app:
+  #   build: ./web-app
+  #   container_name: core-web-app
+  #   ports:
+  #     - "3002:3000"
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     REACT_APP_API_URL: http://localhost:3000
+  #     REACT_APP_WS_URL: ws://localhost:8080
+  #   depends_on:
+  #     - api-gateway
+  #     - websocket
+  #   networks:
+  #     - core-network
+
+networks:
+  core-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:

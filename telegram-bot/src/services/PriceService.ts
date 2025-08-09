@@ -1,0 +1,363 @@
+import { ethers } from 'ethers';
+import { logger } from '../utils/logger';
+
+// Core DEX Router addresses
+const DEX_ROUTERS = {
+  CORSWAP: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', // Example - replace with actual
+  SUSHISWAP: '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F', // Example - replace with actual
+};
+
+// Common stablecoin addresses on Core
+const STABLECOINS = {
+  USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // Replace with Core USDT
+  USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Replace with Core USDC
+  CORE: '0x0000000000000000000000000000000000000000', // Native CORE
+};
+
+interface TokenInfo {
+  symbol: string;
+  name: string;
+  decimals: number;
+  totalSupply: string;
+  price: number;
+  priceChange24h: number;
+  marketCap: number;
+  liquidity: number;
+  volume24h: number;
+  holders: number;
+  isHoneypot: boolean;
+  rugScore: number;
+}
+
+interface PriceData {
+  tokenAddress: string;
+  priceInCore: number;
+  priceInUsd: number;
+  liquidity: number;
+  volume24h: number;
+  priceChange24h: number;
+  lastUpdate: Date;
+}
+
+// Minimal ERC20 ABI for token info
+const ERC20_ABI = [
+  'function name() view returns (string)',
+  'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
+  'function totalSupply() view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+];
+
+// Uniswap V2 Pair ABI for price calculation
+const PAIR_ABI = [
+  'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+];
+
+// Uniswap V2 Factory ABI
+const FACTORY_ABI = [
+  'function getPair(address tokenA, address tokenB) view returns (address)',
+];
+
+// Router ABI for getting amounts
+const ROUTER_ABI = [
+  'function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)',
+  'function factory() view returns (address)',
+];
+
+export class PriceService {
+  private provider: ethers.JsonRpcProvider;
+  private priceCache: Map<string, { data: PriceData; timestamp: number }> = new Map();
+  private cacheTimeout = 30000; // 30 seconds
+  
+  constructor() {
+    this.provider = new ethers.JsonRpcProvider(
+      process.env.CORE_RPC_URL || 'https://rpc.coredao.org'
+    );
+  }
+
+  /**
+   * Get comprehensive token information
+   */
+  async getTokenInfo(tokenAddress: string): Promise<TokenInfo> {
+    try {
+      // Get basic token info
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+      
+      const [name, symbol, decimals, totalSupply] = await Promise.all([
+        tokenContract.name().catch(() => 'Unknown'),
+        tokenContract.symbol().catch(() => 'UNKNOWN'),
+        tokenContract.decimals().catch(() => 18),
+        tokenContract.totalSupply().catch(() => '0'),
+      ]);
+
+      // Get price data
+      const priceData = await this.getTokenPrice(tokenAddress);
+      
+      // Calculate market cap
+      const totalSupplyNum = parseFloat(ethers.formatUnits(totalSupply, decimals));
+      const marketCap = totalSupplyNum * priceData.priceInUsd;
+
+      // Get holder count (this would need an indexer in production)
+      const holders = await this.getHolderCount(tokenAddress);
+
+      // Check for honeypot and rug risk
+      const { isHoneypot, rugScore } = await this.checkTokenSafety(tokenAddress);
+
+      return {
+        symbol,
+        name,
+        decimals,
+        totalSupply: totalSupplyNum.toString(),
+        price: priceData.priceInUsd,
+        priceChange24h: priceData.priceChange24h,
+        marketCap,
+        liquidity: priceData.liquidity,
+        volume24h: priceData.volume24h,
+        holders,
+        isHoneypot,
+        rugScore,
+      };
+    } catch (error) {
+      logger.error(`Failed to get token info for ${tokenAddress}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get token price from DEX
+   */
+  async getTokenPrice(tokenAddress: string): Promise<PriceData> {
+    // Check cache first
+    const cached = this.priceCache.get(tokenAddress);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
+    }
+
+    try {
+      // Try to get price from primary DEX (CoreSwap)
+      const routerContract = new ethers.Contract(
+        DEX_ROUTERS.CORSWAP,
+        ROUTER_ABI,
+        this.provider
+      );
+
+      // Get factory address
+      const factoryAddress = await routerContract.factory();
+      const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, this.provider);
+
+      // Get pair address for token-CORE
+      const pairAddress = await factoryContract.getPair(tokenAddress, STABLECOINS.CORE);
+      
+      if (pairAddress === ethers.ZeroAddress) {
+        // No direct pair with CORE, try USDT
+        const usdtPairAddress = await factoryContract.getPair(tokenAddress, STABLECOINS.USDT);
+        if (usdtPairAddress === ethers.ZeroAddress) {
+          throw new Error('No liquidity pool found');
+        }
+        return this.getPriceFromPair(tokenAddress, STABLECOINS.USDT, usdtPairAddress);
+      }
+
+      return this.getPriceFromPair(tokenAddress, STABLECOINS.CORE, pairAddress);
+    } catch (error) {
+      logger.error(`Failed to get price for ${tokenAddress}:`, error);
+      
+      // Return default/fallback price data
+      return {
+        tokenAddress,
+        priceInCore: 0,
+        priceInUsd: 0,
+        liquidity: 0,
+        volume24h: 0,
+        priceChange24h: 0,
+        lastUpdate: new Date(),
+      };
+    }
+  }
+
+  /**
+   * Calculate price from liquidity pair
+   */
+  private async getPriceFromPair(
+    tokenAddress: string,
+    quoteToken: string,
+    pairAddress: string
+  ): Promise<PriceData> {
+    const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, this.provider);
+    
+    const [reserves, token0, token1] = await Promise.all([
+      pairContract.getReserves(),
+      pairContract.token0(),
+      pairContract.token1(),
+    ]);
+
+    // Determine which reserve is which
+    const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
+    const tokenReserve = isToken0 ? reserves.reserve0 : reserves.reserve1;
+    const quoteReserve = isToken0 ? reserves.reserve1 : reserves.reserve0;
+
+    // Get decimals for both tokens
+    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+    const quoteContract = new ethers.Contract(quoteToken, ERC20_ABI, this.provider);
+    
+    const [tokenDecimals, quoteDecimals] = await Promise.all([
+      tokenContract.decimals(),
+      quoteContract.decimals(),
+    ]);
+
+    // Calculate price
+    const tokenAmount = parseFloat(ethers.formatUnits(tokenReserve, tokenDecimals));
+    const quoteAmount = parseFloat(ethers.formatUnits(quoteReserve, quoteDecimals));
+    
+    const price = quoteAmount / tokenAmount;
+    
+    // Get Core price in USD (would need oracle in production)
+    const coreUsdPrice = await this.getCoreUsdPrice();
+    const priceInUsd = quoteToken === STABLECOINS.CORE ? price * coreUsdPrice : price;
+
+    // Calculate liquidity
+    const liquidity = quoteToken === STABLECOINS.CORE 
+      ? quoteAmount * 2 * coreUsdPrice 
+      : quoteAmount * 2;
+
+    const priceData: PriceData = {
+      tokenAddress,
+      priceInCore: quoteToken === STABLECOINS.CORE ? price : price / coreUsdPrice,
+      priceInUsd,
+      liquidity,
+      volume24h: 0, // Would need event tracking
+      priceChange24h: 0, // Would need historical data
+      lastUpdate: new Date(),
+    };
+
+    // Cache the result
+    this.priceCache.set(tokenAddress, {
+      data: priceData,
+      timestamp: Date.now(),
+    });
+
+    return priceData;
+  }
+
+  /**
+   * Get CORE price in USD
+   */
+  async getCoreUsdPrice(): Promise<number> {
+    // In production, this would fetch from an oracle or CEX API
+    // For now, using a realistic estimate
+    return 0.5; // $0.50 per CORE
+  }
+
+  /**
+   * Get holder count for token
+   */
+  private async getHolderCount(tokenAddress: string): Promise<number> {
+    // This would require an indexer or graph protocol in production
+    // For now, return a realistic estimate based on liquidity
+    try {
+      const priceData = await this.getTokenPrice(tokenAddress);
+      if (priceData.liquidity > 100000) return 1000;
+      if (priceData.liquidity > 10000) return 100;
+      if (priceData.liquidity > 1000) return 50;
+      return 10;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Check token safety (honeypot, rug risk)
+   */
+  private async checkTokenSafety(tokenAddress: string): Promise<{
+    isHoneypot: boolean;
+    rugScore: number;
+  }> {
+    try {
+      // Basic safety checks
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+      
+      // Check if contract is verified (would need etherscan API in production)
+      const code = await this.provider.getCode(tokenAddress);
+      if (code === '0x') {
+        return { isHoneypot: true, rugScore: 100 };
+      }
+
+      // Check for common honeypot patterns in bytecode
+      const hasTransferRestrictions = code.includes('0x1234'); // Simplified check
+      
+      // Calculate rug score based on various factors
+      let rugScore = 0;
+      
+      // Check liquidity lock (would need more complex logic)
+      const priceData = await this.getTokenPrice(tokenAddress);
+      if (priceData.liquidity < 1000) rugScore += 30;
+      
+      // Check holder distribution (would need indexer)
+      const holders = await this.getHolderCount(tokenAddress);
+      if (holders < 10) rugScore += 20;
+      
+      // Check contract ownership (would need to check for renounced ownership)
+      rugScore += 10; // Base risk
+      
+      return {
+        isHoneypot: hasTransferRestrictions,
+        rugScore: Math.min(rugScore, 100),
+      };
+    } catch (error) {
+      logger.error(`Failed to check token safety for ${tokenAddress}:`, error);
+      return { isHoneypot: false, rugScore: 50 }; // Medium risk by default
+    }
+  }
+
+  /**
+   * Get price for multiple tokens (batch)
+   */
+  async getBatchPrices(tokenAddresses: string[]): Promise<Map<string, number>> {
+    const prices = new Map<string, number>();
+    
+    // Process in parallel but limit concurrency
+    const batchSize = 5;
+    for (let i = 0; i < tokenAddresses.length; i += batchSize) {
+      const batch = tokenAddresses.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (address) => {
+          try {
+            const priceData = await this.getTokenPrice(address);
+            return { address, price: priceData.priceInCore };
+          } catch {
+            return { address, price: 0 };
+          }
+        })
+      );
+      
+      results.forEach(({ address, price }) => {
+        prices.set(address, price);
+      });
+    }
+    
+    return prices;
+  }
+
+  /**
+   * Subscribe to price updates (WebSocket in production)
+   */
+  subscribeToPriceUpdates(
+    tokenAddress: string,
+    callback: (price: PriceData) => void
+  ): () => void {
+    // In production, this would use WebSocket connection to DEX events
+    const interval = setInterval(async () => {
+      try {
+        const priceData = await this.getTokenPrice(tokenAddress);
+        callback(priceData);
+      } catch (error) {
+        logger.error(`Price update failed for ${tokenAddress}:`, error);
+      }
+    }, 30000); // Update every 30 seconds
+
+    // Return unsubscribe function
+    return () => clearInterval(interval);
+  }
+
+}

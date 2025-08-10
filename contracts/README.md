@@ -109,10 +109,14 @@ pnpm verify:testnet
 - Staking: `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`
 - MemeFactory: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`
 
-### Core Testnet (Chain ID: 1115)
-- Platform Token: `[Pending deployment]`
-- Staking: `[Pending deployment]`
-- MemeFactory: `[Pending deployment]`
+### Core Testnet (Chain ID: 1114)
+- Platform Token (CMP): `0x96611b71A4DE5B8616164B650720ADe10948193F`
+- Staking: `0x95F1588ef2087f9E40082724F5Da7BAD946969CB`
+- MemeFactory: `0x04242CfFdEC8F96A46857d4A50458F57eC662cE1`
+- Treasury: `0xe397a72377F43645Cd4DA02d709c378df6e9eE5a`
+
+> ✅ **Deployed on**: 2025-08-10 02:10 UTC
+> 🔗 **Explorer**: [Core Testnet Scan](https://scan.test.btcs.network)
 
 ### Core Mainnet (Chain ID: 1116)
 - Platform Token: `[Not deployed]`
@@ -123,7 +127,7 @@ pnpm verify:testnet
 
 ### Network Configuration
 
-- **Core Testnet**: https://rpc.test.btcs.network (Chain ID: 1115)
+- **Core Testnet**: https://rpc.test2.btcs.network (Chain ID: 1114)
 - **Core Mainnet**: https://rpc.coredao.org (Chain ID: 1116)
 
 ### Gas Settings

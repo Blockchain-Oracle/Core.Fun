@@ -79,7 +79,7 @@ export class TokenStreamHandler {
     if (params?.includeRecent) {
       const recentTokens = await this.getRecentTokens();
       if (recentTokens.length > 0) {
-        this.redis.publish('new-tokens', JSON.stringify({
+        this.redis.publish('websocket:new_token', JSON.stringify({
           clientId,
           tokens: recentTokens,
         }));
@@ -180,7 +180,7 @@ export class TokenStreamHandler {
   private broadcastNewToken(token: NewToken): void {
     // Broadcast to all subscribed clients
     this.subscriptions.forEach(clientId => {
-      this.redis.publish('new-tokens', JSON.stringify({
+      this.redis.publish('websocket:new_token', JSON.stringify({
         clientId,
         tokens: [token],
       }));

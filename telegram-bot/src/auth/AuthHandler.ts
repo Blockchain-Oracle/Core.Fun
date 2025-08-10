@@ -1,8 +1,8 @@
-import { Context, Markup } from 'telegraf';
+import { Markup } from 'telegraf';
 import { ethers } from 'ethers';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { BotContext } from '../bot';
+import type { BotContext } from '../bot';
 import { DatabaseService } from '../services/DatabaseService';
 import { SessionManager } from './SessionManager';
 import { WalletService } from '../wallet/WalletService';
@@ -33,7 +33,7 @@ export class AuthHandler {
   async handleStart(ctx: BotContext): Promise<void> {
     const userId = ctx.from?.id;
     const username = ctx.from?.username || `user_${userId}`;
-    const firstName = ctx.from?.first_name || '';
+    const _firstName = ctx.from?.first_name || '';
     
     if (!userId) {
       await ctx.reply('Error: Unable to get user information');
@@ -42,7 +42,7 @@ export class AuthHandler {
 
     try {
       // Check if user exists
-      let user = await this.db.getUserByTelegramId(userId);
+      const user = await this.db.getUserByTelegramId(userId);
       
       if (!user) {
         // New user - create account and wallet
@@ -236,12 +236,10 @@ export class AuthHandler {
    */
   private async showMainMenu(ctx: BotContext, user: any) {
     const menuText = `
-👋 *Welcome back, ${user.username}!*
-
-💼 Wallet: \`${this.shortenAddress(user.walletAddress)}\`
-📊 Portfolio Value: $${user.portfolioValue || '0.00'}
-🎯 Subscription: ${user.subscriptionTier || 'Free'}
-
+👋 *Welcome back, ${user.username}!*\n\n
+💼 Wallet: \`${this.shortenAddress(user.walletAddress)}\`\n
+📊 Portfolio Value: $${user.portfolioValue || '0.00'}\n
+🎯 Subscription: ${user.subscriptionTier || 'Free'}\n\n
 What would you like to do today?
 `;
 
@@ -297,6 +295,9 @@ What would you like to do today?
    * Generate login URL for web authentication
    */
   private async generateLoginUrl(authCode: string, user: any): Promise<string> {
+    if (!user) {
+      throw new Error('User not found for login URL generation');
+    }
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     
     // Generate JWT token

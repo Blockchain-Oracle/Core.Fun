@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_premium BOOLEAN DEFAULT FALSE,
     subscription_tier subscription_tier DEFAULT 'free',
     wallet_address VARCHAR(42),
+    encrypted_private_key TEXT,
     referral_code VARCHAR(20) UNIQUE,
     referred_by UUID REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

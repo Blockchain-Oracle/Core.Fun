@@ -273,7 +273,7 @@ export class AlertCommands {
     }
   }
 
-  async createPriceAlert(ctx: BotContext, tokenAddress?: string) {
+  async createPriceAlert(ctx: BotContext, _tokenAddress?: string) {
     try {
       const userId = ctx.from?.id.toString();
       if (!userId) {

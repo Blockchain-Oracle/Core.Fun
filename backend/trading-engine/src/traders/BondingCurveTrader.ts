@@ -69,7 +69,7 @@ export class BondingCurveTrader {
         const gasPrice = await this.calculateGasPrice();
         
         // Execute buy transaction
-        tx = await factoryWithSigner['buyToken'](
+        tx = await (factoryWithSigner as any).buyToken(
           params.tokenAddress,
           params.minAmountOut || '0',
           {
@@ -85,7 +85,7 @@ export class BondingCurveTrader {
         });
       } else {
         // Execute sell transaction
-        tx = await factoryWithSigner['sellToken'](
+        tx = await (factoryWithSigner as any).sellToken(
           params.tokenAddress,
           params.amount,
           params.minAmountOut || '0',

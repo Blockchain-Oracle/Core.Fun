@@ -412,14 +412,14 @@ export class AnalyticsService {
       const [priceData, volume24h, liquidity] = await Promise.all([
         this.getPriceData(tokenAddress),
         this.getVolume24h(tokenAddress),
-        this.getPoolLiquidity(tokenAddress)
+        this.getLiquidityInfo(tokenAddress)
       ]);
 
       return {
         price: priceData.price,
         priceChange24h: priceData.priceChange24h || 0,
         volume24h,
-        liquidity: liquidity?.toString() || '0'
+        liquidity: liquidity?.liquidityUSD || 0
       };
     } catch (error) {
       this.logger.error(`Error getting token metrics:`, error);
@@ -438,7 +438,7 @@ export class AnalyticsService {
       score: 100 - analytics.rugScore,
       isHoneypot: analytics.isHoneypot,
       isRenounced: analytics.isRenounced,
-      hasLockedLiquidity: analytics.hasLockedLiquidity,
+      hasLockedLiquidity: analytics.liquidityLocked,
       buyTax: analytics.buyTax,
       sellTax: analytics.sellTax
     };

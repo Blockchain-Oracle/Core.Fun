@@ -3,6 +3,16 @@ import { DatabaseService } from '../services/DatabaseService';
 import { PriceService } from '../services/PriceService';
 import { logger } from '../utils/logger';
 
+// Local type definitions
+interface TradeRequest {
+  action: 'buy' | 'sell' | 'snipe';
+  tokenAddress: string;
+  amount: string;
+  slippage?: number;
+  deadline?: number;
+  dexName?: string;
+}
+
 interface TradeParams {
   userId: string;
   walletAddress: string;
@@ -10,12 +20,14 @@ interface TradeParams {
   amount: string;
   type: 'buy' | 'sell';
   slippage?: number;
+  deadline?: number;
   gasPrice?: 'slow' | 'normal' | 'fast' | 'instant';
 }
 
 interface TradeResult {
   success: boolean;
   txHash?: string;
+  transactionHash?: string;
   amountIn: string;
   amountOut: string;
   price: string;
@@ -118,6 +130,7 @@ export class TradingExecutor {
       return {
         success: true,
         txHash: result.txHash,
+        transactionHash: result.txHash,
         amountIn: params.amount,
         amountOut: result.amountOut.toString(),
         price: result.price.toString(),
@@ -212,6 +225,7 @@ export class TradingExecutor {
       return {
         success: true,
         txHash: result.txHash,
+        transactionHash: result.txHash,
         amountIn: sellAmount.toString(),
         amountOut: result.amountOut.toString(),
         price: result.price.toString(),

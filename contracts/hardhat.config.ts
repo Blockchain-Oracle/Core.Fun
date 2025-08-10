@@ -35,7 +35,7 @@ const config: HardhatUserConfig = {
     },
     coreTestnet: {
       url: process.env.CORE_TESTNET_RPC || "https://rpc.test2.btcs.network",
-      chainId: 1115,
+      chainId: 1114,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       gasPrice: 35000000000,
     },
@@ -62,7 +62,7 @@ const config: HardhatUserConfig = {
       },
       {
         network: "coreTestnet",
-        chainId: 1115,
+        chainId: 1114,
         urls: {
           apiURL: "https://openapi.test.btcs.network/api",
           browserURL: "https://scan.test.btcs.network",

@@ -823,7 +823,7 @@ export class DatabaseService {
   }
 
   // Alert-related methods
-  async getAlertSubscribers(alertType: string): Promise<number[]> {
+  async getAlertSubscribers(_alertType: string): Promise<number[]> {
     const result = await this.pool.query(
       'SELECT telegram_id FROM users WHERE subscription_tier IN ($1, $2) AND telegram_id IS NOT NULL',
       ['premium', 'pro']
@@ -973,7 +973,7 @@ export class DatabaseService {
         'DELETE FROM price_alerts WHERE id = $1 AND user_id = $2',
         [alertId, userId]
       );
-      return result.rowCount > 0;
+      return result.rowCount ? result.rowCount > 0 : false;
     } catch (error) {
       logger.error('Error deleting price alert:', error);
       return false;

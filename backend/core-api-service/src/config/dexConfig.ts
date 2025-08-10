@@ -1,8 +1,45 @@
 // Core Blockchain DEX Configuration
 
-export const DEX_CONFIG = {
+// Typed DEX config to avoid union narrowing issues across networks
+interface DexAddresses {
+  factory: string;
+  router: string;
+  initCodeHash: string;
+}
+
+export interface DexNetworkConfig {
+  IceCreamSwap?: DexAddresses;
+  ShadowSwap?: DexAddresses;
+  tokens: {
+    WCORE: string;
+    USDT?: string;
+    USDC?: string;
+    WBTC?: string;
+    WETH?: string;
+    ICE?: string;
+  };
+}
+
+interface DexConfigRoot {
+  mainnet: DexNetworkConfig;
+  testnet: DexNetworkConfig;
+  abis: {
+    factory: string[];
+    router: string[];
+    pair: string[];
+    erc20: string[];
+  };
+  priceCalculation: {
+    defaultSlippage: number;
+    maxSlippage: number;
+    minLiquidityUSD: number;
+    volumeMultipliers: Record<string, number>;
+  };
+}
+
+export const DEX_CONFIG: DexConfigRoot = {
   // Core mainnet chain ID: 1116
-  // Core testnet chain ID: 1115
+  // Core testnet chain ID: 1115/1114 (varies by infra)
   
   mainnet: {
     // IceCreamSwap V2 (Confirmed from docs)
@@ -12,19 +49,7 @@ export const DEX_CONFIG = {
       initCodeHash: '0xf52888d456dc5a5a37fd2ffeee852cf88bffe68e0f579c67b093d04db005b857',
     },
     
-    // ShadowSwap (Uniswap V2 fork)
-    ShadowSwap: {
-      factory: '0x7Bbbb6abaD521dE677aBe089C85b29e3b2021496',
-      router: '0x5C517Ef8cC0c7131f72Dc38391D7b06fE5382A1e',
-      initCodeHash: '0x4f9ab19cf73e7a54c9ec5e0f5e7134cd8ccb1c2e47e8e7f0e0e8e7e8e7e8e7e8', // Placeholder
-    },
-    
-    // CoreX DEX
-    CoreX: {
-      factory: '0x8663F73Ac70009A7EbB7642ddc4Cc9a5e9Af5667',
-      router: '0x5B5390Ad531F088230d6f3D62ceDF434FBCa8847',
-      initCodeHash: '0x6f9ab19cf73e7a54c9ec5e0f5e7134cd8ccb1c2e47e8e7f0e0e8e7e8e7e8e7e9', // Placeholder
-    },
+    // ShadowSwap: not used on mainnet in our setup (omit or set to undefined)
     
     // Common token addresses
     tokens: {
@@ -38,18 +63,27 @@ export const DEX_CONFIG = {
   },
   
   testnet: {
-    // IceCreamSwap V2 on testnet
+    // ShadowSwap (testnet)
+    ShadowSwap: {
+      factory: '0x6e46ECa8d210C426ca6cA845feb2881Dc8c99426',
+      router: '0x524027673879FEDfFE8dD3baE1BF8FDD2Cd1bF13',
+      initCodeHash: '0x6eef19478e462b999a9ed867f57d8c87e8e60fb982a9c6b76df387b0c54e5f37',
+    },
+
+    // IceCreamSwap: not available on testnet (set to zero addresses)
     IceCreamSwap: {
-      factory: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // Same as mainnet
-      router: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4',
-      initCodeHash: '0xf52888d456dc5a5a37fd2ffeee852cf88bffe68e0f579c67b093d04db005b857',
+      factory: '0x0000000000000000000000000000000000000000',
+      router: '0x0000000000000000000000000000000000000000',
+      initCodeHash: '0x0000000000000000000000000000000000000000000000000000000000000000',
     },
     
-    // Test tokens on Core testnet
+    // Common testnet tokens
     tokens: {
-      WCORE: '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f',
-      USDT: '0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1',
-      USDC: '0xa4151B2B3e269645181dCcF2D426cE75fcbDeca9',
+      // Use shared WCORE testnet address for consistency
+      WCORE: '0x5c872990530Fe4f7322cA0c302762788e8199Ed0',
+      // Stablecoins may not exist on testnet; keep undefined
+      USDT: undefined,
+      USDC: undefined,
     },
   },
   
@@ -114,19 +148,18 @@ export const DEX_CONFIG = {
     volumeMultipliers: {
       IceCreamSwap: 0.1,    // 10% daily volume
       ShadowSwap: 0.15,     // 15% daily volume
-      CoreX: 0.12,          // 12% daily volume
     },
   },
 };
 
 // Helper function to get DEX config for network
-export function getDexConfig(network: 'mainnet' | 'testnet') {
+export function getDexConfig(network: 'mainnet' | 'testnet'): DexNetworkConfig {
   return DEX_CONFIG[network];
 }
 
 // Helper function to get all DEX names
 export function getAllDexNames(): string[] {
-  return ['IceCreamSwap', 'ShadowSwap', 'CoreX'];
+  return ['IceCreamSwap', 'ShadowSwap'];
 }
 
 // Helper function to validate token address

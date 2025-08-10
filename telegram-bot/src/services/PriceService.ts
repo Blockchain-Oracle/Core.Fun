@@ -186,10 +186,9 @@ export class PriceService {
   ): Promise<PriceData> {
     const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, this.provider);
     
-    const [reserves, token0, token1] = await Promise.all([
+    const [reserves, token0] = await Promise.all([
       pairContract.getReserves(),
       pairContract.token0(),
-      pairContract.token1(),
     ]);
 
     // Determine which reserve is which
@@ -241,12 +240,94 @@ export class PriceService {
   }
 
   /**
-   * Get CORE price in USD
+   * Get CORE price in USD with multiple fallback sources
    */
   async getCoreUsdPrice(): Promise<number> {
-    // In production, this would fetch from an oracle or CEX API
-    // For now, using a realistic estimate
-    return 0.5; // $0.50 per CORE
+    try {
+      // Try Core blockchain API first
+      const apiPrice = await this.fetchCoreAPIPrice();
+      if (apiPrice > 0) return apiPrice;
+    } catch (error) {
+      logger.warn('Core API price fetch failed:', error);
+    }
+
+    try {
+      // Try CoinGecko as fallback
+      const cgPrice = await this.fetchCoinGeckoPrice();
+      if (cgPrice > 0) return cgPrice;
+    } catch (error) {
+      logger.warn('CoinGecko price fetch failed:', error);
+    }
+
+    try {
+      // Try getting from CORE/USDT pool as last resort
+      const poolPrice = await this.fetchPoolPrice();
+      if (poolPrice > 0) return poolPrice;
+    } catch (error) {
+      logger.warn('Pool price fetch failed:', error);
+    }
+
+    // Final fallback - return cached or default price
+    logger.warn('All price sources failed, using fallback price');
+    return 0.5; // $0.50 per CORE as absolute fallback
+  }
+
+  private async fetchCoreAPIPrice(): Promise<number> {
+    // Fetch from Core blockchain API
+    const response = await fetch('https://scan.coredao.org/api?module=stats&action=coreprice');
+    const data = await response.json() as { status: string; result?: { coreusd: string } };
+    if (data.status === '1' && data.result?.coreusd) {
+      return parseFloat(data.result.coreusd);
+    }
+    throw new Error('Invalid Core API response');
+  }
+
+  private async fetchCoinGeckoPrice(): Promise<number> {
+    // Fetch from CoinGecko
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredao&vs_currencies=usd');
+    const data = await response.json() as { coredao?: { usd: number } };
+    if (data.coredao?.usd) {
+      return data.coredao.usd;
+    }
+    throw new Error('Invalid CoinGecko response');
+  }
+
+  private async fetchPoolPrice(): Promise<number> {
+    // Get price from CORE/USDT pool on main DEX
+    const routerContract = new ethers.Contract(
+      DEX_ROUTERS.CORSWAP,
+      ROUTER_ABI,
+      this.provider
+    );
+    const factoryAddress = await routerContract.factory();
+    const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, this.provider);
+    
+    // WCORE and USDT addresses
+    const WCORE = '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f';
+    const USDT = '0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1'; // Core mainnet USDT
+    
+    const pairAddress = await factoryContract.getPair(WCORE, USDT);
+    if (pairAddress === ethers.ZeroAddress) {
+      throw new Error('No CORE/USDT pair found');
+    }
+
+    const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, this.provider);
+    const [reserves, token0] = await Promise.all([
+      pairContract.getReserves(),
+      pairContract.token0(),
+    ]);
+
+    const isWCORE0 = token0.toLowerCase() === WCORE.toLowerCase();
+    const coreReserve = isWCORE0 ? reserves.reserve0 : reserves.reserve1;
+    const usdtReserve = isWCORE0 ? reserves.reserve1 : reserves.reserve0;
+
+    // CORE has 18 decimals, USDT has 6
+    const coreAmount = parseFloat(ethers.formatUnits(coreReserve, 18));
+    const usdtAmount = parseFloat(ethers.formatUnits(usdtReserve, 6));
+
+    if (coreAmount === 0) throw new Error('Invalid pool reserves');
+    
+    return usdtAmount / coreAmount;
   }
 
   /**

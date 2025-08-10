@@ -173,7 +173,7 @@ export class TradeStreamHandler {
     
     // Broadcast to interested clients
     interestedClients.forEach(clientId => {
-      this.redis.publish('trades', JSON.stringify({
+      this.redis.publish('websocket:trade', JSON.stringify({
         clientId,
         trades: [trade],
       }));

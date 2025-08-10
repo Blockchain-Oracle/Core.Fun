@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
 import { Redis } from 'ioredis';
-import { Context } from 'telegraf';
 import { BotContext } from '../bot';
 import { logger } from '../utils/logger';
+import crypto from 'crypto';
 
 interface SessionData {
   userId: string;
@@ -302,6 +302,6 @@ export class SessionManager {
    * Generate a secure random secret
    */
   private generateSecret(): string {
-    return require('crypto').randomBytes(32).toString('hex');
+    return crypto.randomBytes(32).toString('hex');
   }
 }

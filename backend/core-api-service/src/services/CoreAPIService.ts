@@ -371,11 +371,15 @@ export class CoreAPIService {
 
     try {
       // Get price from multiple DEXes for best coverage
-      const dexPrices = await Promise.allSettled([
-        this.getPriceFromIceCreamSwap(tokenAddress),
-        this.getPriceFromShadowSwap(tokenAddress),
-        this.getPriceFromCoreX(tokenAddress),
-      ]);
+      const dexConfig = getDexConfig(this.network);
+      const tasks: Array<Promise<PriceData | null>> = [];
+      if (dexConfig.IceCreamSwap && dexConfig.IceCreamSwap.factory !== '0x0000000000000000000000000000000000000000') {
+        tasks.push(this.getPriceFromIceCreamSwap(tokenAddress));
+      }
+      if (dexConfig.ShadowSwap && dexConfig.ShadowSwap.factory !== '0x0000000000000000000000000000000000000000') {
+        tasks.push(this.getPriceFromShadowSwap(tokenAddress));
+      }
+      const dexPrices = await Promise.allSettled(tasks);
 
       // Aggregate prices from successful DEX queries
       const validPrices = dexPrices
@@ -986,7 +990,11 @@ export class CoreAPIService {
   private async getPriceFromIceCreamSwap(tokenAddress: string): Promise<PriceData | null> {
     try {
       const dexConfig = getDexConfig(this.network);
-      const { factory: FACTORY_ADDRESS } = dexConfig.IceCreamSwap;
+      if (!dexConfig.IceCreamSwap || dexConfig.IceCreamSwap.factory === '0x0000000000000000000000000000000000000000') {
+        this.logger.debug('IceCreamSwap not configured for this network');
+        return null;
+      }
+      const FACTORY_ADDRESS = dexConfig.IceCreamSwap.factory;
       const { WCORE: WCORE_ADDRESS, USDT: USDT_ADDRESS } = dexConfig.tokens;
       
       // Use ABIs from config
@@ -1001,7 +1009,9 @@ export class CoreAPIService {
       
       if (pairAddress === ethers.ZeroAddress) {
         // Try USDT pair as fallback
-        pairAddress = await factory.getPair(tokenAddress, USDT_ADDRESS);
+        if (USDT_ADDRESS) {
+          pairAddress = await factory.getPair(tokenAddress, USDT_ADDRESS);
+        }
         useUSDT = true;
         
         if (pairAddress === ethers.ZeroAddress) {
@@ -1013,10 +1023,9 @@ export class CoreAPIService {
       const pair = new ethers.Contract(pairAddress, pairAbi, this.provider);
       
       // Get reserves and token ordering
-      const [reserves, token0, token1] = await Promise.all([
+      const [reserves, token0] = await Promise.all([
         pair.getReserves(),
         pair.token0(),
-        pair.token1(),
       ]);
       
       // Determine which token is which
@@ -1040,7 +1049,7 @@ export class CoreAPIService {
       let priceUSD = 0;
       let priceCore = 0;
       
-      if (useUSDT) {
+      if (useUSDT && USDT_ADDRESS) {
         priceUSD = priceInBase;
         // Get CORE price to calculate priceCore
         const corePrice = await this.getCorePrice();
@@ -1053,7 +1062,9 @@ export class CoreAPIService {
       }
       
       // Calculate liquidity in USD
-      const liquidity = useUSDT ? baseAmount * 2 : priceCore * baseAmount * 2 * parseFloat((await this.getCorePrice()).usd);
+      const liquidity = (useUSDT && USDT_ADDRESS)
+        ? baseAmount * 2
+        : priceCore * baseAmount * 2 * parseFloat((await this.getCorePrice()).usd);
       
       // Get 24h volume from events (simplified - would need event filtering)
       const volume24h = liquidity * DEX_CONFIG.priceCalculation.volumeMultipliers.IceCreamSwap;
@@ -1078,7 +1089,11 @@ export class CoreAPIService {
   private async getPriceFromShadowSwap(tokenAddress: string): Promise<PriceData | null> {
     try {
       const dexConfig = getDexConfig(this.network);
-      const { factory: FACTORY_ADDRESS } = dexConfig.ShadowSwap;
+      const FACTORY_ADDRESS = dexConfig.ShadowSwap?.factory;
+      if (!FACTORY_ADDRESS) {
+        this.logger.debug('ShadowSwap not configured for this network');
+        return null;
+      }
       const { WCORE: WCORE_ADDRESS } = dexConfig.tokens;
       
       const factoryAbi = DEX_CONFIG.abis.factory;
@@ -1126,68 +1141,9 @@ export class CoreAPIService {
     }
   }
 
-  /**
-   * Get token price from CoreX DEX
-   */
-  private async getPriceFromCoreX(tokenAddress: string): Promise<PriceData | null> {
-    try {
-      const dexConfig = getDexConfig(this.network);
-      const { factory: FACTORY_ADDRESS } = dexConfig.CoreX;
-      const { WCORE: WCORE_ADDRESS } = dexConfig.tokens;
-      
-      const factoryAbi = DEX_CONFIG.abis.factory;
-      const pairAbi = DEX_CONFIG.abis.pair;
-      
-      const factory = new ethers.Contract(FACTORY_ADDRESS, factoryAbi, this.provider);
-      const pairAddress = await factory.getPair(tokenAddress, WCORE_ADDRESS);
-      
-      if (pairAddress === ethers.ZeroAddress) {
-        this.logger.debug(`No CoreX pair found for token ${tokenAddress}`);
-        return null;
-      }
-      
-      const pair = new ethers.Contract(pairAddress, pairAbi, this.provider);
-      const [reserves, token0] = await Promise.all([
-        pair.getReserves(),
-        pair.token0(),
-      ]);
-      
-      const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
-      const tokenReserve = isToken0 ? reserves[0] : reserves[1];
-      const coreReserve = isToken0 ? reserves[1] : reserves[0];
-      
-      const tokenAmount = Number(ethers.formatUnits(tokenReserve, 18));
-      const coreAmount = Number(ethers.formatUnits(coreReserve, 18));
-      
-      if (tokenAmount === 0) return null;
-      
-      const priceCore = coreAmount / tokenAmount;
-      const corePrice = await this.getCorePrice();
-      const priceUSD = priceCore * parseFloat(corePrice.usd);
-      const liquidity = coreAmount * 2 * parseFloat(corePrice.usd);
-      
-      return {
-        token: tokenAddress,
-        priceUSD,
-        priceCore,
-        volume24h: liquidity * DEX_CONFIG.priceCalculation.volumeMultipliers.CoreX,
-        liquidity,
-        priceChange24h: 0,
-      };
-    } catch (error) {
-      this.logger.debug(`CoreX price fetch failed for ${tokenAddress}:`, error);
-      return null;
-    }
-  }
+  // CoreX removed from supported DEX list
 
-  /**
-   * Get historical price for calculating 24h change
-   */
-  private async getHistoricalPrice(tokenAddress: string, hoursAgo: number): Promise<number | null> {
-    // This would require indexing historical data or querying events
-    // For now, returning null to indicate no historical data
-    return null;
-  }
+  // Historical price computation not implemented in current scope
 
   /**
    * Get liquidity pools for a token across all DEXes
@@ -1201,8 +1157,15 @@ export class CoreAPIService {
       if (dexName === 'tokens') continue; // Skip token config
       
       try {
+        // Skip entries that are not DEX configs (e.g., tokens)
+        if (!(config as any) || !('factory' in (config as any))) {
+          continue;
+        }
+        if ((config as any).factory === '0x0000000000000000000000000000000000000000') {
+          continue;
+        }
         const factoryAbi = DEX_CONFIG.abis.factory;
-        const factory = new ethers.Contract(config.factory, factoryAbi, this.provider);
+        const factory = new ethers.Contract((config as any).factory, factoryAbi, this.provider);
         
         // Check for pools with common base tokens
         for (const [tokenName, tokenAddr] of Object.entries(dexConfig.tokens)) {
@@ -1211,7 +1174,7 @@ export class CoreAPIService {
             if (pairAddress !== ethers.ZeroAddress) {
               pools.push({
                 dex: dexName,
-                factory: config.factory,
+                factory: (config as any).factory,
                 pair: pairAddress,
                 baseToken: tokenName,
                 baseTokenAddress: tokenAddr,

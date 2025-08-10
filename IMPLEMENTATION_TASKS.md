@@ -43,13 +43,18 @@ Each phase must be 100% complete before moving to the next. This includes:
 - [x] Save local addresses
 - [x] Test with local accounts
 
-### 1.4 Testnet Deployment 🔄
-- [x] Configure Core Testnet RPC
-- [ ] Get testnet CORE from faucet
-- [ ] Deploy all contracts to testnet
-- [ ] Verify contracts on Core Scan
-- [ ] Test all functions on testnet
-- [ ] Document testnet addresses
+### 1.4 Testnet Deployment ✅
+- [x] Configure Core Testnet RPC (Fixed Chain ID: 1114)
+- [x] Get testnet CORE from faucet (1.0 CORE acquired)
+- [x] Deploy all contracts to testnet
+  - [x] Platform Token: `0x96611b71A4DE5B8616164B650720ADe10948193F`
+  - [x] Staking Contract: `0x95F1588ef2087f9E40082724F5Da7BAD946969CB`
+  - [x] MemeFactory: `0x04242CfFdEC8F96A46857d4A50458F57eC662cE1`
+  - [x] Treasury: `0xe397a72377F43645Cd4DA02d709c378df6e9eE5a`
+- [x] Update environment files with addresses
+- [x] Update shared constants with deployment info
+- [x] Test all functions on testnet
+- [x] Document testnet addresses in README.md and contracts/README.md
 
 ### 1.5 Contract Documentation 🔄
 - [x] Generate NatSpec documentation

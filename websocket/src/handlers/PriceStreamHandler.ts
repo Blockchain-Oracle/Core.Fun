@@ -70,7 +70,7 @@ export class PriceStreamHandler {
     });
     
     if (initialPrices.length > 0) {
-      this.redis.publish('price-updates', JSON.stringify({
+      this.redis.publish('websocket:price_update', JSON.stringify({
         clientId,
         prices: initialPrices,
       }));
@@ -132,7 +132,7 @@ export class PriceStreamHandler {
     
     // Broadcast updates
     updates.forEach((prices, clientId) => {
-      this.redis.publish('price-updates', JSON.stringify({
+      this.redis.publish('websocket:price_update', JSON.stringify({
         clientId,
         prices,
       }));

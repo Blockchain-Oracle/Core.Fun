@@ -76,57 +76,36 @@ services:
     volumes:
       - ./backend/core-api-service/logs:/app/logs
       - ./backend/core-api-service/.env:/app/.env:ro
-    command: sh -c "npm run build && npm start"
+    # Use Dockerfile CMD (node dist/main.js) to start; avoid build step in runtime image
 
-  # Blockchain Monitor Service (future)
-  # blockchain-monitor:
-  #   build: ./backend/blockchain-monitor
-  #   container_name: core-blockchain-monitor
-  #   environment:
-  #     NODE_ENV: ${NODE_ENV:-development}
-  #     REDIS_HOST: redis
-  #     POSTGRES_HOST: postgres
-  #   depends_on:
-  #     - redis
-  #     - postgres
-  #     - core-api
-  #   networks:
-  #     - core-network
-
-  # Trading Engine (future)
-  # trading-engine:
-  #   build: ./backend/trading-engine
-  #   container_name: core-trading-engine
-  #   environment:
-  #     NODE_ENV: ${NODE_ENV:-development}
-  #     REDIS_HOST: redis
-  #     POSTGRES_HOST: postgres
-  #   depends_on:
-  #     - redis
-  #     - postgres
-  #     - core-api
-  #   networks:
-  #     - core-network
-
-  # API Gateway (future)
-  # api-gateway:
-  #   build: ./backend/api
-  #   container_name: core-api-gateway
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NODE_ENV: ${NODE_ENV:-development}
-  #   depends_on:
-  #     - core-api
-  #     - redis
-  #   networks:
-  #     - core-network
+  # Trading Engine
+  trading-engine:
+    build: ./backend/trading-engine
+    container_name: core-trading-engine
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      REDIS_HOST: redis
+      POSTGRES_HOST: postgres
+      TRADING_ENGINE_PORT: 3003
+      NETWORK: ${NETWORK:-testnet}
+      CORE_RPC_URL: ${CORE_RPC_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - core-network
+    volumes:
+      - ./backend/trading-engine/.env:/app/.env:ro
+    # Use Dockerfile CMD (node dist/server.js) to start; avoid build step in runtime image
 
   # WebSocket Server
   websocket:
     build: 
-      context: ./websocket
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: websocket/Dockerfile
     container_name: core-websocket
     ports:
       - "8080:8080"
@@ -153,39 +132,8 @@ services:
     networks:
       - core-network
     volumes:
-      - ./websocket/logs:/app/logs
-
-  # Telegram Bot (future)
-  # telegram-bot:
-  #   build: ./backend/telegram-bot
-  #   container_name: core-telegram-bot
-  #   environment:
-  #     NODE_ENV: ${NODE_ENV:-development}
-  #     REDIS_HOST: redis
-  #     POSTGRES_HOST: postgres
-  #     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-  #   depends_on:
-  #     - redis
-  #     - postgres
-  #     - core-api
-  #   networks:
-  #     - core-network
-
-  # Web Application (future)
-  # web-app:
-  #   build: ./web-app
-  #   container_name: core-web-app
-  #   ports:
-  #     - "3002:3000"
-  #   environment:
-  #     NODE_ENV: ${NODE_ENV:-development}
-  #     REACT_APP_API_URL: http://localhost:3000
-  #     REACT_APP_WS_URL: ws://localhost:8080
-  #   depends_on:
-  #     - api-gateway
-  #     - websocket
-  #   networks:
-  #     - core-network
+      - ./websocket/logs:/app/websocket/logs
+    # The Dockerfile CMD runs the server; no override here
 
 networks:
   core-network:

@@ -389,7 +389,7 @@ export class CopyTradeManager {
   /**
    * Get wallet trades (mock implementation)
    */
-  private async getWalletTrades(walletAddress: string, days: number): Promise<any[]> {
+  private async getWalletTrades(_walletAddress: string, _days: number): Promise<any[]> {
     // In production, this would query blockchain data
     return [];
   }
@@ -397,7 +397,7 @@ export class CopyTradeManager {
   /**
    * Check wallet activity (polling implementation)
    */
-  private async checkWalletActivity(walletAddress: string) {
+  private async checkWalletActivity(_walletAddress: string) {
     // This would check for new transactions
     // For now, it's a placeholder
   }

@@ -97,7 +97,7 @@ export class AlertStreamHandler {
     
     // Broadcast to interested clients
     interestedClients.forEach(clientId => {
-      this.redis.publish('alerts', JSON.stringify({
+      this.redis.publish('websocket:alerts', JSON.stringify({
         clientId,
         alerts: [alert],
       }));

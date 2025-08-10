@@ -195,10 +195,10 @@ redisSub.on('message', (channel, message) => {
 });
 
 // Subscribe to Redis channels
-redisSub.subscribe('price-updates');
-redisSub.subscribe('new-tokens');
-redisSub.subscribe('trades');
-redisSub.subscribe('alerts');
+redisSub.subscribe('websocket:price_update');
+redisSub.subscribe('websocket:new_token');
+redisSub.subscribe('websocket:trade');
+redisSub.subscribe('websocket:alerts');
 
 // Start stream handlers
 priceStreamHandler.start();

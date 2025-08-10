@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { User, Token } from '@core-meme/shared';
 import authRoutes from './routes/auth';
 import { logger } from './utils/logger';
 

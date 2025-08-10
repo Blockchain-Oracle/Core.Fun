@@ -170,7 +170,7 @@ export class TradingCommands {
             Markup.button.callback('💸 Sell', `sell_${tokenAddress}`),
           ],
           [
-            Markup.button.url('🔍 View TX', `https://scan.coredao.org/tx/${result.txHash}`),
+            Markup.button.url('🔍 View TX', `https://scan.coredao.org/tx/${result.transactionHash}`),
           ],
         ];
 
@@ -382,7 +382,7 @@ export class TradingCommands {
             Markup.button.callback('💼 Portfolio', 'portfolio_view'),
           ],
           [
-            Markup.button.url('🔍 View TX', `https://scan.coredao.org/tx/${result.txHash}`),
+            Markup.button.url('🔍 View TX', `https://scan.coredao.org/tx/${result.transactionHash}`),
           ],
         ];
 

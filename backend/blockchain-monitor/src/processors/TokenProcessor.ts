@@ -142,7 +142,7 @@ export class TokenProcessor {
       }
       
       // Publish to WebSocket
-      await this.publishTokenEvent('TOKEN_LAUNCHED', { token: data.token, ...data });
+      await this.publishTokenEvent('TOKEN_LAUNCHED', { tokenAddress: data.token, ...data });
       
     } catch (error) {
       this.logger.error(`Error processing token launch ${data.token}:`, error);
@@ -164,7 +164,7 @@ export class TokenProcessor {
       
       // Store event
       await this.db.saveTokenEvent({
-        token: data.token,
+        tokenAddress: data.token,
         event: 'TRADING_ENABLED',
         ...data,
       });
@@ -196,7 +196,7 @@ export class TokenProcessor {
       
       // Store event
       await this.db.saveTokenEvent({
-        token: data.token,
+        tokenAddress: data.token,
         event: 'OWNERSHIP_RENOUNCED',
         ...data,
       });

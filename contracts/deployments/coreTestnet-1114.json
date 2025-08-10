@@ -1,0 +1,12 @@
+{
+  "network": "coreTestnet",
+  "chainId": "1114",
+  "contracts": {
+    "platformToken": "0x96611b71A4DE5B8616164B650720ADe10948193F",
+    "staking": "0x95F1588ef2087f9E40082724F5Da7BAD946969CB",
+    "memeFactory": "0x04242CfFdEC8F96A46857d4A50458F57eC662cE1",
+    "treasury": "0xe397a72377F43645Cd4DA02d709c378df6e9eE5a"
+  },
+  "deployer": "0xe397a72377F43645Cd4DA02d709c378df6e9eE5a",
+  "timestamp": "2025-08-10T02:10:15.926Z"
+}

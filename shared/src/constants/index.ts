@@ -14,10 +14,10 @@ export const NETWORK_CONFIG = {
     },
   },
   testnet: {
-    chainId: 1115,
+    chainId: 1114,
     name: 'Core Testnet',
-    rpcUrl: 'https://rpc.test.btcs.network',
-    wsUrl: 'wss://ws.test.btcs.network',
+    rpcUrl: 'https://rpc.test2.btcs.network',
+    wsUrl: 'wss://ws.test2.btcs.network',
     explorerUrl: 'https://scan.test.btcs.network',
     apiUrl: 'https://openapi.test.btcs.network/api',
     nativeCurrency: {
@@ -34,41 +34,52 @@ export const DEX_CONFIGS = {
     name: 'ShadowSwap',
     routerAddress: {
       mainnet: '0xd15CeE1DEaFBad6C0B3Fd7489677Cc102B141464',
-      testnet: '0x0000000000000000000000000000000000000000', // TODO: Add testnet
+      testnet: '0x524027673879FEDfFE8dD3baE1BF8FDD2Cd1bF13', // Updated from trading config
     },
     factoryAddress: {
       mainnet: '0x966a70A4d3719A6De6a94236532A0167d5246c72',
-      testnet: '0x0000000000000000000000000000000000000000', // TODO: Add testnet
+      testnet: '0x6e46ECa8d210C426ca6cA845feb2881Dc8c99426', // Updated from trading config
     },
-  },
-  LFGSWAP: {
-    name: 'LFGSwap',
-    routerAddress: {
-      mainnet: '0x52Ada6E8d553E5EaCA196c9D975DB7a76627dc61',
-      testnet: '0x0000000000000000000000000000000000000000', // TODO: Add testnet
-    },
-    factoryAddress: {
-      mainnet: '0x834aD494a19F73d65F061205C39b60469945338C',
-      testnet: '0x0000000000000000000000000000000000000000', // TODO: Add testnet
-    },
+    initCodeHash: '0x6eef19478e462b999a9ed867f57d8c87e8e60fb982a9c6b76df387b0c54e5f37'
   },
   ICECREAMSWAP: {
     name: 'IcecreamSwap',
     routerAddress: {
-      mainnet: '0xC5B19E6a5e4806A107B01f246232e65E195D9ae8',
-      testnet: '0x0000000000000000000000000000000000000000', // TODO: Add testnet
+      mainnet: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // Updated from trading config
+      testnet: '0x0000000000000000000000000000000000000000', // Not available on testnet
     },
     factoryAddress: {
-      mainnet: '0x9A272D734c5a0d7d84E0a892e891a553e8066dce',
-      testnet: '0x0000000000000000000000000000000000000000', // TODO: Add testnet
+      mainnet: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // Updated from trading config
+      testnet: '0x0000000000000000000000000000000000000000',
     },
+    initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3'
   },
 };
 
 // WCORE addresses
 export const WCORE_ADDRESS = {
   mainnet: '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f',
-  testnet: '0x5c1e6b2A3BA59858e9E5f2Dd5F90ce9E5e0c69A0', // TODO: Verify
+  testnet: '0x5c872990530Fe4f7322cA0c302762788e8199Ed0', // Updated from trading config
+};
+
+// Platform contract addresses
+export const CONTRACT_ADDRESSES = {
+  memeFactory: {
+    mainnet: '', // To be deployed
+    testnet: '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1',
+  },
+  platformToken: {
+    mainnet: '', // To be deployed
+    testnet: '0x96611b71A4DE5B8616164B650720ADe10948193F',
+  },
+  staking: {
+    mainnet: '', // To be deployed
+    testnet: '0x95F1588ef2087f9E40082724F5Da7BAD946969CB',
+  },
+  treasury: {
+    mainnet: '', // To be deployed
+    testnet: '0xe397a72377F43645Cd4DA02d709c378df6e9eE5a',
+  },
 };
 
 // Platform configuration

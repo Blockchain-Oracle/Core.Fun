@@ -1,4 +1,5 @@
-import { createCanvas, Canvas, CanvasRenderingContext2D, registerFont } from 'canvas';
+import { createCanvas, registerFont } from 'canvas';
+import type { Canvas, CanvasRenderingContext2D } from 'canvas';
 import path from 'path';
 import { Position } from '../trading/PositionManager';
 import { PnLData, DailyPnL } from '../trading/PnLCalculator';
@@ -456,8 +457,8 @@ export class ImageGenerator {
     const spacing = width / days.length * 0.4;
     const maxValue = Math.max(...days.map(d => Math.abs(d.total)));
 
-    days.forEach((day, index) => {
-      const barX = x + index * (barWidth + spacing);
+    days.forEach((day, _index) => {
+      const barX = x + _index * (barWidth + spacing);
       const barHeight = (Math.abs(day.total) / maxValue) * height * 0.7;
       const barY = day.total >= 0 ? y + height - barHeight : y + height;
 

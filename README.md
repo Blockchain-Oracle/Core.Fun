@@ -45,6 +45,17 @@ core-meme-platform/
 └── shared/            # Shared utilities
 ```
 
+## 📋 Deployed Contracts (Core Testnet)
+
+| Contract | Address | Explorer Link |
+|----------|---------|---------------|
+| MemeFactory | `0x04242CfFdEC8F96A46857d4A50458F57eC662cE1` | [View on Scan](https://scan.test.btcs.network/address/0x04242CfFdEC8F96A46857d4A50458F57eC662cE1) |
+| Platform Token (CMP) | `0x96611b71A4DE5B8616164B650720ADe10948193F` | [View on Scan](https://scan.test.btcs.network/address/0x96611b71A4DE5B8616164B650720ADe10948193F) |
+| Staking Contract | `0x95F1588ef2087f9E40082724F5Da7BAD946969CB` | [View on Scan](https://scan.test.btcs.network/address/0x95F1588ef2087f9E40082724F5Da7BAD946969CB) |
+| Treasury Address | `0xe397a72377F43645Cd4DA02d709c378df6e9eE5a` | [View on Scan](https://scan.test.btcs.network/address/0xe397a72377F43645Cd4DA02d709c378df6e9eE5a) |
+
+> **Note**: These are testnet deployments for development and testing. Mainnet deployment will be announced separately.
+
 ## 🚀 Quick Start
 
 ### Prerequisites

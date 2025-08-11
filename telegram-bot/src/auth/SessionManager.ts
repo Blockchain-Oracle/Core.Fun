@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Redis } from 'ioredis';
 import { BotContext } from '../bot';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 import crypto from 'crypto';
 
 interface SessionData {
@@ -26,13 +26,14 @@ export class SessionManager {
   private redis: Redis;
   private jwtSecret: string;
   private sessionTTL: number = 7 * 24 * 60 * 60; // 7 days in seconds
+  private logger = createLogger({ service: 'session-manager' });
 
   constructor() {
     this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
     this.jwtSecret = process.env.JWT_SECRET || this.generateSecret();
     
     if (!process.env.JWT_SECRET) {
-      logger.warn('JWT_SECRET not set, using generated secret (not recommended for production)');
+      this.logger.warn('JWT_SECRET not set, using generated secret (not recommended for production)');
     }
   }
 
@@ -71,7 +72,7 @@ export class SessionManager {
           };
         }
       } catch (error) {
-        logger.error('Error loading session:', error);
+        this.logger.error('Error loading session:', error);
         ctx.session = {
           telegramId,
           isAuthenticated: false,
@@ -97,7 +98,7 @@ export class SessionManager {
             })
           );
         } catch (error) {
-          logger.error('Error saving session:', error);
+          this.logger.error('Error saving session:', error);
         }
       }
     };
@@ -170,7 +171,7 @@ export class SessionManager {
 
       return decoded;
     } catch (error) {
-      logger.error('Token verification failed:', error);
+      this.logger.error('Token verification failed:', error);
       return null;
     }
   }
@@ -212,7 +213,7 @@ export class SessionManager {
         walletAddress: session.walletAddress,
       });
     } catch (error) {
-      logger.error('Token refresh failed:', error);
+      this.logger.error('Token refresh failed:', error);
       return null;
     }
   }

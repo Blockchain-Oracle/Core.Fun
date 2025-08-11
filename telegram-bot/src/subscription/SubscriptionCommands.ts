@@ -1,7 +1,7 @@
 import { BotContext } from '../bot';
 import { DatabaseService } from '../services/DatabaseService';
 import { Markup } from 'telegraf';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface SubscriptionPlan {
   name: string;
@@ -13,6 +13,7 @@ interface SubscriptionPlan {
 }
 
 export class SubscriptionCommands {
+  private logger = createLogger({ service: 'subscription-commands' });
   private db: DatabaseService;
   
   private readonly plans: SubscriptionPlan[] = [
@@ -99,7 +100,7 @@ export class SubscriptionCommands {
         ...keyboard
       });
     } catch (error) {
-      logger.error('Error showing subscription plans:', error);
+      this.logger.error('Error showing subscription plans:', error);
       await ctx.reply('❌ Error displaying subscription plans. Please try again.');
     }
   }
@@ -169,7 +170,7 @@ export class SubscriptionCommands {
         ...keyboard
       });
     } catch (error) {
-      logger.error('Error showing current subscription:', error);
+      this.logger.error('Error showing current subscription:', error);
       await ctx.reply('❌ Error fetching subscription details. Please try again.');
     }
   }
@@ -193,7 +194,7 @@ export class SubscriptionCommands {
         ])
       );
     } catch (error) {
-      logger.error('Error in upgrade subscription:', error);
+      this.logger.error('Error in upgrade subscription:', error);
       await ctx.reply('❌ Error processing upgrade. Please try again.');
     }
   }
@@ -235,7 +236,7 @@ export class SubscriptionCommands {
         ])
       );
     } catch (error) {
-      logger.error('Error processing subscription:', error);
+      this.logger.error('Error processing subscription:', error);
       await ctx.reply('❌ Error processing subscription. Please try again.');
     }
   }
@@ -274,7 +275,7 @@ export class SubscriptionCommands {
         ])
       );
     } catch (error) {
-      logger.error('Error confirming subscription:', error);
+      this.logger.error('Error confirming subscription:', error);
       await ctx.reply('❌ Error activating subscription. Please contact support.');
     }
   }
@@ -304,7 +305,7 @@ export class SubscriptionCommands {
         ])
       );
     } catch (error) {
-      logger.error('Error in cancel subscription:', error);
+      this.logger.error('Error in cancel subscription:', error);
       await ctx.reply('❌ Error processing cancellation. Please contact support.');
     }
   }

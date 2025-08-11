@@ -1,6 +1,6 @@
 import { Knex } from 'knex';
 import knex from 'knex';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface Subscription {
   id: string;
@@ -13,6 +13,7 @@ interface Subscription {
 
 export class SubscriptionManager {
   private db: Knex;
+  private logger = createLogger({ service: 'websocket-subscriptions' });
 
   constructor() {
     // Initialize database connection (shares with blockchain-monitor)
@@ -51,7 +52,7 @@ export class SubscriptionManager {
           table.index(['last_activity']);
         });
 
-        logger.info('WebSocket subscriptions table created');
+        this.logger.info('WebSocket subscriptions table created');
       }
 
       // Create websocket_connections table if it doesn't exist
@@ -67,10 +68,10 @@ export class SubscriptionManager {
           table.index(['last_ping']);
         });
 
-        logger.info('WebSocket connections table created');
+        this.logger.info('WebSocket connections table created');
       }
     } catch (error) {
-      logger.error('Error initializing subscription tables:', error);
+      this.logger.error('Error initializing subscription tables:', error);
       throw error;
     }
   }
@@ -87,7 +88,7 @@ export class SubscriptionManager {
       last_activity: new Date(),
     });
 
-    logger.info(`Subscription added: ${clientId} -> ${channel}`);
+    this.logger.info(`Subscription added: ${clientId} -> ${channel}`);
   }
 
   async removeSubscription(clientId: string, channel: string): Promise<void> {
@@ -96,7 +97,7 @@ export class SubscriptionManager {
       .andWhere('channel', channel)
       .delete();
 
-    logger.info(`Subscription removed: ${clientId} -> ${channel}`);
+    this.logger.info(`Subscription removed: ${clientId} -> ${channel}`);
   }
 
   async removeAllSubscriptions(clientId: string): Promise<void> {
@@ -104,7 +105,7 @@ export class SubscriptionManager {
       .where('client_id', clientId)
       .delete();
 
-    logger.info(`All subscriptions removed for client: ${clientId}`);
+    this.logger.info(`All subscriptions removed for client: ${clientId}`);
   }
 
   async getSubscriptions(clientId: string): Promise<Subscription[]> {
@@ -163,7 +164,7 @@ export class SubscriptionManager {
       .delete();
 
     if (deleted > 0) {
-      logger.info(`Cleaned up ${deleted} inactive subscriptions`);
+      this.logger.info(`Cleaned up ${deleted} inactive subscriptions`);
     }
 
     return deleted;
@@ -182,7 +183,7 @@ export class SubscriptionManager {
       .onConflict('client_id')
       .merge();
 
-    logger.info(`Connection registered: ${clientId} from ${ipAddress}`);
+    this.logger.info(`Connection registered: ${clientId} from ${ipAddress}`);
   }
 
   async removeConnection(clientId: string): Promise<void> {
@@ -193,7 +194,7 @@ export class SubscriptionManager {
     // Also remove all subscriptions for this client
     await this.removeAllSubscriptions(clientId);
 
-    logger.info(`Connection removed: ${clientId}`);
+    this.logger.info(`Connection removed: ${clientId}`);
   }
 
   async updateConnectionPing(clientId: string): Promise<void> {

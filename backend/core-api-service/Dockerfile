@@ -6,18 +6,22 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
-COPY pnpm-lock.yaml* ./
-COPY tsconfig.json ./
+# Copy workspace manifests from repo root
+COPY pnpm-workspace.yaml package.json ./
+# Copy package manifests for needed workspaces
+COPY backend/core-api-service/package.json backend/core-api-service/package.json
+COPY backend/core-api-service/tsconfig.json backend/core-api-service/tsconfig.json
+COPY shared/package.json shared/package.json
 
-# Install dependencies
-RUN pnpm install
+# Install only needed workspaces and their deps
+RUN pnpm install --filter @core-meme-platform/core-api-service... --filter @core-meme/shared...
 
-# Copy source code
-COPY src ./src
+# Copy sources
+COPY shared ./shared
+COPY backend/core-api-service ./backend/core-api-service
 
 # Build the application
+WORKDIR /app/backend/core-api-service
 RUN pnpm run build
 
 # Production stage
@@ -35,15 +39,16 @@ RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy package files
-COPY package.json ./
-COPY pnpm-lock.yaml* ./
+# Copy workspace manifests
+COPY pnpm-workspace.yaml package.json ./
+COPY backend/core-api-service/package.json backend/core-api-service/package.json
+COPY shared/package.json shared/package.json
 
-# Install production dependencies only
-RUN pnpm install --prod
+# Install production deps for selected workspaces
+RUN pnpm install --prod --filter @core-meme-platform/core-api-service... --filter @core-meme/shared...
 
 # Copy built application
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/backend/core-api-service/dist /app/backend/core-api-service/dist
 
 # Change ownership
 RUN chown -R nodejs:nodejs /app
@@ -57,6 +62,9 @@ EXPOSE 3001
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})"
+
+# Run from service workspace dir
+WORKDIR /app/backend/core-api-service
 
 # Start the application
 ENTRYPOINT ["dumb-init", "--"]

@@ -6,12 +6,13 @@ import type { BotContext } from '../bot';
 import { DatabaseService } from '../services/DatabaseService';
 import { SessionManager } from './SessionManager';
 import { WalletService } from '../wallet/WalletService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export class AuthHandler {
   private db: DatabaseService;
   private sessionManager: SessionManager;
   private walletService: WalletService;
+  private logger = createLogger({ service: 'telegram-bot-auth' });
   private authCodes: Map<string, { 
     telegramId?: number; 
     expiresAt: Date;
@@ -52,7 +53,7 @@ export class AuthHandler {
         await this.showMainMenu(ctx, user);
       }
     } catch (error) {
-      logger.error('Error in handleStart:', error);
+      this.logger.error('Error in handleStart:', error);
       await ctx.reply('❌ An error occurred. Please try again.');
     }
   }
@@ -124,10 +125,10 @@ export class AuthHandler {
         }
       );
 
-      logger.info(`User ${userId} authenticated via deep link`);
+      this.logger.info(`User ${userId} authenticated via deep link`);
 
     } catch (error) {
-      logger.error('Error in handleAuthStart:', error);
+      this.logger.error('Error in handleAuthStart:', error);
       await ctx.reply('❌ Authentication failed. Please try again.');
     }
   }
@@ -197,10 +198,10 @@ export class AuthHandler {
         ctx.session.isAuthenticated = true;
       }
 
-      logger.info(`New user created: ${telegramId} with wallet ${wallet.address}`);
+      this.logger.info(`New user created: ${telegramId} with wallet ${wallet.address}`);
 
     } catch (error) {
-      logger.error('Error creating new user:', error);
+      this.logger.error('Error creating new user:', error);
       await ctx.deleteMessage(loadingMsg.message_id);
       throw error;
     }

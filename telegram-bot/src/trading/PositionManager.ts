@@ -1,6 +1,6 @@
 import { DatabaseService } from '../services/DatabaseService';
 import { PriceService } from '../services/PriceService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export interface Position {
   id: string;
@@ -32,6 +32,7 @@ export interface PositionSummary {
 }
 
 export class PositionManager {
+  private logger = createLogger({ service: 'position-manager' });
   private db: DatabaseService;
   private priceService: PriceService;
   private priceUpdateInterval: NodeJS.Timeout | null = null;
@@ -59,7 +60,7 @@ export class PositionManager {
 
       return updatedPositions.sort((a, b) => b.currentValue - a.currentValue);
     } catch (error) {
-      logger.error('Failed to get user positions:', error);
+      this.logger.error('Failed to get user positions:', error);
       return [];
     }
   }
@@ -75,7 +76,7 @@ export class PositionManager {
       const currentPrice = await this.getCurrentPrice(tokenAddress);
       return this.calculatePositionMetrics(position, currentPrice);
     } catch (error) {
-      logger.error('Failed to get position:', error);
+      this.logger.error('Failed to get position:', error);
       return null;
     }
   }
@@ -231,7 +232,7 @@ export class PositionManager {
       const priceData = await this.priceService.getTokenPrice(tokenAddress);
       return priceData.priceInCore;
     } catch (error) {
-      logger.error(`Failed to get price for ${tokenAddress}:`, error);
+      this.logger.error(`Failed to get price for ${tokenAddress}:`, error);
       return 0;
     }
   }
@@ -258,7 +259,7 @@ export class PositionManager {
           );
         }
       } catch (error) {
-        logger.error('Price update failed:', error);
+        this.logger.error('Price update failed:', error);
       }
     }, 30000); // 30 seconds
   }

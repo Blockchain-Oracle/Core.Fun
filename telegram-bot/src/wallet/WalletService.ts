@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import crypto from 'crypto';
 import CryptoJS from 'crypto-js';
 import { DatabaseService } from '../services/DatabaseService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface Wallet {
   id: string;
@@ -29,6 +29,7 @@ interface Balance {
 }
 
 export class WalletService {
+  private logger = createLogger({ service: 'wallet-service' });
   private db: DatabaseService;
   private provider: ethers.JsonRpcProvider;
   private encryptionSecret: string;
@@ -41,7 +42,7 @@ export class WalletService {
     this.encryptionSecret = process.env.ENCRYPTION_SECRET || 'default_encryption_secret';
     
     if (!process.env.ENCRYPTION_SECRET) {
-      logger.warn('ENCRYPTION_SECRET not set, using default (not secure for production)');
+      this.logger.warn('ENCRYPTION_SECRET not set, using default (not secure for production)');
     }
   }
 
@@ -86,7 +87,7 @@ export class WalletService {
       
       return decrypted;
     } catch (error) {
-      logger.error('Failed to decrypt private key:', error);
+      this.logger.error('Failed to decrypt private key:', error);
       throw new Error('Failed to decrypt wallet');
     }
   }
@@ -121,7 +122,7 @@ export class WalletService {
       createdAt: new Date(),
     });
 
-    logger.info(`Created trading wallet ${wallet.address} for user ${userId}`);
+    this.logger.info(`Created trading wallet ${wallet.address} for user ${userId}`);
 
     return newWallet;
   }
@@ -163,7 +164,7 @@ export class WalletService {
         createdAt: new Date(),
       });
 
-      logger.info(`Imported wallet ${wallet.address} for user ${userId}`);
+      this.logger.info(`Imported wallet ${wallet.address} for user ${userId}`);
 
       return newWallet;
     } catch (error: any) {
@@ -199,7 +200,7 @@ export class WalletService {
       createdAt: new Date(),
     });
 
-    logger.info(`Added withdraw wallet ${address} for user ${userId}`);
+    this.logger.info(`Added withdraw wallet ${address} for user ${userId}`);
 
     return wallet;
   }
@@ -263,7 +264,7 @@ export class WalletService {
         tokens,
       };
     } catch (error) {
-      logger.error('Failed to get balance:', error);
+      this.logger.error('Failed to get balance:', error);
       throw new Error('Failed to retrieve balance');
     }
   }
@@ -290,7 +291,7 @@ export class WalletService {
     );
 
     // Log export action for security
-    logger.warn(`Private key exported for wallet ${walletAddress} by user ${userId}`);
+    this.logger.warn(`Private key exported for wallet ${walletAddress} by user ${userId}`);
 
     return privateKey;
   }
@@ -340,11 +341,11 @@ export class WalletService {
       // Wait for confirmation
       const receipt = await tx.wait();
 
-      logger.info(`Transfer successful: ${receipt?.hash}`);
+      this.logger.info(`Transfer successful: ${receipt?.hash}`);
 
       return receipt?.hash || tx.hash;
     } catch (error: any) {
-      logger.error('Transfer failed:', error);
+      this.logger.error('Transfer failed:', error);
       throw new Error(`Transfer failed: ${error.message}`);
     }
   }
@@ -370,7 +371,7 @@ export class WalletService {
         );
         txHashes.push(txHash);
       } catch (error) {
-        logger.error(`Failed to distribute to ${toWallet}:`, error);
+        this.logger.error(`Failed to distribute to ${toWallet}:`, error);
       }
     }
 
@@ -404,7 +405,7 @@ export class WalletService {
           txHashes.push(txHash);
         }
       } catch (error) {
-        logger.error(`Failed to consolidate from ${fromWallet.address}:`, error);
+        this.logger.error(`Failed to consolidate from ${fromWallet.address}:`, error);
       }
     }
 

@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 import { ethers } from 'ethers';
 import { createClient, RedisClientType } from 'redis';
-import winston from 'winston';
+import { createLogger } from '@core-meme/shared';
+import type winston from 'winston';
 import { z } from 'zod';
 import { DEX_CONFIG, getDexConfig } from '../config/dexConfig';
 
@@ -118,18 +119,9 @@ export class CoreAPIService {
     }
 
     // Initialize logger
-    this.logger = winston.createLogger({
-      level: process.env.LOG_LEVEL || 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.Console(),
-        new winston.transports.File({ 
-          filename: process.env.LOG_FILE || 'core-api-service.log' 
-        }),
-      ],
+    this.logger = createLogger({ 
+      service: 'core-api-service',
+      enableFileLogging: true
     });
 
     // Initialize Redis if caching is enabled

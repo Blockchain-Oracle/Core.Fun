@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { DatabaseService } from '../services/DatabaseService';
 import { TradingExecutor } from './TradingExecutor';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export interface CopyTradeSettings {
   userId: string;
@@ -47,6 +47,7 @@ export interface CopiedTrade {
 }
 
 export class CopyTradeManager {
+  private logger = createLogger({ service: 'copytrade-manager' });
   private db: DatabaseService;
   private tradingExecutor: TradingExecutor;
   private provider: ethers.JsonRpcProvider;
@@ -111,11 +112,11 @@ export class CopyTradeManager {
       // Start monitoring
       await this.startWalletMonitoring(settings.targetWallet!);
 
-      logger.info(`Started copy trading ${settings.targetWallet} for user ${settings.userId}`);
+      this.logger.info(`Started copy trading ${settings.targetWallet} for user ${settings.userId}`);
 
       return fullSettings;
     } catch (error) {
-      logger.error('Failed to start copy trading:', error);
+      this.logger.error('Failed to start copy trading:', error);
       throw error;
     }
   }
@@ -133,9 +134,9 @@ export class CopyTradeManager {
         this.stopWalletMonitoring(targetWallet);
       }
 
-      logger.info(`Stopped copy trading ${targetWallet} for user ${userId}`);
+      this.logger.info(`Stopped copy trading ${targetWallet} for user ${userId}`);
     } catch (error) {
-      logger.error('Failed to stop copy trading:', error);
+      this.logger.error('Failed to stop copy trading:', error);
       throw error;
     }
   }
@@ -199,7 +200,7 @@ export class CopyTradeManager {
 
       return stats;
     } catch (error) {
-      logger.error('Failed to analyze wallet:', error);
+      this.logger.error('Failed to analyze wallet:', error);
       throw error;
     }
   }
@@ -229,7 +230,7 @@ export class CopyTradeManager {
 
     this.activeListeners.set(`${walletAddress}_interval`, pollInterval);
 
-    logger.info(`Started monitoring wallet ${walletAddress}`);
+    this.logger.info(`Started monitoring wallet ${walletAddress}`);
   }
 
   /**
@@ -248,7 +249,7 @@ export class CopyTradeManager {
       this.activeListeners.delete(`${walletAddress}_interval`);
     }
 
-    logger.info(`Stopped monitoring wallet ${walletAddress}`);
+    this.logger.info(`Stopped monitoring wallet ${walletAddress}`);
   }
 
   /**
@@ -266,7 +267,7 @@ export class CopyTradeManager {
         await this.executeCopyTrade(copier, walletAddress, trade);
       }
     } catch (error) {
-      logger.error('Failed to handle wallet trade:', error);
+      this.logger.error('Failed to handle wallet trade:', error);
     }
   }
 
@@ -288,7 +289,7 @@ export class CopyTradeManager {
       const copyAmount = this.calculateCopyAmount(settings, trade.amount);
       
       if (copyAmount < 0.01) {
-        logger.info(`Copy amount too small for user ${settings.userId}`);
+        this.logger.info(`Copy amount too small for user ${settings.userId}`);
         return;
       }
 
@@ -339,7 +340,7 @@ export class CopyTradeManager {
       await this.notifyUser(settings.userId, copyTrade);
 
     } catch (error) {
-      logger.error('Failed to execute copy trade:', error);
+      this.logger.error('Failed to execute copy trade:', error);
     }
   }
 
@@ -459,6 +460,6 @@ export class CopyTradeManager {
    */
   private async notifyUser(userId: string, trade: CopiedTrade) {
     // This would send Telegram notification
-    logger.info(`Notifying user ${userId} about copy trade`, trade);
+    this.logger.info(`Notifying user ${userId} about copy trade`, trade);
   }
 }

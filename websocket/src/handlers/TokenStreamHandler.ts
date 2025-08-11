@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import Redis from 'ioredis';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface NewToken {
   address: string;
@@ -40,6 +40,7 @@ export class TokenStreamHandler {
   private subscriptions: Set<string> = new Set(); // clientIds subscribed to new tokens
   private factoryContracts: Map<string, ethers.Contract> = new Map();
   private isMonitoring = false;
+  private logger = createLogger({ service: 'websocket-tokens' });
 
   constructor(provider: ethers.JsonRpcProvider, redis: Redis) {
     this.provider = provider;
@@ -53,7 +54,7 @@ export class TokenStreamHandler {
   }
 
   async start(): Promise<void> {
-    logger.info('Starting token stream handler');
+    this.logger.info('Starting token stream handler');
     
     if (!this.isMonitoring) {
       this.startMonitoring();
@@ -62,7 +63,7 @@ export class TokenStreamHandler {
   }
 
   async stop(): Promise<void> {
-    logger.info('Stopping token stream handler');
+    this.logger.info('Stopping token stream handler');
     
     // Remove all event listeners
     this.factoryContracts.forEach(contract => {
@@ -98,11 +99,11 @@ export class TokenStreamHandler {
         try {
           await this.handleNewPair(dexName, token0, token1, pair, event);
         } catch (error) {
-          logger.error(`Error handling new pair on ${dexName}:`, error);
+          this.logger.error(`Error handling new pair on ${dexName}:`, error);
         }
       });
       
-      logger.info(`Monitoring ${dexName} factory for new pairs`);
+      this.logger.info(`Monitoring ${dexName} factory for new pairs`);
     });
   }
 
@@ -157,7 +158,7 @@ export class TokenStreamHandler {
         txHash: tx.hash,
       };
       
-      logger.info(`New token detected on ${dexName}: ${symbol} (${newTokenAddress})`);
+      this.logger.info(`New token detected on ${dexName}: ${symbol} (${newTokenAddress})`);
       
       // Store in database (would implement this)
       await this.storeNewToken(newToken);
@@ -166,7 +167,7 @@ export class TokenStreamHandler {
       this.broadcastNewToken(newToken);
       
     } catch (error) {
-      logger.error('Error processing new pair:', error);
+      this.logger.error('Error processing new pair:', error);
     }
   }
 
@@ -174,7 +175,7 @@ export class TokenStreamHandler {
     // Store in database for historical data
     // This would connect to your PostgreSQL database
     // For now, just log it
-    logger.info('Storing new token:', token);
+    this.logger.info('Storing new token:', token);
   }
 
   private broadcastNewToken(token: NewToken): void {

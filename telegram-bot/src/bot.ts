@@ -9,7 +9,7 @@ import { SubscriptionCommands } from './subscription/SubscriptionCommands';
 import { SessionManager } from './auth/SessionManager';
 import { DatabaseService } from './services/DatabaseService';
 import { WebSocketClient } from './services/WebSocketClient';
-import { logger } from './utils/logger';
+import { createLogger } from '@core-meme/shared';
 import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { errorHandler } from './middleware/errorHandler';
@@ -40,6 +40,7 @@ class CoreMemeBot {
   private sessionManager: SessionManager;
   private db: DatabaseService;
   private wsClient: WebSocketClient;
+  private logger = createLogger({ service: 'telegram-bot' });
 
   constructor() {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -399,7 +400,7 @@ Select an option to get started:
   private setupWebSocketHandlers() {
     // Handle WebSocket connection events
     this.wsClient.on('connected', () => {
-      logger.info('Connected to WebSocket server');
+      this.logger.info('Connected to WebSocket server');
       
       // Subscribe to channels
       this.wsClient.subscribe('alerts');
@@ -409,7 +410,7 @@ Select an option to get started:
     });
 
     this.wsClient.on('disconnected', () => {
-      logger.warn('Disconnected from WebSocket server');
+      this.logger.warn('Disconnected from WebSocket server');
     });
 
     // Handle real-time alerts
@@ -425,11 +426,11 @@ Select an option to get started:
               { parse_mode: 'Markdown' }
             );
           } catch (error) {
-            logger.error(`Failed to send alert to user ${userId}:`, error);
+            this.logger.error(`Failed to send alert to user ${userId}:`, error);
           }
         }
       } catch (error) {
-        logger.error('Error handling alert:', error);
+        this.logger.error('Error handling alert:', error);
       }
     });
 
@@ -455,11 +456,11 @@ Select an option to get started:
               }
             );
           } catch (error) {
-            logger.error(`Failed to send new token alert to user ${userId}:`, error);
+            this.logger.error(`Failed to send new token alert to user ${userId}:`, error);
           }
         }
       } catch (error) {
-        logger.error('Error handling new token:', error);
+        this.logger.error('Error handling new token:', error);
       }
     });
 
@@ -479,12 +480,12 @@ Select an option to get started:
                 { parse_mode: 'Markdown' }
               );
             } catch (error) {
-              logger.error(`Failed to send trade alert to user ${userId}:`, error);
+              this.logger.error(`Failed to send trade alert to user ${userId}:`, error);
             }
           }
         }
       } catch (error) {
-        logger.error('Error handling trade:', error);
+        this.logger.error('Error handling trade:', error);
       }
     });
 
@@ -507,11 +508,11 @@ Select an option to get started:
             // Mark alert as triggered
             await this.db.markAlertTriggered(alert.id);
           } catch (error) {
-            logger.error(`Failed to send price alert to user ${alert.userId}:`, error);
+            this.logger.error(`Failed to send price alert to user ${alert.userId}:`, error);
           }
         }
       } catch (error) {
-        logger.error('Error handling price update:', error);
+        this.logger.error('Error handling price update:', error);
       }
     });
   }
@@ -564,7 +565,7 @@ Select an option to get started:
   private async processCopyTrade(trade: any) {
     // This would be implemented by the CopyTradeManager
     // Placeholder for now
-    logger.debug('Processing copy trade:', trade);
+    this.logger.debug('Processing copy trade:', trade);
   }
 
   async start() {
@@ -593,11 +594,11 @@ Select an option to get started:
         // Use webhook in production
         const webhookUrl = `${process.env.TELEGRAM_WEBHOOK_URL}/bot${process.env.TELEGRAM_BOT_TOKEN}`;
         await this.bot.telegram.setWebhook(webhookUrl);
-        logger.info(`Webhook set to: ${webhookUrl}`);
+        this.logger.info(`Webhook set to: ${webhookUrl}`);
       } else {
         // Use polling in development
         await this.bot.launch();
-        logger.info('Bot started in polling mode');
+        this.logger.info('Bot started in polling mode');
       }
 
       // Enable graceful stop
@@ -605,13 +606,13 @@ Select an option to get started:
       process.once('SIGTERM', () => this.stop('SIGTERM'));
 
     } catch (error) {
-      logger.error('Failed to start bot:', error);
+      this.logger.error('Failed to start bot:', error);
       throw error;
     }
   }
 
   async stop(signal: string) {
-    logger.info(`Stopping bot (${signal})...`);
+    this.logger.info(`Stopping bot (${signal})...`);
     this.wsClient.disconnect();
     await this.db.close();
     this.bot.stop(signal);
@@ -620,6 +621,7 @@ Select an option to get started:
 
 // Start the bot
 const bot = new CoreMemeBot();
+const logger = createLogger({ service: 'telegram-bot-main' });
 bot.start().catch((error) => {
   logger.error('Fatal error:', error);
   process.exit(1);

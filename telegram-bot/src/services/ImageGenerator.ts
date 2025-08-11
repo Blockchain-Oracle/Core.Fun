@@ -3,7 +3,9 @@ import type { Canvas, CanvasRenderingContext2D } from 'canvas';
 import path from 'path';
 import { Position } from '../trading/PositionManager';
 import { PnLData, DailyPnL } from '../trading/PnLCalculator';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
+
+const logger = createLogger({ service: 'image-generator' });
 
 // Register custom fonts if available
 try {

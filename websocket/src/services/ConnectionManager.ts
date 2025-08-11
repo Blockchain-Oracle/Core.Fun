@@ -1,7 +1,7 @@
 import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface Connection {
   id: string;
@@ -15,6 +15,7 @@ interface Connection {
 export class ConnectionManager {
   private connections: Map<string, Connection> = new Map();
   private channelSubscribers: Map<string, Set<string>> = new Map();
+  private logger = createLogger({ service: 'websocket-connections' });
 
   addConnection(ws: WebSocket, req: IncomingMessage): string {
     const id = uuidv4();
@@ -116,7 +117,7 @@ export class ConnectionManager {
           connection.ws.send(message);
           connection.lastActivity = new Date();
         } catch (error) {
-          logger.error(`Failed to send to client ${clientId}:`, error);
+          this.logger.error(`Failed to send to client ${clientId}:`, error);
           this.removeConnection(clientId);
         }
       }
@@ -130,7 +131,7 @@ export class ConnectionManager {
         connection.ws.send(JSON.stringify(data));
         connection.lastActivity = new Date();
       } catch (error) {
-        logger.error(`Failed to send to client ${clientId}:`, error);
+        this.logger.error(`Failed to send to client ${clientId}:`, error);
         this.removeConnection(clientId);
       }
     }
@@ -154,7 +155,7 @@ export class ConnectionManager {
       // Check for inactive connections (5 minutes)
       const inactiveTime = Date.now() - connection.lastActivity.getTime();
       if (inactiveTime > 5 * 60 * 1000) {
-        logger.info(`Closing inactive connection: ${clientId}`);
+        this.logger.info(`Closing inactive connection: ${clientId}`);
         this.removeConnection(clientId);
         clearInterval(interval);
         return;
@@ -164,7 +165,7 @@ export class ConnectionManager {
       try {
         connection.ws.ping();
       } catch (error) {
-        logger.error(`Ping failed for ${clientId}:`, error);
+        this.logger.error(`Ping failed for ${clientId}:`, error);
         this.removeConnection(clientId);
         clearInterval(interval);
       }

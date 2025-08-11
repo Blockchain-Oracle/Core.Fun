@@ -1,5 +1,7 @@
 import { Context } from 'telegraf';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
+
+const logger = createLogger({ service: 'error-handler' });
 
 /**
  * Global error handler for the bot

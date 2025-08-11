@@ -11,7 +11,8 @@ import { accountRouter } from './routes/account';
 import { statsRouter } from './routes/stats';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
-import winston from 'winston';
+import { createLogger } from '@core-meme/shared';
+import type winston from 'winston';
 
 export class Server {
   private app: express.Application;
@@ -26,24 +27,10 @@ export class Server {
     const network = (process.env.NETWORK || 'testnet') as 'mainnet' | 'testnet';
     this.coreAPI = new CoreAPIService({ network });
     
-    // Initialize logger
-    this.logger = winston.createLogger({
-      level: process.env.LOG_LEVEL || 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple()
-          ),
-        }),
-        new winston.transports.File({ 
-          filename: 'server.log' 
-        }),
-      ],
+    // Initialize logger using shared logger
+    this.logger = createLogger({ 
+      service: 'core-api-service',
+      enableFileLogging: true
     });
 
     this.setupMiddleware();

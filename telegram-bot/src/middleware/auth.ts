@@ -1,5 +1,7 @@
 import { BotContext } from '../bot';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
+
+const logger = createLogger({ service: 'auth-middleware' });
 
 /**
  * Authentication middleware

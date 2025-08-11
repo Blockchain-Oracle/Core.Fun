@@ -1,6 +1,6 @@
 import { DatabaseService } from '../services/DatabaseService';
 import { PriceService } from '../services/PriceService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export interface PnLData {
   totalInvested: number;
@@ -38,6 +38,7 @@ export interface DailyPnL {
 }
 
 export class PnLCalculator {
+  private logger = createLogger({ service: 'pnl-calculator' });
   private db: DatabaseService;
   private priceService: PriceService;
 
@@ -92,7 +93,7 @@ export class PnLCalculator {
         dailyPnL,
       };
     } catch (error) {
-      logger.error('Failed to calculate P&L:', error);
+      this.logger.error('Failed to calculate P&L:', error);
       throw error;
     }
   }
@@ -266,7 +267,7 @@ export class PnLCalculator {
       const priceData = await this.priceService.getTokenPrice(tokenAddress);
       return priceData.priceInCore;
     } catch (error) {
-      logger.error(`Failed to get price for ${tokenAddress}:`, error);
+      this.logger.error(`Failed to get price for ${tokenAddress}:`, error);
       return 0;
     }
   }

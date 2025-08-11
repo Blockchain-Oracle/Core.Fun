@@ -1,10 +1,11 @@
 import { BotContext } from '../bot';
 import { DatabaseService } from '../services/DatabaseService';
 import { Markup } from 'telegraf';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export class AlertCommands {
   private db: DatabaseService;
+  private logger = createLogger({ service: 'alert-commands' });
 
   constructor(db: DatabaseService) {
     this.db = db;
@@ -76,7 +77,7 @@ export class AlertCommands {
         ...keyboard
       });
     } catch (error) {
-      logger.error('Error managing alerts:', error);
+      this.logger.error('Error managing alerts:', error);
       await ctx.reply('❌ Error loading alerts. Please try again.');
     }
   }
@@ -144,7 +145,7 @@ export class AlertCommands {
         ...keyboard
       });
     } catch (error) {
-      logger.error('Error showing watchlist:', error);
+      this.logger.error('Error showing watchlist:', error);
       await ctx.reply('❌ Error loading watchlist. Please try again.');
     }
   }
@@ -217,7 +218,7 @@ export class AlertCommands {
         }
       );
     } catch (error) {
-      logger.error('Error tracking token:', error);
+      this.logger.error('Error tracking token:', error);
       await ctx.reply('❌ Error tracking token. Please try again.');
     }
   }
@@ -268,7 +269,7 @@ export class AlertCommands {
         }
       );
     } catch (error) {
-      logger.error('Error toggling alert:', error);
+      this.logger.error('Error toggling alert:', error);
       await ctx.reply('❌ Error updating alert settings. Please try again.');
     }
   }
@@ -334,7 +335,7 @@ export class AlertCommands {
         }
       );
     } catch (error) {
-      logger.error('Error creating price alert:', error);
+      this.logger.error('Error creating price alert:', error);
       await ctx.reply('❌ Error creating alert. Please try again.');
     }
   }
@@ -390,7 +391,7 @@ export class AlertCommands {
         ])
       });
     } catch (error) {
-      logger.error('Error viewing all alerts:', error);
+      this.logger.error('Error viewing all alerts:', error);
       await ctx.reply('❌ Error loading alerts. Please try again.');
     }
   }

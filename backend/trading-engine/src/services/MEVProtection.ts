@@ -128,7 +128,7 @@ export class MEVProtection {
     // This is a simplified implementation
     try {
       const block = await this.provider.getBlock('pending');
-      return block?.transactions || [];
+      return [...(block?.transactions || [])];
     } catch {
       return [];
     }

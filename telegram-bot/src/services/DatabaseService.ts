@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export interface User {
   id: string;
@@ -99,6 +99,7 @@ export interface CopiedTrade {
 
 export class DatabaseService {
   private pool: Pool;
+  private logger = createLogger({ service: 'telegram-bot-db' });
 
   constructor() {
     this.pool = new Pool({
@@ -113,12 +114,12 @@ export class DatabaseService {
       await client.query('SELECT NOW()');
       client.release();
       
-      logger.info('Database connected successfully');
+      this.logger.info('Database connected successfully');
       
       // Create tables if they don't exist
       await this.createTables();
     } catch (error) {
-      logger.error('Failed to initialize database:', error);
+      this.logger.error('Failed to initialize database:', error);
       throw error;
     }
   }
@@ -272,7 +273,7 @@ export class DatabaseService {
       try {
         await this.pool.query(query);
       } catch (error) {
-        logger.error('Failed to create table:', error);
+        this.logger.error('Failed to create table:', error);
       }
     }
   }
@@ -887,7 +888,7 @@ export class DatabaseService {
         createdAt: row.created_at
       }));
     } catch (error) {
-      logger.error('Error checking price alerts:', error);
+      this.logger.error('Error checking price alerts:', error);
       return [];
     }
   }
@@ -902,9 +903,9 @@ export class DatabaseService {
          WHERE id = $1`,
         [alertId]
       );
-      logger.debug(`Alert ${alertId} marked as triggered`);
+      this.logger.debug(`Alert ${alertId} marked as triggered`);
     } catch (error) {
-      logger.error('Error marking alert as triggered:', error);
+      this.logger.error('Error marking alert as triggered:', error);
     }
   }
 
@@ -935,7 +936,7 @@ export class DatabaseService {
       
       return true;
     } catch (error) {
-      logger.error('Error creating price alert:', error);
+      this.logger.error('Error creating price alert:', error);
       return false;
     }
   }
@@ -949,7 +950,7 @@ export class DatabaseService {
       const result = await this.pool.query(query, [userId]);
       return result.rows;
     } catch (error) {
-      logger.error('Error getting user alerts:', error);
+      this.logger.error('Error getting user alerts:', error);
       return [];
     }
   }
@@ -962,7 +963,7 @@ export class DatabaseService {
       );
       return parseInt(result.rows[0].count);
     } catch (error) {
-      logger.error('Error getting alert count:', error);
+      this.logger.error('Error getting alert count:', error);
       return 0;
     }
   }
@@ -975,7 +976,7 @@ export class DatabaseService {
       );
       return result.rowCount ? result.rowCount > 0 : false;
     } catch (error) {
-      logger.error('Error deleting price alert:', error);
+      this.logger.error('Error deleting price alert:', error);
       return false;
     }
   }
@@ -989,7 +990,7 @@ export class DatabaseService {
       );
       return result.rows[0] || null;
     } catch (error) {
-      logger.error('Error getting user subscription:', error);
+      this.logger.error('Error getting user subscription:', error);
       return null;
     }
   }
@@ -1001,7 +1002,7 @@ export class DatabaseService {
         [tier, userId]
       );
     } catch (error) {
-      logger.error('Error updating user subscription:', error);
+      this.logger.error('Error updating user subscription:', error);
     }
   }
 
@@ -1014,7 +1015,7 @@ export class DatabaseService {
       );
       return true;
     } catch (error) {
-      logger.error('Error creating subscription:', error);
+      this.logger.error('Error creating subscription:', error);
       return false;
     }
   }
@@ -1034,7 +1035,7 @@ export class DatabaseService {
         ['free', userId]
       );
     } catch (error) {
-      logger.error('Error cancelling subscription:', error);
+      this.logger.error('Error cancelling subscription:', error);
     }
   }
 
@@ -1054,7 +1055,7 @@ export class DatabaseService {
         rug_warnings: true
       };
     } catch (error) {
-      logger.error('Error getting alert settings:', error);
+      this.logger.error('Error getting alert settings:', error);
       return {};
     }
   }
@@ -1074,7 +1075,7 @@ export class DatabaseService {
         [userId, 'global_settings', JSON.stringify(currentSettings)]
       );
     } catch (error) {
-      logger.error('Error updating alert settings:', error);
+      this.logger.error('Error updating alert settings:', error);
     }
   }
 

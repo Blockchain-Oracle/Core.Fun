@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 // Core DEX Router addresses
 const DEX_ROUTERS = {
@@ -70,6 +70,7 @@ export class PriceService {
   private provider: ethers.JsonRpcProvider;
   private priceCache: Map<string, { data: PriceData; timestamp: number }> = new Map();
   private cacheTimeout = 30000; // 30 seconds
+  private logger = createLogger({ service: 'price-service' });
   
   constructor() {
     this.provider = new ethers.JsonRpcProvider(
@@ -120,7 +121,7 @@ export class PriceService {
         rugScore,
       };
     } catch (error) {
-      logger.error(`Failed to get token info for ${tokenAddress}:`, error);
+      this.logger.error(`Failed to get token info for ${tokenAddress}:`, error);
       throw error;
     }
   }
@@ -161,7 +162,7 @@ export class PriceService {
 
       return this.getPriceFromPair(tokenAddress, STABLECOINS.CORE, pairAddress);
     } catch (error) {
-      logger.error(`Failed to get price for ${tokenAddress}:`, error);
+      this.logger.error(`Failed to get price for ${tokenAddress}:`, error);
       
       // Return default/fallback price data
       return {
@@ -248,7 +249,7 @@ export class PriceService {
       const apiPrice = await this.fetchCoreAPIPrice();
       if (apiPrice > 0) return apiPrice;
     } catch (error) {
-      logger.warn('Core API price fetch failed:', error);
+      this.logger.warn('Core API price fetch failed:', error);
     }
 
     try {
@@ -256,7 +257,7 @@ export class PriceService {
       const cgPrice = await this.fetchCoinGeckoPrice();
       if (cgPrice > 0) return cgPrice;
     } catch (error) {
-      logger.warn('CoinGecko price fetch failed:', error);
+      this.logger.warn('CoinGecko price fetch failed:', error);
     }
 
     try {
@@ -264,11 +265,11 @@ export class PriceService {
       const poolPrice = await this.fetchPoolPrice();
       if (poolPrice > 0) return poolPrice;
     } catch (error) {
-      logger.warn('Pool price fetch failed:', error);
+      this.logger.warn('Pool price fetch failed:', error);
     }
 
     // Final fallback - return cached or default price
-    logger.warn('All price sources failed, using fallback price');
+    this.logger.warn('All price sources failed, using fallback price');
     return 0.5; // $0.50 per CORE as absolute fallback
   }
 
@@ -386,7 +387,7 @@ export class PriceService {
         rugScore: Math.min(rugScore, 100),
       };
     } catch (error) {
-      logger.error(`Failed to check token safety for ${tokenAddress}:`, error);
+      this.logger.error(`Failed to check token safety for ${tokenAddress}:`, error);
       return { isHoneypot: false, rugScore: 50 }; // Medium risk by default
     }
   }
@@ -433,7 +434,7 @@ export class PriceService {
         const priceData = await this.getTokenPrice(tokenAddress);
         callback(priceData);
       } catch (error) {
-        logger.error(`Price update failed for ${tokenAddress}:`, error);
+        this.logger.error(`Price update failed for ${tokenAddress}:`, error);
       }
     }, 30000); // Update every 30 seconds
 

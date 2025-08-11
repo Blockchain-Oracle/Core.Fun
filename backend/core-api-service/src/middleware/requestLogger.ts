@@ -1,24 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import winston from 'winston';
+import { createLogger } from '@core-meme/shared';
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    }),
-    new winston.transports.File({ 
-      filename: 'requests.log',
-      level: 'info',
-    }),
-  ],
+const logger = createLogger({ 
+  service: 'core-api-service',
+  enableFileLogging: true
 });
 
 export function requestLogger(

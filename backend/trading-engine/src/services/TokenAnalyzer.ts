@@ -99,7 +99,7 @@ export class TokenAnalyzer {
     // Calculate market cap
     const marketCap = this.calculateMarketCap(
       sale.sold.toString(),
-      currentPrice
+      currentPrice.toString()
     );
 
     // Determine phase

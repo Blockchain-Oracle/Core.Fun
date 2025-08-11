@@ -1,45 +1,21 @@
-import winston from 'winston';
 import { Alert } from '../types';
 import { DatabaseService } from './DatabaseService';
-import { createClient, RedisClientType } from 'redis';
 import { EventEmitter } from 'eventemitter3';
+import { createRedisClient, createLogger } from '@core-meme/shared';
+import Redis from 'ioredis';
 
 export class AlertService extends EventEmitter {
   private db: DatabaseService;
-  private redis: RedisClientType;
-  private logger: winston.Logger;
+  private redis: Redis;
+  private logger = createLogger({ service: 'alert-service' });
   private alertSubscribers: Set<string> = new Set();
 
   constructor(db: DatabaseService) {
     super();
     this.db = db;
     
-    // Initialize logger
-    this.logger = winston.createLogger({
-      level: process.env.LOG_LEVEL || 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.Console(),
-        new winston.transports.File({ 
-          filename: 'alerts.log' 
-        }),
-      ],
-    });
-    
     // Initialize Redis
-    this.redis = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-    });
-    
-    this.redis.connect().catch(err => {
-      this.logger.error('Redis connection error:', err);
-    });
+    this.redis = createRedisClient();
   }
 
   async sendAlert(alert: Alert): Promise<void> {
@@ -117,7 +93,7 @@ export class AlertService extends EventEmitter {
       const message = this.formatTelegramMessage(alert);
       
       // Publish to Telegram bot queue
-      await this.redis.lPush('telegram:alerts', JSON.stringify({
+      await this.redis.lpush('telegram:alerts', JSON.stringify({
         message,
         urgent,
         alert,
@@ -147,7 +123,7 @@ export class AlertService extends EventEmitter {
       
       for (const url of webhookUrls) {
         // Queue webhook delivery
-        await this.redis.lPush('webhooks:queue', JSON.stringify({
+        await this.redis.lpush('webhooks:queue', JSON.stringify({
           url,
           payload: alert,
           retries: 0,
@@ -161,20 +137,8 @@ export class AlertService extends EventEmitter {
   }
 
   private async logCriticalAlert(alert: Alert): Promise<void> {
-    // Log critical alerts to a separate file
-    const criticalLogger = winston.createLogger({
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.File({ 
-          filename: 'critical-alerts.log' 
-        }),
-      ],
-    });
-    
-    criticalLogger.error('CRITICAL ALERT', alert);
+    // Log critical alerts to a separate file using the shared logger
+    this.logger.error('CRITICAL ALERT', alert);
   }
 
   private formatTelegramMessage(alert: Alert): string {

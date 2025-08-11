@@ -6,9 +6,10 @@ import { PositionManager } from './PositionManager';
 import { PnLCalculator } from './PnLCalculator';
 import { CopyTradeManager } from './CopyTradeManager';
 import { ImageGenerator } from '../services/ImageGenerator';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export class TradingCommands {
+  private logger = createLogger({ service: 'trading-commands' });
   private db: DatabaseService;
   private tradingExecutor: TradingExecutor;
   private positionManager: PositionManager;
@@ -119,7 +120,7 @@ export class TradingCommands {
         }
       );
     } catch (error) {
-      logger.error('Failed to show buy panel:', error);
+      this.logger.error('Failed to show buy panel:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -191,7 +192,7 @@ export class TradingCommands {
         );
       }
     } catch (error) {
-      logger.error('Buy trade failed:', error);
+      this.logger.error('Buy trade failed:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -321,7 +322,7 @@ export class TradingCommands {
         }
       );
     } catch (error) {
-      logger.error('Failed to show position:', error);
+      this.logger.error('Failed to show position:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -403,7 +404,7 @@ export class TradingCommands {
         );
       }
     } catch (error) {
-      logger.error('Sell trade failed:', error);
+      this.logger.error('Sell trade failed:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -502,7 +503,7 @@ export class TradingCommands {
         }
       );
     } catch (error) {
-      logger.error('Failed to show portfolio:', error);
+      this.logger.error('Failed to show portfolio:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -558,7 +559,7 @@ export class TradingCommands {
         }
       );
     } catch (error) {
-      logger.error('Failed to show trade history:', error);
+      this.logger.error('Failed to show trade history:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -676,7 +677,7 @@ export class TradingCommands {
         }
       );
     } catch (error) {
-      logger.error('Failed to show position:', error);
+      this.logger.error('Failed to show position:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
@@ -723,7 +724,7 @@ export class TradingCommands {
         }
       );
     } catch (error) {
-      logger.error('Failed to show P&L chart:', error);
+      this.logger.error('Failed to show P&L chart:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,

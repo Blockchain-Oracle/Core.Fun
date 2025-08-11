@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import CryptoJS from 'crypto-js';
 import { DatabaseService } from './DatabaseService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface WalletData {
   address: string;
@@ -9,6 +9,7 @@ interface WalletData {
 }
 
 export class WalletManager {
+  private logger = createLogger({ service: 'wallet-manager' });
   private database: DatabaseService;
   private encryptionKey: string;
 
@@ -39,14 +40,14 @@ export class WalletManager {
         network: 'CORE',
       });
 
-      logger.info('Wallet created', { userId, address: wallet.address });
+      this.logger.info('Wallet created', { userId, address: wallet.address });
 
       return {
         address: wallet.address,
         privateKey: wallet.privateKey,
       };
     } catch (error) {
-      logger.error('Failed to create wallet', { error, userId });
+      this.logger.error('Failed to create wallet', { error, userId });
       throw error;
     }
   }
@@ -69,11 +70,11 @@ export class WalletManager {
         network: 'CORE',
       });
 
-      logger.info('Wallet imported', { userId, address: wallet.address });
+      this.logger.info('Wallet imported', { userId, address: wallet.address });
 
       return wallet.address;
     } catch (error) {
-      logger.error('Failed to import wallet', { error, userId });
+      this.logger.error('Failed to import wallet', { error, userId });
       throw new Error('Invalid private key');
     }
   }
@@ -98,7 +99,7 @@ export class WalletManager {
         privateKey,
       };
     } catch (error) {
-      logger.error('Failed to get wallet', { error, userId });
+      this.logger.error('Failed to get wallet', { error, userId });
       return null;
     }
   }
@@ -108,7 +109,7 @@ export class WalletManager {
       const user = await this.database.getUserById(userId);
       return user?.walletAddress || null;
     } catch (error) {
-      logger.error('Failed to get user wallet', { error, userId });
+      this.logger.error('Failed to get user wallet', { error, userId });
       return null;
     }
   }
@@ -129,7 +130,7 @@ export class WalletManager {
       
       return wallet;
     } catch (error) {
-      logger.error('Failed to get wallet with signer', { error, userId });
+      this.logger.error('Failed to get wallet with signer', { error, userId });
       return null;
     }
   }
@@ -145,11 +146,11 @@ export class WalletManager {
       // Decrypt private key
       const privateKey = this.decryptPrivateKey(user.encryptedPrivateKey);
       
-      logger.info('Private key exported', { userId });
+      this.logger.info('Private key exported', { userId });
       
       return privateKey;
     } catch (error) {
-      logger.error('Failed to export private key', { error, userId });
+      this.logger.error('Failed to export private key', { error, userId });
       throw error;
     }
   }
@@ -183,9 +184,9 @@ export class WalletManager {
       }
 
       this.encryptionKey = newKey;
-      logger.info('Encryption key rotated successfully');
+      this.logger.info('Encryption key rotated successfully');
     } catch (error) {
-      logger.error('Failed to rotate encryption key', { error });
+      this.logger.error('Failed to rotate encryption key', { error });
       throw error;
     }
   }

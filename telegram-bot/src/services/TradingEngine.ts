@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { DatabaseService } from './DatabaseService';
 import { WalletManager } from './WalletManager';
 import { PriceService } from './PriceService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 // DEX configurations for Core blockchain
 const DEX_CONFIGS = {
@@ -58,6 +58,7 @@ const ERC20_ABI = [
 ];
 
 export class TradingEngine {
+  private logger = createLogger({ service: 'trading-engine' });
   private provider: ethers.JsonRpcProvider;
   private database: DatabaseService;
   private walletManager: WalletManager;
@@ -96,7 +97,7 @@ export class TradingEngine {
     } = params;
 
     try {
-      logger.info('Executing buy', { wallet, token: tokenAddress, amount: amountCore });
+      this.logger.info('Executing buy', { wallet, token: tokenAddress, amount: amountCore });
 
       // Get user ID from wallet address
       const user = await this.database.getUserByWalletAddress(wallet);
@@ -145,7 +146,7 @@ export class TradingEngine {
         }
       );
 
-      logger.info('Buy transaction sent', { txHash: tx.hash });
+      this.logger.info('Buy transaction sent', { txHash: tx.hash });
 
       // Wait for confirmation
       const receipt = await tx.wait();
@@ -180,7 +181,7 @@ export class TradingEngine {
       };
 
     } catch (error: any) {
-      logger.error('Buy failed', { error, params });
+      this.logger.error('Buy failed', { error, params });
       return {
         success: false,
         amountCore: amountCore.toString(),
@@ -199,7 +200,7 @@ export class TradingEngine {
     } = params;
 
     try {
-      logger.info('Executing sell', { wallet, token: tokenAddress, percentage });
+      this.logger.info('Executing sell', { wallet, token: tokenAddress, percentage });
 
       // Validate percentage
       if (percentage < 1 || percentage > 100) {
@@ -240,7 +241,7 @@ export class TradingEngine {
       const allowance = await tokenContract.allowance(wallet, router.target);
 
       if (allowance < amountToSell) {
-        logger.info('Approving router');
+        this.logger.info('Approving router');
         const approveTx = await tokenContract.approve(router.target, ethers.MaxUint256);
         await approveTx.wait();
       }
@@ -272,7 +273,7 @@ export class TradingEngine {
         }
       );
 
-      logger.info('Sell transaction sent', { txHash: tx.hash });
+      this.logger.info('Sell transaction sent', { txHash: tx.hash });
 
       // Wait for confirmation
       const receipt = await tx.wait();
@@ -333,7 +334,7 @@ export class TradingEngine {
       };
 
     } catch (error: any) {
-      logger.error('Sell failed', { error, params });
+      this.logger.error('Sell failed', { error, params });
       return {
         success: false,
         amountCore: '0',
@@ -358,7 +359,7 @@ export class TradingEngine {
         usd: usdAmount.toFixed(2),
       };
     } catch (error) {
-      logger.error('Failed to get balance', { error, wallet: walletAddress });
+      this.logger.error('Failed to get balance', { error, wallet: walletAddress });
       return { core: '0', usd: '0', coreAmount: 0, usdAmount: 0 };
     }
   }
@@ -387,7 +388,7 @@ export class TradingEngine {
         formatted: `${amount.toFixed(4)} ${symbol}`,
       };
     } catch (error) {
-      logger.error('Failed to get token balance', { error, wallet: walletAddress, token: tokenAddress });
+      this.logger.error('Failed to get token balance', { error, wallet: walletAddress, token: tokenAddress });
       return {
         amount: 0,
         symbol: 'UNKNOWN',

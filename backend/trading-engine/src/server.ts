@@ -5,12 +5,13 @@ import dotenv from 'dotenv';
 import { UnifiedTradingRouter } from './router/UnifiedTradingRouter';
 import { TradeParams, TradeType } from './types';
 import { config, validateConfig } from './config';
-import { logger } from './utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 dotenv.config();
 
-const app = express();
+const app: express.Application = express();
 const PORT = process.env.TRADING_ENGINE_PORT || 3003;
+const logger = createLogger({ service: 'trading-engine' });
 
 // Middleware
 app.use(cors());
@@ -234,7 +235,7 @@ app.get('/api/token/:address/analysis', async (req, res) => {
       });
     }
 
-    const analysis = await router.analyzeToken(address);
+    const analysis = await router.getTokenState(address);
     
     res.json({
       success: true,

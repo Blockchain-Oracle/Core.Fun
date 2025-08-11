@@ -48,10 +48,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_banned BOOLEAN DEFAULT FALSE,
-    ban_reason TEXT,
-    INDEX idx_users_telegram_id (telegram_id),
-    INDEX idx_users_wallet (wallet_address),
-    INDEX idx_users_referral (referral_code)
+    ban_reason TEXT
 );
 
 -- Subscriptions table
@@ -68,10 +65,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     expires_at TIMESTAMP WITH TIME ZONE,
     cancelled_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_subscriptions_user (user_id),
-    INDEX idx_subscriptions_status (status),
-    INDEX idx_subscriptions_expires (expires_at)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Tokens table
@@ -102,12 +96,7 @@ CREATE TABLE IF NOT EXISTS tokens (
     is_flagged BOOLEAN DEFAULT FALSE,
     flag_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_tokens_address (address),
-    INDEX idx_tokens_symbol (symbol),
-    INDEX idx_tokens_creator (creator_address),
-    INDEX idx_tokens_launched (is_launched),
-    INDEX idx_tokens_created (created_at)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Transactions table
@@ -126,13 +115,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     gas_price VARCHAR(78),
     status INTEGER DEFAULT 1,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_transactions_hash (hash),
-    INDEX idx_transactions_token (token_id),
-    INDEX idx_transactions_from (from_address),
-    INDEX idx_transactions_to (to_address),
-    INDEX idx_transactions_type (type),
-    INDEX idx_transactions_timestamp (timestamp)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- User positions table
@@ -152,10 +135,7 @@ CREATE TABLE IF NOT EXISTS user_positions (
     last_transaction_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, token_id),
-    INDEX idx_positions_user (user_id),
-    INDEX idx_positions_token (token_id),
-    INDEX idx_positions_active (is_active)
+    UNIQUE(user_id, token_id)
 );
 
 -- Price alerts table
@@ -172,11 +152,7 @@ CREATE TABLE IF NOT EXISTS price_alerts (
     notification_sent BOOLEAN DEFAULT FALSE,
     triggered_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_alerts_user (user_id),
-    INDEX idx_alerts_token (token_address),
-    INDEX idx_alerts_active (is_active),
-    INDEX idx_alerts_sent (notification_sent)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Copy trades table
@@ -192,10 +168,7 @@ CREATE TABLE IF NOT EXISTS copy_trades (
     total_copied INTEGER DEFAULT 0,
     total_profit DECIMAL(20, 8) DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_copy_user (user_id),
-    INDEX idx_copy_target (target_address),
-    INDEX idx_copy_active (is_active)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Alert settings table
@@ -211,8 +184,7 @@ CREATE TABLE IF NOT EXISTS alert_settings (
     min_liquidity DECIMAL(20, 8) DEFAULT 1000,
     min_market_cap DECIMAL(20, 8) DEFAULT 10000,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_alert_settings_user (user_id)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Watchlist table
@@ -222,9 +194,7 @@ CREATE TABLE IF NOT EXISTS watchlist (
     token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, token_id),
-    INDEX idx_watchlist_user (user_id),
-    INDEX idx_watchlist_token (token_id)
+    UNIQUE(user_id, token_id)
 );
 
 -- Trading stats table
@@ -240,8 +210,7 @@ CREATE TABLE IF NOT EXISTS trading_stats (
     worst_trade DECIMAL(20, 8) DEFAULT 0,
     average_holding_time INTERVAL,
     favorite_token VARCHAR(42),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_trading_stats_user (user_id)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Activity logs table
@@ -252,10 +221,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     details JSONB,
     ip_address INET,
     user_agent TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_activity_user (user_id),
-    INDEX idx_activity_action (action),
-    INDEX idx_activity_created (created_at)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create update timestamp trigger function
@@ -298,10 +264,54 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO core_user;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO core_user;
 
 -- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_users_referral ON users(referral_code);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users(last_active) WHERE is_banned = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_expires ON subscriptions(expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_address ON tokens(address);
+CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
+CREATE INDEX IF NOT EXISTS idx_tokens_creator ON tokens(creator_address);
+CREATE INDEX IF NOT EXISTS idx_tokens_launched ON tokens(is_launched);
+CREATE INDEX IF NOT EXISTS idx_tokens_created ON tokens(created_at);
 CREATE INDEX IF NOT EXISTS idx_tokens_trending ON tokens(volume_24h DESC, holders_count DESC) WHERE is_launched = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(hash);
+CREATE INDEX IF NOT EXISTS idx_transactions_token ON transactions(token_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(from_address);
+CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(to_address);
+CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
+CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions(timestamp);
 CREATE INDEX IF NOT EXISTS idx_transactions_recent ON transactions(timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_positions_user ON user_positions(user_id);
+CREATE INDEX IF NOT EXISTS idx_positions_token ON user_positions(token_id);
+CREATE INDEX IF NOT EXISTS idx_positions_active ON user_positions(is_active);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_user ON price_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_token ON price_alerts(token_address);
+CREATE INDEX IF NOT EXISTS idx_alerts_active ON price_alerts(is_active);
+CREATE INDEX IF NOT EXISTS idx_alerts_sent ON price_alerts(notification_sent);
 CREATE INDEX IF NOT EXISTS idx_alerts_pending ON price_alerts(token_address, is_active) WHERE notification_sent = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_copy_user ON copy_trades(user_id);
+CREATE INDEX IF NOT EXISTS idx_copy_target ON copy_trades(target_address);
+CREATE INDEX IF NOT EXISTS idx_copy_active ON copy_trades(is_active);
+
+CREATE INDEX IF NOT EXISTS idx_alert_settings_user ON alert_settings(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_watchlist_token ON watchlist(token_id);
+
+CREATE INDEX IF NOT EXISTS idx_trading_stats_user ON trading_stats(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_logs(action);
+CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);
 
 -- Initial data
 INSERT INTO users (telegram_id, username, first_name, subscription_tier)
@@ -311,7 +321,7 @@ ON CONFLICT (telegram_id) DO NOTHING;
 -- Database optimization settings
 ALTER DATABASE core_meme_platform SET random_page_cost = 1.1;
 ALTER DATABASE core_meme_platform SET effective_cache_size = '256MB';
-ALTER DATABASE core_meme_platform SET shared_buffers = '128MB';
+ALTER SYSTEM SET shared_buffers = '128MB';
 
 -- Comments for documentation
 COMMENT ON TABLE users IS 'Stores user information from Telegram and their platform settings';

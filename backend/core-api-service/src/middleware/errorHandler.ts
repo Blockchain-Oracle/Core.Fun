@@ -1,14 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import winston from 'winston';
+import { createLogger } from '@core-meme/shared';
 
-const logger = winston.createLogger({
-  level: 'error',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: 'errors.log' }),
-  ],
+const logger = createLogger({ 
+  service: 'core-api-service',
+  enableFileLogging: true
 });
 
 export function errorHandler(

@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import Redis from 'ioredis';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface PriceUpdate {
   tokenAddress: string;
@@ -17,6 +17,7 @@ export class PriceStreamHandler {
   private subscriptions: Map<string, Set<string>> = new Map(); // clientId -> token addresses
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private tokenPrices: Map<string, PriceUpdate> = new Map();
+  private logger = createLogger({ service: 'websocket-prices' });
 
   constructor(provider: ethers.JsonRpcProvider, redis: Redis) {
     this.provider = provider;
@@ -24,14 +25,14 @@ export class PriceStreamHandler {
   }
 
   async start(): Promise<void> {
-    logger.info('Starting price stream handler');
+    this.logger.info('Starting price stream handler');
     
     // Start price update loop
     this.startPriceUpdates();
   }
 
   async stop(): Promise<void> {
-    logger.info('Stopping price stream handler');
+    this.logger.info('Stopping price stream handler');
     
     if (this.priceUpdateInterval) {
       clearInterval(this.priceUpdateInterval);
@@ -87,7 +88,7 @@ export class PriceStreamHandler {
       try {
         await this.updateAllPrices();
       } catch (error) {
-        logger.error('Error updating prices:', error);
+        this.logger.error('Error updating prices:', error);
       }
     }, 5000);
   }
@@ -98,7 +99,7 @@ export class PriceStreamHandler {
       const priceData = await this.fetchTokenPrice(tokenAddress);
       this.tokenPrices.set(tokenAddress, priceData);
     } catch (error) {
-      logger.error(`Failed to add token ${tokenAddress} to monitoring:`, error);
+      this.logger.error(`Failed to add token ${tokenAddress} to monitoring:`, error);
     }
   }
 
@@ -126,7 +127,7 @@ export class PriceStreamHandler {
           });
         }
       } catch (error) {
-        logger.error(`Failed to update price for ${tokenAddress}:`, error);
+        this.logger.error(`Failed to update price for ${tokenAddress}:`, error);
       }
     }
     

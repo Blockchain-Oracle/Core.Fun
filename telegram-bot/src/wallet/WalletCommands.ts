@@ -2,9 +2,10 @@ import { Markup } from 'telegraf';
 import { BotContext } from '../bot';
 import { DatabaseService } from '../services/DatabaseService';
 import { WalletService } from './WalletService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export class WalletCommands {
+  private logger = createLogger({ service: 'wallet-commands' });
   private db: DatabaseService;
   private walletService: WalletService;
 
@@ -92,7 +93,7 @@ export class WalletCommands {
         }
       );
     } catch (error) {
-      logger.error('Error showing wallet:', error);
+      this.logger.error('Error showing wallet:', error);
       await ctx.deleteMessage(loadingMsg.message_id);
       await ctx.reply('❌ Failed to load wallet. Please try again.');
     }
@@ -145,7 +146,7 @@ export class WalletCommands {
         }
       );
     } catch (error) {
-      logger.error('Error checking balance:', error);
+      this.logger.error('Error checking balance:', error);
       await ctx.deleteMessage(loadingMsg.message_id);
       await ctx.reply('❌ Failed to check balance. Please try again.');
     }
@@ -279,7 +280,7 @@ export class WalletCommands {
       }, 30000);
 
     } catch (error) {
-      logger.error('Error exporting private key:', error);
+      this.logger.error('Error exporting private key:', error);
       await ctx.reply('❌ Failed to export private key. Please try again.');
     }
   }

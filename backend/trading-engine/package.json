@@ -17,6 +17,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@core-meme/shared": "workspace:*",
     "ethers": "^6.9.0",
     "axios": "^1.6.2",
     "redis": "^4.6.11",

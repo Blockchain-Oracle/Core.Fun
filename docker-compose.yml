@@ -43,9 +43,9 @@ services:
 
   # Core API Service
   core-api:
-    build: 
-      context: ./backend/core-api-service
-      dockerfile: Dockerfile
+    build:
+      context: .
+      dockerfile: backend/core-api-service/Dockerfile
     container_name: core-api-service
     ports:
       - "3001:3001"
@@ -74,13 +74,15 @@ services:
     networks:
       - core-network
     volumes:
-      - ./backend/core-api-service/logs:/app/logs
-      - ./backend/core-api-service/.env:/app/.env:ro
+      - ./backend/core-api-service/logs:/app/backend/core-api-service/logs
+      - ./backend/core-api-service/.env:/app/backend/core-api-service/.env:ro
     # Use Dockerfile CMD (node dist/main.js) to start; avoid build step in runtime image
 
   # Trading Engine
   trading-engine:
-    build: ./backend/trading-engine
+    build:
+      context: .
+      dockerfile: backend/trading-engine/Dockerfile
     container_name: core-trading-engine
     ports:
       - "3003:3003"
@@ -98,7 +100,7 @@ services:
     networks:
       - core-network
     volumes:
-      - ./backend/trading-engine/.env:/app/.env:ro
+      - ./backend/trading-engine/.env:/app/backend/trading-engine/.env:ro
     # Use Dockerfile CMD (node dist/server.js) to start; avoid build step in runtime image
 
   # WebSocket Server

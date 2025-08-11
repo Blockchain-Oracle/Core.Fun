@@ -1,5 +1,5 @@
 import Redis from 'ioredis';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface Alert {
   id: string;
@@ -18,20 +18,21 @@ export class AlertStreamHandler {
   private subscriptions: Map<string, Set<string>> = new Map(); // clientId -> alert types
   private alertQueue: Alert[] = [];
   private processingInterval: NodeJS.Timeout | null = null;
+  private logger = createLogger({ service: 'websocket-alerts' });
 
   constructor(redis: Redis) {
     this.redis = redis;
   }
 
   async start(): Promise<void> {
-    logger.info('Starting alert stream handler');
+    this.logger.info('Starting alert stream handler');
     
     // Start processing alerts
     this.startProcessing();
   }
 
   async stop(): Promise<void> {
-    logger.info('Stopping alert stream handler');
+    this.logger.info('Stopping alert stream handler');
     
     if (this.processingInterval) {
       clearInterval(this.processingInterval);
@@ -82,7 +83,7 @@ export class AlertStreamHandler {
     };
     
     this.alertQueue.push(fullAlert);
-    logger.info(`Alert created: ${fullAlert.type} - ${fullAlert.title}`);
+    this.logger.info(`Alert created: ${fullAlert.type} - ${fullAlert.title}`);
   }
 
   private broadcastAlert(alert: Alert): void {

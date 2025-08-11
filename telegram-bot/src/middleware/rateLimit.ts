@@ -1,5 +1,7 @@
 import { BotContext } from '../bot';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
+
+const logger = createLogger({ service: 'rate-limit' });
 
 // Store rate limit data
 const rateLimitMap = new Map<number, {

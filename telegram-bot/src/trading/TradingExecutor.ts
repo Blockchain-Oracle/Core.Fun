@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { DatabaseService } from '../services/DatabaseService';
 import { PriceService } from '../services/PriceService';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 // Local type definitions
 interface TradeRequest {
@@ -51,6 +51,7 @@ interface TokenInfo {
 }
 
 export class TradingExecutor {
+  private logger = createLogger({ service: 'trading-executor' });
   private db: DatabaseService;
   private priceService: PriceService;
   private provider: ethers.JsonRpcProvider;
@@ -70,7 +71,7 @@ export class TradingExecutor {
    */
   async executeBuy(params: TradeParams): Promise<TradeResult> {
     try {
-      logger.info(`Executing buy trade for user ${params.userId}`, params);
+      this.logger.info(`Executing buy trade for user ${params.userId}`, params);
 
       // Get user's private key (encrypted)
       const user = await this.db.getUserById(params.userId);
@@ -138,7 +139,7 @@ export class TradingExecutor {
       };
 
     } catch (error: any) {
-      logger.error('Buy trade failed:', error);
+      this.logger.error('Buy trade failed:', error);
       return {
         success: false,
         amountIn: params.amount,
@@ -154,7 +155,7 @@ export class TradingExecutor {
    */
   async executeSell(params: TradeParams & { percentage?: number }): Promise<TradeResult> {
     try {
-      logger.info(`Executing sell trade for user ${params.userId}`, params);
+      this.logger.info(`Executing sell trade for user ${params.userId}`, params);
 
       // Get user's position
       const position = await this.db.getPosition(params.userId, params.tokenAddress);
@@ -233,7 +234,7 @@ export class TradingExecutor {
       };
 
     } catch (error: any) {
-      logger.error('Sell trade failed:', error);
+      this.logger.error('Sell trade failed:', error);
       return {
         success: false,
         amountIn: '0',
@@ -288,7 +289,7 @@ export class TradingExecutor {
         rugScore: tokenInfo.rugScore,
       };
     } catch (error) {
-      logger.error('Failed to get token info:', error);
+      this.logger.error('Failed to get token info:', error);
       throw error;
     }
   }
@@ -331,7 +332,7 @@ export class TradingExecutor {
         estimatedCost,
       };
     } catch (error) {
-      logger.error('Failed to estimate gas:', error);
+      this.logger.error('Failed to estimate gas:', error);
       return {
         gasLimit: '200000',
         gasPrice: '0',
@@ -368,7 +369,7 @@ export class TradingExecutor {
         warning?: string;
       };
     } catch (error) {
-      logger.error('Trade simulation failed:', error);
+      this.logger.error('Trade simulation failed:', error);
       return {
         success: false,
         estimatedOutput: '0',

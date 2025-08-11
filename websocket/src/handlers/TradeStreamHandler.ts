@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import Redis from 'ioredis';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 interface Trade {
   txHash: string;
@@ -34,6 +34,7 @@ export class TradeStreamHandler {
   private subscriptions: Map<string, Set<string>> = new Map(); // clientId -> token addresses
   private routerContracts: Map<string, ethers.Contract> = new Map();
   private isMonitoring = false;
+  private logger = createLogger({ service: 'websocket-trades' });
 
   constructor(provider: ethers.JsonRpcProvider, redis: Redis) {
     this.provider = provider;
@@ -47,7 +48,7 @@ export class TradeStreamHandler {
   }
 
   async start(): Promise<void> {
-    logger.info('Starting trade stream handler');
+    this.logger.info('Starting trade stream handler');
     
     if (!this.isMonitoring) {
       this.startMonitoring();
@@ -56,7 +57,7 @@ export class TradeStreamHandler {
   }
 
   async stop(): Promise<void> {
-    logger.info('Stopping trade stream handler');
+    this.logger.info('Stopping trade stream handler');
     
     // Remove all event listeners
     this.routerContracts.forEach(contract => {
@@ -95,11 +96,11 @@ export class TradeStreamHandler {
           const event = args[args.length - 1];
           await this.handleSwap(dexName, event);
         } catch (error) {
-          logger.error(`Error handling swap on ${dexName}:`, error);
+          this.logger.error(`Error handling swap on ${dexName}:`, error);
         }
       });
       
-      logger.info(`Monitoring ${dexName} router for trades`);
+      this.logger.info(`Monitoring ${dexName} router for trades`);
     });
   }
 
@@ -117,7 +118,14 @@ export class TradeStreamHandler {
       if (!tradeData) return;
       
       const trade: Trade = {
-        ...tradeData,
+        txHash: tradeData.txHash!,
+        tokenAddress: tradeData.tokenAddress!,
+        tokenSymbol: tradeData.tokenSymbol!,
+        trader: tradeData.trader!,
+        type: tradeData.type!,
+        amountToken: tradeData.amountToken!,
+        amountCore: tradeData.amountCore!,
+        price: tradeData.price!,
         timestamp: block.timestamp * 1000,
         blockNumber: block.number,
         dex: dexName,
@@ -127,7 +135,7 @@ export class TradeStreamHandler {
       this.broadcastTrade(trade);
       
     } catch (error) {
-      logger.error('Error processing swap:', error);
+      this.logger.error('Error processing swap:', error);
     }
   }
 
@@ -146,17 +154,17 @@ export class TradeStreamHandler {
       // - Price
       
       return {
-        txHash: tx.hash,
+        txHash: tx.hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
         tokenAddress: '0x' + '0'.repeat(40), // Mock address
         tokenSymbol: 'MOCK',
-        trader: tx.from,
+        trader: tx.from || '0x0000000000000000000000000000000000000000',
         type: Math.random() > 0.5 ? 'buy' : 'sell',
         amountToken: (Math.random() * 10000).toFixed(2),
         amountCore: (Math.random() * 10).toFixed(4),
         price: Math.random() * 0.01,
       };
     } catch (error) {
-      logger.error('Error parsing swap transaction:', error);
+      this.logger.error('Error parsing swap transaction:', error);
       return null;
     }
   }

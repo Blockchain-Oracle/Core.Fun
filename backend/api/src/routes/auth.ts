@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { Redis } from 'ioredis';
 import { z } from 'zod';
-import { logger } from '../utils/logger';
+import { createRedisClient, createLogger } from '@core-meme/shared';
 
-const router = Router();
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const router: Router = Router();
+const redis = createRedisClient();
+const logger = createLogger({ service: 'api-auth', enableFileLogging: false });
 
 // Validation schemas
 const InitAuthSchema = z.object({

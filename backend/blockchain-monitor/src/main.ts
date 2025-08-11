@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import dotenv from 'dotenv';
-import winston from 'winston';
+import { createLogger } from '@core-meme/shared';
 import { DatabaseService } from './services/DatabaseService';
 import { AnalyticsService } from './services/AnalyticsService';
 import { AlertService } from './services/AlertService';
@@ -22,27 +22,15 @@ import {
 dotenv.config();
 
 // Initialize logger
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    }),
-    new winston.transports.File({ 
-      filename: 'blockchain-monitor.log' 
-    }),
-  ],
+const logger = createLogger({ 
+  service: 'blockchain-monitor',
+  enableFileLogging: true
 });
 
 class BlockchainMonitorService {
   private network: 'mainnet' | 'testnet';
+  private rpcUrl: string;
+  private wsUrl?: string;
   private provider: ethers.JsonRpcProvider;
   private wsProvider?: ethers.WebSocketProvider;
   private db: DatabaseService;
@@ -58,18 +46,18 @@ class BlockchainMonitorService {
     this.network = (process.env.NETWORK || 'testnet') as 'mainnet' | 'testnet';
     
     // Initialize providers
-    const rpcUrl = this.network === 'mainnet'
+    this.rpcUrl = this.network === 'mainnet'
       ? process.env.CORE_MAINNET_RPC || 'https://rpc.coredao.org'
       : process.env.CORE_TESTNET_RPC || 'https://rpc.test2.btcs.network';
     
-    const wsUrl = this.network === 'mainnet'
+    this.wsUrl = this.network === 'mainnet'
       ? process.env.CORE_MAINNET_WS
       : process.env.CORE_TESTNET_WS;
     
-    this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
     
-    if (wsUrl) {
-      this.wsProvider = new ethers.WebSocketProvider(wsUrl);
+    if (this.wsUrl) {
+      this.wsProvider = new ethers.WebSocketProvider(this.wsUrl);
       logger.info('WebSocket provider initialized');
     } else {
       logger.warn('No WebSocket URL configured, using polling mode');

@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
-import { logger } from '../utils/logger';
+import { createLogger } from '@core-meme/shared';
 
 export interface WebSocketClientConfig {
   url: string;
@@ -9,6 +9,7 @@ export interface WebSocketClientConfig {
 }
 
 export class WebSocketClient extends EventEmitter {
+  private logger = createLogger({ service: 'websocket-client' });
   private ws: WebSocket | null = null;
   private config: Required<WebSocketClientConfig>;
   private reconnectAttempts = 0;
@@ -28,12 +29,12 @@ export class WebSocketClient extends EventEmitter {
 
   connect(): void {
     try {
-      logger.info(`Connecting to WebSocket server at ${this.config.url}`);
+      this.logger.info(`Connecting to WebSocket server at ${this.config.url}`);
       
       this.ws = new WebSocket(this.config.url);
       
       this.ws.on('open', () => {
-        logger.info('WebSocket connection established');
+        this.logger.info('WebSocket connection established');
         this.reconnectAttempts = 0;
         
         // Start ping interval
@@ -50,24 +51,24 @@ export class WebSocketClient extends EventEmitter {
           const message = JSON.parse(data.toString());
           this.handleMessage(message);
         } catch (error) {
-          logger.error('Error parsing WebSocket message:', error);
+          this.logger.error('Error parsing WebSocket message:', error);
         }
       });
 
       this.ws.on('close', () => {
-        logger.warn('WebSocket connection closed');
+        this.logger.warn('WebSocket connection closed');
         this.stopPingInterval();
         this.emit('disconnected');
         this.reconnect();
       });
 
       this.ws.on('error', (error: Error) => {
-        logger.error('WebSocket error:', error);
+        this.logger.error('WebSocket error:', error);
         this.emit('error', error);
       });
 
     } catch (error) {
-      logger.error('Error creating WebSocket connection:', error);
+      this.logger.error('Error creating WebSocket connection:', error);
       this.reconnect();
     }
   }
@@ -76,7 +77,7 @@ export class WebSocketClient extends EventEmitter {
     switch (message.type) {
       case 'connected':
         this.clientId = message.clientId;
-        logger.info(`Connected with client ID: ${this.clientId}`);
+        this.logger.info(`Connected with client ID: ${this.clientId}`);
         break;
         
       case 'data':
@@ -85,17 +86,17 @@ export class WebSocketClient extends EventEmitter {
         break;
         
       case 'subscribed':
-        logger.info(`Subscribed to ${message.channel}`);
+        this.logger.info(`Subscribed to ${message.channel}`);
         this.emit('subscribed', message);
         break;
         
       case 'unsubscribed':
-        logger.info(`Unsubscribed from ${message.channel}`);
+        this.logger.info(`Unsubscribed from ${message.channel}`);
         this.emit('unsubscribed', message);
         break;
         
       case 'error':
-        logger.error(`WebSocket error: ${message.message}`);
+        this.logger.error(`WebSocket error: ${message.message}`);
         this.emit('ws-error', message);
         break;
         
@@ -104,7 +105,7 @@ export class WebSocketClient extends EventEmitter {
         break;
         
       default:
-        logger.debug('Unknown message type:', message.type);
+        this.logger.debug('Unknown message type:', message.type);
     }
   }
 
@@ -135,7 +136,7 @@ export class WebSocketClient extends EventEmitter {
 
   subscribe(channel: string, params?: any): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      logger.warn(`Cannot subscribe to ${channel}: WebSocket not connected`);
+      this.logger.warn(`Cannot subscribe to ${channel}: WebSocket not connected`);
       this.subscriptions.add(JSON.stringify({ channel, params }));
       return;
     }
@@ -149,12 +150,12 @@ export class WebSocketClient extends EventEmitter {
     this.ws.send(JSON.stringify(message));
     this.subscriptions.add(JSON.stringify({ channel, params }));
     
-    logger.info(`Subscribing to ${channel}`);
+    this.logger.info(`Subscribing to ${channel}`);
   }
 
   unsubscribe(channel: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      logger.warn(`Cannot unsubscribe from ${channel}: WebSocket not connected`);
+      this.logger.warn(`Cannot unsubscribe from ${channel}: WebSocket not connected`);
       return;
     }
     
@@ -173,13 +174,13 @@ export class WebSocketClient extends EventEmitter {
       }
     });
     
-    logger.info(`Unsubscribing from ${channel}`);
+    this.logger.info(`Unsubscribing from ${channel}`);
   }
 
   private resubscribe(): void {
     if (this.subscriptions.size === 0) return;
     
-    logger.info(`Resubscribing to ${this.subscriptions.size} channels`);
+    this.logger.info(`Resubscribing to ${this.subscriptions.size} channels`);
     
     this.subscriptions.forEach(sub => {
       const { channel, params } = JSON.parse(sub);
@@ -214,14 +215,14 @@ export class WebSocketClient extends EventEmitter {
 
   private reconnect(): void {
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-      logger.error('Max reconnection attempts reached');
+      this.logger.error('Max reconnection attempts reached');
       this.emit('max-reconnect-attempts');
       return;
     }
     
     this.reconnectAttempts++;
     
-    logger.info(`Reconnecting in ${this.config.reconnectInterval}ms (attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts})`);
+    this.logger.info(`Reconnecting in ${this.config.reconnectInterval}ms (attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts})`);
     
     this.reconnectTimer = setTimeout(() => {
       this.connect();
@@ -244,7 +245,7 @@ export class WebSocketClient extends EventEmitter {
     this.subscriptions.clear();
     this.clientId = null;
     
-    logger.info('WebSocket client disconnected');
+    this.logger.info('WebSocket client disconnected');
   }
 
   isConnected(): boolean {

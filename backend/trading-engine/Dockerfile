@@ -8,6 +8,8 @@ WORKDIR /app
 
 # Copy workspace manifests from repo root
 COPY pnpm-workspace.yaml package.json ./
+# Copy root tsconfig base
+COPY tsconfig.base.json ./
 # Copy package manifests for required workspaces
 COPY backend/trading-engine/package.json backend/trading-engine/package.json
 COPY shared/package.json shared/package.json
@@ -33,6 +35,8 @@ WORKDIR /app
 
 # Copy workspace manifests
 COPY pnpm-workspace.yaml package.json ./
+# Copy root tsconfig base
+COPY tsconfig.base.json ./
 COPY backend/trading-engine/package.json backend/trading-engine/package.json
 COPY shared/package.json shared/package.json
 

@@ -11,6 +11,8 @@ COPY pnpm-workspace.yaml package.json ./
 # Package manifests for required workspaces
 COPY websocket/package.json websocket/package.json
 COPY shared/package.json shared/package.json
+# Copy root tsconfig base
+COPY tsconfig.base.json ./
 
 # Install only the needed workspaces and their deps
 RUN pnpm install --filter @core-meme/websocket-server... --filter @core-meme/shared...
@@ -35,6 +37,8 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json ./
 COPY websocket/package.json websocket/package.json
 COPY shared/package.json shared/package.json
+# Copy root tsconfig base (for any runtime tooling that references it)
+COPY tsconfig.base.json ./
 
 # Install production deps for websocket and shared
 RUN pnpm install --prod --filter @core-meme/websocket-server... --filter @core-meme/shared...

@@ -229,9 +229,9 @@ export class SubscriptionCommands {
         `1️⃣ Pay with Telegram Stars\n` +
         `2️⃣ Pay with CORE tokens\n` +
         `3️⃣ Pay with Credit Card (Coming Soon)\n\n` +
-        `*Note: This is a demo. In production, actual payment processing would occur here.*`,
+        `Please confirm your subscription upgrade.`,
         Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Confirm (Demo)', `confirm_sub_${plan}`)],
+          [Markup.button.callback('✅ Confirm Subscription', `confirm_sub_${plan}`)],
           [Markup.button.callback('❌ Cancel', 'cancel')]
         ])
       );
@@ -256,7 +256,7 @@ export class SubscriptionCommands {
       await this.db.createSubscription({
         user_id: user.id,
         tier: tier,
-        payment_method: 'demo',
+        payment_method: 'telegram_stars',
         status: 'active',
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
       });

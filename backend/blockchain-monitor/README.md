@@ -1,27 +1,30 @@
 # Blockchain Monitor Service
 
-Real-time blockchain monitoring service for Core blockchain, tracking MemeFactory tokens and DEX activity.
+Real-time blockchain monitoring service for Core blockchain, tracking MemeFactory tokens and DEX activity. This service provides comprehensive token analytics, honeypot detection, and liquidity monitoring across IcecreamSwap V2.
 
-## Features
+## 🚀 Features
 
-- ✅ **MemeFactory Monitoring** (when configured)
+- ✅ **MemeFactory Monitoring**
   - Token creation events
-  - Bonding curve purchases
+  - Bonding curve purchases  
   - Token launches to DEX
+  - Real-time price tracking from bonding curves
   - Platform fee tracking
 
 - ✅ **DEX Monitoring**
-  - IcecreamSwap V2 & V3 (Mainnet)
-  - ShadowSwap (Testnet)
-  - Pair creation events
-  - Swap transactions
-  - Liquidity changes
+  - IcecreamSwap V2 Integration
+  - Real-time pair creation events
+  - Swap transaction monitoring
+  - Liquidity tracking with USD values
+  - CoinGecko API for CORE/USD pricing
 
-- ✅ **Token Analytics**
-  - Honeypot detection
-  - Rug pull risk scoring
+- ✅ **Token Analytics** (AnalyticsService.ts)
+  - Honeypot detection with contract analysis
+  - Rug pull risk scoring (0-100 scale)
   - Ownership concentration analysis
-  - Trading restrictions detection
+  - Trading restrictions detection (max wallet/tx)
+  - Liquidity lock verification
+  - Contract verification status
 
 - ✅ **Alert System**
   - Critical alerts for rug pulls
@@ -74,19 +77,27 @@ pnpm run start:testnet
 
 ### Platform Contracts
 
-The service can monitor your MemeFactory contracts when deployed. Update these in `.env`:
-
 ```env
-# When you deploy to testnet
-MEME_FACTORY_TESTNET=0x... # Your deployed address
-MEME_FACTORY_TESTNET_BLOCK=123456 # Deployment block
+# Core Testnet (Chain ID: 1114)
+MEME_FACTORY_ADDRESS=0x04242CfFdEC8F96A46857d4A50458F57eC662cE1
+PLATFORM_TOKEN=0x96611b71A4DE5B8616164B650720ADe10948193F
+STAKING_CONTRACT=0x95F1588ef2087f9E40082724F5Da7BAD946969CB
 
-# When you deploy to mainnet
-MEME_FACTORY_MAINNET=0x... # Your deployed address
-MEME_FACTORY_MAINNET_BLOCK=789012 # Deployment block
+# IcecreamSwap V2 Configuration
+ICECREAM_FACTORY=0x9E6d21E759A7A288b80eef94E4737D313D31c13f
+ICECREAM_ROUTER=0xBb5e1777A331ED93E07cF043363e48d320eb96c4
+INIT_CODE_HASH=0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3
 ```
 
-**Note**: If no MemeFactory address is configured, the service will still monitor all DEX activity on Core blockchain.
+### External APIs
+
+```env
+# CoinGecko API for CORE price
+COINGECKO_API_KEY=optional_for_higher_rate_limits
+
+# Core Scan API (optional)
+CORE_SCAN_API_KEY=your_api_key_here
+```
 
 ### Network Selection
 

@@ -9,6 +9,7 @@ import { SubscriptionCommands } from './subscription/SubscriptionCommands';
 import { SessionManager } from './auth/SessionManager';
 import { DatabaseService } from './services/DatabaseService';
 import { WebSocketClient } from './services/WebSocketClient';
+import { WebhookHandler } from './services/WebhookHandler';
 import { createLogger } from '@core-meme/shared';
 import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/rateLimit';
@@ -40,6 +41,7 @@ class CoreMemeBot {
   private sessionManager: SessionManager;
   private db: DatabaseService;
   private wsClient: WebSocketClient;
+  private webhookHandler: WebhookHandler;
   private logger = createLogger({ service: 'telegram-bot' });
 
   constructor() {
@@ -53,7 +55,7 @@ class CoreMemeBot {
     this.sessionManager = new SessionManager();
     
     // Initialize WebSocket client
-    const wsUrl = process.env.WEBSOCKET_URL || 'ws://localhost:3003';
+    const wsUrl = process.env.WEBSOCKET_URL || 'ws://localhost:8081';
     this.wsClient = new WebSocketClient({ url: wsUrl });
     
     // Initialize handlers
@@ -62,6 +64,10 @@ class CoreMemeBot {
     this.tradingCommands = new TradingCommands(this.db);
     this.alertCommands = new AlertCommands(this.db);
     this.subscriptionCommands = new SubscriptionCommands(this.db);
+    
+    // Initialize webhook handler for Web App authentication
+    const webhookPort = parseInt(process.env.WEBHOOK_PORT || '3002');
+    this.webhookHandler = new WebhookHandler(this.db, this.sessionManager, webhookPort);
 
     this.setupMiddleware();
     this.setupCommands();
@@ -91,8 +97,11 @@ class CoreMemeBot {
     this.bot.command('start', async (ctx) => {
       const startPayload = ctx.message.text.split(' ')[1];
       if (startPayload?.startsWith('auth_')) {
-        // Handle authentication flow
+        // Handle authentication flow from web app
         await this.authHandler.handleAuthStart(ctx, startPayload);
+      } else if (startPayload === 'webapp_auth') {
+        // Handle web app authentication request
+        await this.authHandler.handleWebAppAuthRequest(ctx);
       } else {
         // Regular start
         await this.authHandler.handleStart(ctx);
@@ -208,6 +217,63 @@ class CoreMemeBot {
     this.bot.action('wallet_manager', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.walletCommands.openWalletManager(ctx);
+    });
+
+    this.bot.action('get_web_link', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.authHandler.handleWebAppAuthRequest(ctx);
+    });
+
+    // Menu callbacks
+    this.bot.action('trade_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.showTradingMenu(ctx);
+    });
+
+    this.bot.action('alerts_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.manageAlerts(ctx);
+    });
+
+    this.bot.action('subscribe_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.subscriptionCommands.showSubscriptionPlans(ctx);
+    });
+
+    this.bot.action('settings_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.sendSettingsMenu(ctx);
+    });
+
+    this.bot.action('dashboard', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.sendMainMenu(ctx);
+    });
+
+    // Wallet action callbacks
+    this.bot.action('add_funds', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.walletCommands.showAddFunds(ctx);
+    });
+
+    this.bot.action('withdraw', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.walletCommands.handleWithdraw(ctx);
+    });
+
+    this.bot.action('add_wallet_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.walletCommands.addTradingWallet(ctx);
+    });
+
+    this.bot.action('confirm_export_key', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.walletCommands.confirmExportKey(ctx);
+    });
+
+    this.bot.action('refresh_balance', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery('Refreshing...');
+      await this.walletCommands.showBalance(ctx);
     });
 
     // Trading callbacks
@@ -395,6 +461,35 @@ Select an option to get started:
 `;
 
     await ctx.reply(adminText, { parse_mode: 'Markdown' });
+  }
+
+  private async sendSettingsMenu(ctx: BotContext) {
+    const settingsText = `
+⚙️ *Settings*
+
+Manage your account settings and preferences:
+`;
+
+    const keyboard = [
+      [
+        { text: '🔔 Notifications', callback_data: 'settings_notifications' },
+        { text: '🔒 Security', callback_data: 'settings_security' },
+      ],
+      [
+        { text: '📊 Trading Settings', callback_data: 'settings_trading' },
+        { text: '💎 Subscription', callback_data: 'subscribe_menu' },
+      ],
+      [
+        { text: '🔙 Back', callback_data: 'back' },
+      ],
+    ];
+
+    await ctx.reply(settingsText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    });
   }
 
   private setupWebSocketHandlers() {

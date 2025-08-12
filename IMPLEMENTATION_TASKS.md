@@ -374,10 +374,11 @@ API Endpoints:
 - Chain IDs: 1116 (mainnet), 1115 (testnet)
 - Explorer API endpoints available
 
-### DEX Addresses Found:
-- ShadowSwap Router: 0xd15CeE1DEaFBad6C0B3Fd7489677Cc102B141464
-- LFGSwap Router: 0x52Ada6E8d553E5EaCA196c9D975DB7a76627dc61
-- IcecreamSwap Router: 0xC5B19E6a5e4806A107B01f246232e65E195D9ae8
+### DEX Addresses Used (IcecreamSwap V2):
+- IcecreamSwap V2 Router: 0xBb5e1777A331ED93E07cF043363e48d320eb96c4
+- IcecreamSwap V2 Factory: 0x9E6d21E759A7A288b80eef94E4737D313D31c13f
+- Init Code Hash: 0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3
+- WCORE: 0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f (mainnet)
 
 ---
 

@@ -373,17 +373,36 @@ export class LiquidityProcessor {
   }
 
   private async getCorePrice(): Promise<number> {
-    // This would normally fetch from price oracle or DEX
-    // For now, return a mock price
-    return 0.5; // $0.50 per CORE
+    try {
+      // Fetch real CORE price from CoinGecko API
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
+      const data = await response.json();
+      const price = data.coredaoorg?.usd || 0.50;
+      
+      // Cache the price for 60 seconds to avoid rate limiting
+      await this.redis.setEx('core:price:usd', 60, price.toString());
+      
+      return price;
+    } catch (error) {
+      this.logger.warn('Failed to fetch CORE price from CoinGecko, checking cache:', error);
+      
+      // Try to get from cache
+      const cached = await this.redis.get('core:price:usd');
+      if (cached) {
+        return parseFloat(cached);
+      }
+      
+      // Fallback to default if all else fails
+      return 0.50;
+    }
   }
 
   private async getCoreAddress(): Promise<string> {
     // Wrapped CORE address
-    const network = process.env.NETWORK || 'mainnet';
+    const network = process.env.NETWORK || 'testnet';
     return network === 'mainnet' 
       ? '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f'.toLowerCase()
-      : '0x0000000000000000000000000000000000000000'; // Testnet WCORE
+      : '0x5c872990530Fe4f7322cA0c302762788e8199Ed0'.toLowerCase(); // Testnet WCORE
   }
 
   private async cachePairData(pair: Pair): Promise<void> {

@@ -28,31 +28,20 @@ export const NETWORK_CONFIG = {
   },
 };
 
-// DEX configurations
+// DEX configurations - using IcecreamSwap V2 as the primary DEX on Core
 export const DEX_CONFIGS = {
-  SHADOWSWAP: {
-    name: 'ShadowSwap',
-    routerAddress: {
-      mainnet: '0xd15CeE1DEaFBad6C0B3Fd7489677Cc102B141464',
-      testnet: '0x524027673879FEDfFE8dD3baE1BF8FDD2Cd1bF13', // Updated from trading config
-    },
-    factoryAddress: {
-      mainnet: '0x966a70A4d3719A6De6a94236532A0167d5246c72',
-      testnet: '0x6e46ECa8d210C426ca6cA845feb2881Dc8c99426', // Updated from trading config
-    },
-    initCodeHash: '0x6eef19478e462b999a9ed867f57d8c87e8e60fb982a9c6b76df387b0c54e5f37'
-  },
   ICECREAMSWAP: {
     name: 'IcecreamSwap',
     routerAddress: {
-      mainnet: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // Updated from trading config
-      testnet: '0x0000000000000000000000000000000000000000', // Not available on testnet
+      mainnet: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // IcecreamSwap Router V2
+      testnet: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // Same router on testnet
     },
     factoryAddress: {
-      mainnet: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // Updated from trading config
-      testnet: '0x0000000000000000000000000000000000000000',
+      mainnet: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // IcecreamSwap Factory V2
+      testnet: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // Same factory on testnet
     },
-    initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3'
+    initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3', // V2 init code hash
+    version: 'V2',
   },
 };
 

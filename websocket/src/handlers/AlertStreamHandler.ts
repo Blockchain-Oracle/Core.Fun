@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 import { createLogger } from '@core-meme/shared';
 
 interface Alert {
@@ -106,7 +107,7 @@ export class AlertStreamHandler {
   }
 
   private generateAlertId(): string {
-    return `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `alert_${Date.now()}_${randomUUID()}`;
   }
 
   // Public methods for generating specific alerts

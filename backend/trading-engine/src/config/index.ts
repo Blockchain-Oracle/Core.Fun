@@ -18,22 +18,10 @@ export const config: TradingConfig = {
   
   dexRouters: {
     IcecreamSwap: {
-      address: process.env.NETWORK === 'mainnet'
-        ? '0xBb5e1777A331ED93E07cF043363e48d320eb96c4'
-        : '0x0000000000000000000000000000000000000000', // No testnet
-      factory: process.env.NETWORK === 'mainnet'
-        ? '0x9E6d21E759A7A288b80eef94E4737D313D31c13f'
-        : '0x0000000000000000000000000000000000000000',
+      // Using IcecreamSwap on both mainnet and testnet for consistency
+      address: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4',
+      factory: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f',
       initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3'
-    },
-    ShadowSwap: {
-      address: process.env.NETWORK === 'testnet'
-        ? '0x524027673879FEDfFE8dD3baE1BF8FDD2Cd1bF13'
-        : '0x0000000000000000000000000000000000000000', // Testnet only
-      factory: process.env.NETWORK === 'testnet'
-        ? '0x6e46ECa8d210C426ca6cA845feb2881Dc8c99426'
-        : '0x0000000000000000000000000000000000000000',
-      initCodeHash: '0x6eef19478e462b999a9ed867f57d8c87e8e60fb982a9c6b76df387b0c54e5f37'
     }
   },
   

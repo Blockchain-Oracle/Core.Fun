@@ -33,17 +33,31 @@ A professional meme token launcher platform on Core blockchain, combining token 
 
 ```
 core-meme-platform/
-├── contracts/           # Smart contracts
-├── backend/            # Microservices
-│   ├── api/           # REST API gateway
-│   ├── blockchain-monitor/
-│   ├── trading-engine/
-│   └── core-api-service/
-├── telegram-bot/       # Telegram bot
-├── web-app/           # Next.js frontend
-├── websocket/         # Real-time data
-└── shared/            # Shared utilities
+├── contracts/              # Smart contracts (Solidity)
+│   ├── MemeFactory.sol    # Token factory with bonding curves
+│   ├── MemeToken.sol      # ERC20 token with anti-rug features
+│   └── Staking.sol        # Platform token staking
+├── backend/               # Microservices
+│   ├── api/              # REST API gateway (Port 3001)
+│   ├── blockchain-monitor/ # Real-time blockchain event monitoring
+│   ├── trading-engine/    # DEX integration & trade execution
+│   └── core-api-service/  # Core blockchain API wrapper
+├── telegram-bot/          # Full-featured Telegram trading bot
+├── web-app/              # Next.js frontend application
+├── websocket/            # Real-time data streaming (Port 8081)
+└── shared/               # Shared types, constants, utilities
 ```
+
+## 🔗 Blockchain Integration
+
+### DEX Integration
+- **IcecreamSwap V2**: Primary DEX for trading
+  - Factory: `0x9E6d21E759A7A288b80eef94E4737D313D31c13f`
+  - Router: `0xBb5e1777A331ED93E07cF043363e48d320eb96c4`
+
+### External APIs
+- **CoinGecko**: Real-time CORE/USD pricing
+- **Core Scan**: Token verification and holder data
 
 ## 📋 Deployed Contracts (Core Testnet)
 
@@ -90,14 +104,20 @@ pnpm dev
 ### Environment Variables
 
 ```env
-# Network
+# Network Configuration
 NETWORK=testnet # or mainnet
-CORE_TESTNET_RPC_URL=https://rpc.test.btcs.network
+CORE_TESTNET_RPC_URL=https://rpc.test2.btcs.network
 CORE_MAINNET_RPC_URL=https://rpc.coredao.org
+
+# Contract Addresses (Testnet)
+MEME_FACTORY_ADDRESS=0x04242CfFdEC8F96A46857d4A50458F57eC662cE1
+PLATFORM_TOKEN=0x96611b71A4DE5B8616164B650720ADe10948193F
+STAKING_CONTRACT=0x95F1588ef2087f9E40082724F5Da7BAD946969CB
 
 # API Keys
 CORESCAN_API_KEY=your_api_key
 TELEGRAM_BOT_TOKEN=your_bot_token
+COINGECKO_API_KEY=optional_for_higher_limits
 
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/core_meme
@@ -111,6 +131,67 @@ TREASURY_ADDRESS=your_treasury_address
 JWT_SECRET=your_jwt_secret
 ENCRYPTION_KEY=your_encryption_key
 ```
+
+## 🔧 Services Overview
+
+### Backend Services
+
+#### 1. **Blockchain Monitor** (`backend/blockchain-monitor`)
+Real-time blockchain event monitoring and token analytics.
+- Monitors PairCreated, Swap, and Liquidity events
+- Calculates rug scores and honeypot detection
+- Tracks liquidity across IcecreamSwap V2
+- Integrates CoinGecko for CORE/USD pricing
+- [Full Documentation](./backend/blockchain-monitor/README.md)
+
+#### 2. **API Gateway** (`backend/api`)
+RESTful API gateway for all platform services (Port 3001).
+- JWT authentication and authorization
+- Real-time wallet balance queries
+- Trading operations with slippage protection
+- Portfolio tracking and analytics
+- [Full Documentation](./backend/api/README.md)
+
+#### 3. **Trading Engine** (`backend/trading-engine`)
+Production-ready trading system with MEV protection.
+- Unified router for bonding curves and DEX
+- IcecreamSwap V2 integration
+- Gas optimization and route finding
+- Anti-sandwich attack protection
+- [Full Documentation](./backend/trading-engine/README.md)
+
+#### 4. **Core API Service** (`backend/core-api-service`)
+Wrapper for Core blockchain APIs with caching.
+- Token verification and holder data
+- Contract verification status
+- Historical data aggregation
+- Redis caching for performance
+- [Full Documentation](./backend/core-api-service/README.md)
+
+### Frontend Services
+
+#### 5. **Telegram Bot** (`telegram-bot`)
+Feature-rich trading bot with visual card generation.
+- Buy/sell/snipe commands
+- Portfolio tracking with P&L
+- Copy trading system
+- Custom image generation for positions
+- [Full Documentation](./telegram-bot/README.md)
+
+#### 6. **WebSocket Server** (`websocket`)
+Real-time data streaming service (Port 8081).
+- Live price updates from blockchain
+- Trade event broadcasting
+- Alert notifications
+- Supports 10,000+ concurrent connections
+- [Full Documentation](./websocket/README.md)
+
+#### 7. **Web Application** (`web-app`)
+Modern Next.js frontend application.
+- Token launcher interface
+- Trading dashboard
+- Portfolio management
+- Wallet integration (MetaMask)
 
 ## 📊 Core API Integration
 

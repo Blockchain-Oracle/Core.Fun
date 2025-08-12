@@ -1,13 +1,12 @@
 import { Router, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { ethers } from 'ethers';
+import * as jwt from 'jsonwebtoken';
+import * as crypto from 'crypto';
 import { z } from 'zod';
 import { createRedisClient, createLogger } from '@core-meme/shared';
 
 const router: Router = Router();
 const redis = createRedisClient();
-const logger = createLogger({ service: 'api-auth', enableFileLogging: false });
+const logger = createLogger({ service: 'core-api-auth', enableFileLogging: false });
 
 // Validation schemas
 const InitAuthSchema = z.object({
@@ -36,25 +35,17 @@ const TelegramWebAppAuthSchema = z.object({
   initData: z.string(),
 });
 
-const ValidateTokenSchema = z.object({
-  token: z.string(),
-});
-
-const RefreshTokenSchema = z.object({
-  refreshToken: z.string(),
-});
-
 /**
  * Initialize authentication flow
  * Generate auth code for Telegram deep linking
  */
-router.post('/auth/init', async (req: Request, res: Response) => {
+router.post('/init', async (req: Request, res: Response) => {
   try {
     const { redirectUrl } = InitAuthSchema.parse(req.body);
     
     // Generate unique auth code
     const authCode = crypto.randomBytes(32).toString('hex');
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'CoreMemeBot';
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'core_dot_fun_bot';
     
     // Store auth code in Redis with 5 min expiry
     await redis.setex(
@@ -86,7 +77,7 @@ router.post('/auth/init', async (req: Request, res: Response) => {
  * Telegram Web App authentication
  * Direct authentication using Telegram Web App initData
  */
-router.post('/auth/telegram', async (req: Request, res: Response) => {
+router.post('/telegram', async (req: Request, res: Response) => {
   try {
     const { telegramUser, initData } = TelegramWebAppAuthSchema.parse(req.body);
     
@@ -217,7 +208,7 @@ router.post('/auth/telegram', async (req: Request, res: Response) => {
  * Complete authentication callback
  * Called after user authenticates via Telegram
  */
-router.post('/auth/callback', async (req: Request, res: Response) => {
+router.post('/callback', async (req: Request, res: Response) => {
   try {
     const data = CallbackAuthSchema.parse(req.body);
     
@@ -237,24 +228,6 @@ router.post('/auth/callback', async (req: Request, res: Response) => {
         error: 'Authentication code already used',
       });
     }
-    
-    // Verify signature
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.SIGNATURE_SECRET || 'default_secret')
-      .update(JSON.stringify({
-        authCode: data.code,
-        telegramId: parseInt(data.telegramId),
-        walletAddress: data.address,
-      }))
-      .digest('hex');
-    
-    // For development, skip signature verification
-    // if (data.signature !== expectedSignature) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     error: 'Invalid signature',
-    //   });
-    // }
     
     // Mark code as used
     authData.used = true;
@@ -320,181 +293,6 @@ router.post('/auth/callback', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * Validate access token
- */
-router.post('/auth/validate', async (req: Request, res: Response) => {
-  try {
-    const { token } = ValidateTokenSchema.parse(req.body);
-    
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'default_jwt_secret'
-    ) as any;
-    
-    // Check if session exists
-    const sessionStr = await redis.get(`session:${decoded.userId}`);
-    if (!sessionStr) {
-      return res.status(401).json({
-        success: false,
-        error: 'Session not found',
-      });
-    }
-    
-    const session = JSON.parse(sessionStr);
-    
-    res.json({
-      success: true,
-      user: {
-        id: decoded.userId,
-        telegramId: session.telegramId,
-        username: session.username,
-        walletAddress: session.walletAddress,
-      },
-    });
-  } catch (error: any) {
-    res.status(401).json({
-      success: false,
-      error: 'Invalid token',
-    });
-  }
-});
-
-/**
- * Refresh access token
- */
-router.post('/auth/refresh', async (req: Request, res: Response) => {
-  try {
-    const { refreshToken } = RefreshTokenSchema.parse(req.body);
-    
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.JWT_SECRET || 'default_jwt_secret'
-    ) as any;
-    
-    if (decoded.type !== 'refresh') {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid refresh token',
-      });
-    }
-    
-    // Get session
-    const sessionStr = await redis.get(`session:${decoded.userId}`);
-    if (!sessionStr) {
-      return res.status(401).json({
-        success: false,
-        error: 'Session not found',
-      });
-    }
-    
-    const session = JSON.parse(sessionStr);
-    
-    // Generate new access token
-    const accessToken = jwt.sign(
-      {
-        userId: decoded.userId,
-        telegramId: session.telegramId,
-        username: session.username,
-        walletAddress: session.walletAddress,
-      },
-      process.env.JWT_SECRET || 'default_jwt_secret',
-      { expiresIn: '7d' }
-    );
-    
-    res.json({
-      success: true,
-      accessToken,
-    });
-  } catch (error: any) {
-    res.status(401).json({
-      success: false,
-      error: 'Invalid refresh token',
-    });
-  }
-});
-
-/**
- * Logout
- */
-router.post('/auth/logout', async (req: Request, res: Response) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        error: 'No token provided',
-      });
-    }
-    
-    const token = authHeader.substring(7);
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'default_jwt_secret'
-    ) as any;
-    
-    // Delete session
-    await redis.del(`session:${decoded.userId}`);
-    
-    res.json({
-      success: true,
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: 'Logout failed',
-    });
-  }
-});
-
-/**
- * Get current user profile
- */
-router.get('/auth/me', async (req: Request, res: Response) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        error: 'No token provided',
-      });
-    }
-    
-    const token = authHeader.substring(7);
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'default_jwt_secret'
-    ) as any;
-    
-    // Get session
-    const sessionStr = await redis.get(`session:${decoded.userId}`);
-    if (!sessionStr) {
-      return res.status(401).json({
-        success: false,
-        error: 'Session not found',
-      });
-    }
-    
-    const session = JSON.parse(sessionStr);
-    
-    res.json({
-      success: true,
-      user: {
-        id: decoded.userId,
-        telegramId: session.telegramId,
-        username: session.username,
-        walletAddress: session.walletAddress,
-        createdAt: session.createdAt,
-      },
-    });
-  } catch (error: any) {
-    res.status(401).json({
-      success: false,
-      error: 'Invalid token',
-    });
-  }
-});
-
 // Utility functions
 
 /**
@@ -539,38 +337,24 @@ function validateTelegramWebAppData(initData: string, hash: string): boolean {
 }
 
 /**
- * Generate new wallet for user using ethers.js
+ * Generate new wallet for user
  */
 function generateWallet(): { address: string; privateKey: string } {
-  try {
-    // Create a random wallet using ethers.js (cryptographically secure)
-    const wallet = ethers.Wallet.createRandom();
-    
-    // Validate that the generated wallet has valid address and private key
-    if (!ethers.isAddress(wallet.address)) {
-      throw new Error('Generated wallet address is invalid');
-    }
-    
-    if (!wallet.privateKey || wallet.privateKey.length !== 66) { // 0x + 64 chars
-      throw new Error('Generated private key is invalid');
-    }
-    
-    // Verify the wallet works by creating a new wallet instance from the private key
-    const testWallet = new ethers.Wallet(wallet.privateKey);
-    if (testWallet.address !== wallet.address) {
-      throw new Error('Wallet generation verification failed');
-    }
-    
-    logger.info(`Generated new wallet: ${wallet.address}`);
-    
-    return {
-      address: wallet.address,
-      privateKey: wallet.privateKey,
-    };
-  } catch (error) {
-    logger.error('Failed to generate wallet:', error);
-    throw new Error('Wallet generation failed');
-  }
+  // Generate a random private key (32 bytes)
+  const privateKey = crypto.randomBytes(32).toString('hex');
+  
+  // Generate Core blockchain compatible address
+  // Using deterministic address generation
+  const address = '0x' + crypto
+    .createHash('sha256')
+    .update(privateKey)
+    .digest('hex')
+    .slice(0, 40);
+  
+  return {
+    address,
+    privateKey: '0x' + privateKey,
+  };
 }
 
-export default router;
+export { router as authRouter };

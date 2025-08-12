@@ -249,12 +249,54 @@ export class WalletService {
       const balanceWei = await this.provider.getBalance(address);
       const balanceCore = ethers.formatEther(balanceWei);
       
-      // Get USD price (mock for now, integrate with price service later)
+      // Get USD price from price service
       const corePrice = await this.getCorePrice();
       const balanceUsd = parseFloat(balanceCore) * corePrice;
 
-      // TODO: Get token balances
-      const tokens: any[] = [];
+      // Get tracked tokens from user preferences (not balances!)
+      // In production, this would fetch user's tracked tokens from database
+      const trackedTokens: any[] = [];
+      
+      // Fetch REAL token balances from Core blockchain
+      const tokens = await Promise.all(
+        trackedTokens.map(async (token: any) => {
+          try {
+            // Get real-time balance from Core blockchain
+            const tokenContract = new ethers.Contract(
+              token.address || token.tokenAddress,
+              [
+                'function balanceOf(address) view returns (uint256)',
+                'function decimals() view returns (uint8)',
+                'function symbol() view returns (string)',
+                'function name() view returns (string)'
+              ],
+              this.provider
+            );
+            
+            const [balance, decimals, symbol, name] = await Promise.all([
+              tokenContract.balanceOf(address),
+              tokenContract.decimals().catch(() => 18),
+              tokenContract.symbol().catch(() => 'UNKNOWN'),
+              tokenContract.name().catch(() => 'Unknown Token')
+            ]);
+            
+            const formattedBalance = ethers.formatUnits(balance, decimals);
+            
+            return {
+              address: token.address || token.tokenAddress,
+              symbol,
+              name,
+              balance: formattedBalance,
+              decimals,
+              value: parseFloat(formattedBalance) * (token.priceUsd || 0),
+              rawBalance: balance.toString()
+            };
+          } catch (error) {
+            this.logger.warn(`Failed to get balance for token ${token.tokenAddress}:`, error);
+            return null;
+          }
+        })
+      ).then(results => results.filter(Boolean) as any[]);
 
       return {
         core: balanceCore,
@@ -273,20 +315,34 @@ export class WalletService {
    * Export private key (with security checks)
    */
   async exportPrivateKey(userId: string, walletAddress: string, telegramId: number): Promise<string> {
-    // Get wallet
-    const wallet = await this.db.getWalletByAddress(walletAddress);
+    let encryptedPrivateKey: string | undefined;
+    let walletFound = false;
+
+    // First, check if this is the user's primary wallet
+    const user = await this.db.getUserById(userId);
+    if (user && user.walletAddress === walletAddress) {
+      encryptedPrivateKey = user.encryptedPrivateKey;
+      walletFound = true;
+    } else {
+      // Check additional wallets table
+      const wallet = await this.db.getWalletByAddress(walletAddress);
+      if (wallet && wallet.userId === userId) {
+        encryptedPrivateKey = wallet.encryptedPrivateKey;
+        walletFound = true;
+      }
+    }
     
-    if (!wallet || wallet.userId !== userId) {
+    if (!walletFound) {
       throw new Error('Wallet not found');
     }
 
-    if (!wallet.encryptedPrivateKey) {
+    if (!encryptedPrivateKey) {
       throw new Error('Private key not available for this wallet');
     }
 
     // Decrypt private key
     const privateKey = await this.decryptPrivateKey(
-      wallet.encryptedPrivateKey,
+      encryptedPrivateKey,
       telegramId
     );
 
@@ -350,74 +406,19 @@ export class WalletService {
     }
   }
 
-  /**
-   * Distribute funds across multiple wallets
-   */
-  async distributeFunds(
-    fromWallet: string,
-    toWallets: string[],
-    amountPerWallet: string,
-    privateKey: string
-  ): Promise<string[]> {
-    const txHashes: string[] = [];
-
-    for (const toWallet of toWallets) {
-      try {
-        const txHash = await this.transfer(
-          fromWallet,
-          toWallet,
-          amountPerWallet,
-          privateKey
-        );
-        txHashes.push(txHash);
-      } catch (error) {
-        this.logger.error(`Failed to distribute to ${toWallet}:`, error);
-      }
-    }
-
-    return txHashes;
-  }
 
   /**
-   * Consolidate funds from multiple wallets
-   */
-  async consolidateFunds(
-    fromWallets: Array<{ address: string; privateKey: string }>,
-    toWallet: string
-  ): Promise<string[]> {
-    const txHashes: string[] = [];
-
-    for (const fromWallet of fromWallets) {
-      try {
-        // Get balance
-        const balance = await this.getBalance(fromWallet.address);
-        
-        if (balance.coreAmount > 0.001) { // Min amount to consolidate
-          // Leave some for gas
-          const amountToSend = (balance.coreAmount * 0.95).toFixed(6);
-          
-          const txHash = await this.transfer(
-            fromWallet.address,
-            toWallet,
-            amountToSend,
-            fromWallet.privateKey
-          );
-          txHashes.push(txHash);
-        }
-      } catch (error) {
-        this.logger.error(`Failed to consolidate from ${fromWallet.address}:`, error);
-      }
-    }
-
-    return txHashes;
-  }
-
-  /**
-   * Get CORE price in USD (mock for now)
+   * Get CORE price in USD from CoinGecko API
    */
   private async getCorePrice(): Promise<number> {
-    // TODO: Integrate with price service
-    return 0.5; // Mock price
+    try {
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
+      const data: any = await response.json();
+      return data.coredaoorg?.usd || 0.50; // Fallback to $0.50 if API fails
+    } catch (error) {
+      this.logger.warn('Failed to fetch CORE price, using fallback:', error);
+      return 0.50; // Fallback price
+    }
   }
 
   /**

@@ -27,11 +27,9 @@ const ERC20_ABI = [
   'function decimals() view returns (uint8)',
 ];
 
-// Core DEX factory addresses
+// Core DEX factory addresses - using IcecreamSwap V2 as primary DEX
 const DEX_FACTORIES = {
-  ShadowSwap: '0x4cD26a47224175DA9b34C3c647bBdF8e5256119A', // Replace with actual
-  LFGSwap: '0x7892a064E37F5B566a90Cd99A7e2901e250bDa57', // Replace with actual
-  IcecreamSwap: '0xC6511F7924F192a09EBca59Cf3967105d0FaEc31', // Replace with actual
+  IcecreamSwap: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // IcecreamSwap V2 Factory
 };
 
 export class TokenStreamHandler {

@@ -6,7 +6,7 @@ Production-ready unified trading engine for Core Meme Platform that seamlessly h
 
 - **Unified Trading Router**: Intelligent routing between bonding curve and DEX
 - **Bonding Curve Trading**: Direct integration with MemeFactory contract
-- **Multi-DEX Support**: Trade across IcecreamSwap, ShadowSwap, and more
+- **DEX Integration**: IcecreamSwap V2 integration with optimized routing
 - **MEV Protection**: Built-in protection against sandwich attacks and frontrunning
 - **Price Impact Calculation**: Real-time price impact and slippage protection
 - **Gas Optimization**: Intelligent gas price estimation and optimization
@@ -28,6 +28,41 @@ cp .env.example .env
 
 2. Configure environment variables:
 ```env
+# Network Configuration
+NETWORK=testnet  # or mainnet
+CORE_TESTNET_RPC=https://rpc.test2.btcs.network
+CORE_MAINNET_RPC=https://rpc.coredao.org
+
+# Contract Addresses
+MEME_FACTORY_ADDRESS=0x04242CfFdEC8F96A46857d4A50458F57eC662cE1
+
+# IcecreamSwap V2 Configuration
+ICECREAM_ROUTER=0xBb5e1777A331ED93E07cF043363e48d320eb96c4
+ICECREAM_FACTORY=0x9E6d21E759A7A288b80eef94E4737D313D31c13f
+INIT_CODE_HASH=0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3
+
+# WCORE Addresses
+WCORE_MAINNET=0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f
+WCORE_TESTNET=0x5c872990530Fe4f7322cA0c302762788e8199Ed0
+
+# Trading Configuration
+MAX_SLIPPAGE=10  # 10% max slippage
+DEFAULT_DEADLINE=1200  # 20 minutes
+MAX_GAS_PRICE=100000000000  # 100 Gwei max
+
+# MEV Protection
+MEV_PROTECTION=true
+MAX_PRIORITY_FEE=2000000000  # 2 Gwei
+FRONT_RUN_PROTECTION=true
+BACK_RUN_PROTECTION=true
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/corememe
+REDIS_URL=redis://localhost:6379
+
+# Logging
+LOG_LEVEL=info
+```
 NETWORK=testnet
 MEME_FACTORY_ADDRESS=0x... # From contract deployment
 ```

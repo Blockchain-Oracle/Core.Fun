@@ -153,13 +153,6 @@ export class TradingCommands {
       if (result.success) {
         // Generate trade result image
         const tokenInfo = await this.tradingExecutor.getTokenInfo(tokenAddress);
-        const tradeImage = await this.imageGenerator.generateTradeResult(
-          'buy',
-          tokenInfo.symbol,
-          result.amountOut,
-          result.price,
-          result.amountIn
-        );
 
         // Delete loading message
         await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
@@ -175,14 +168,15 @@ export class TradingCommands {
           ],
         ];
 
-        await ctx.replyWithPhoto(
-          { source: tradeImage },
-          {
-            caption: `✅ *Buy Order Executed!*\n${tokenInfo.symbol} purchased successfully`,
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: keyboard },
-          }
-        );
+        // Send success message (image generation currently disabled)
+        await ctx.reply(`✅ *Buy Order Executed!*\n${tokenInfo.symbol} purchased successfully\n\n` +
+                        `Amount: ${result.amountOut}\n` +
+                        `Price: $${result.price}\n` +
+                        `Total: ${result.amountIn} CORE\n` +
+                        `Transaction: [View](https://scan.coredao.org/tx/${result.transactionHash})`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard },
+        });
       } else {
         await ctx.telegram.editMessageText(
           ctx.chat!.id,
@@ -288,7 +282,13 @@ export class TradingCommands {
 
     try {
       // Generate position card image
-      const positionImage = await this.imageGenerator.generatePositionCard(position);
+      let positionImage;
+      try {
+        positionImage = await this.imageGenerator.generatePositionCard(position);
+      } catch (imageError) {
+        this.logger.warn('Image generation failed, using text response:', imageError);
+        positionImage = null;
+      }
 
       // Delete loading message
       await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
@@ -311,16 +311,27 @@ export class TradingCommands {
 
       const pnlSign = position.pnl >= 0 ? '+' : '';
       const caption = `💸 *${position.tokenSymbol} Position*\n` +
-        `P&L: ${pnlSign}${position.pnlPercentage.toFixed(2)}%`;
+        `P&L: ${pnlSign}${position.pnlPercentage.toFixed(2)}%\n\n` +
+        `Amount: ${position.amount}\n` +
+        `Current Value: ${position.currentValue.toFixed(2)} CORE\n` +
+        `Entry Price: $${position.avgBuyPrice}\n` +
+        `Current Price: $${position.currentPrice}`;
 
-      await ctx.replyWithPhoto(
-        { source: positionImage },
-        {
-          caption,
+      if (positionImage) {
+        await ctx.replyWithPhoto(
+          { source: positionImage },
+          {
+            caption,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard },
+          }
+        );
+      } else {
+        await ctx.reply(caption, {
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: keyboard },
-        }
-      );
+        });
+      }
     } catch (error) {
       this.logger.error('Failed to show position:', error);
       await ctx.telegram.editMessageText(
@@ -364,14 +375,7 @@ export class TradingCommands {
           percentage: position.pnlPercentage
         } : undefined;
         
-        const tradeImage = await this.imageGenerator.generateTradeResult(
-          'sell',
-          tokenInfo.symbol,
-          result.amountIn,
-          result.price,
-          result.amountOut,
-          pnl
-        );
+        // Trade image generation removed - handled by text message above
 
         // Delete loading message
         await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
@@ -387,14 +391,15 @@ export class TradingCommands {
           ],
         ];
 
-        await ctx.replyWithPhoto(
-          { source: tradeImage },
-          {
-            caption: `✅ *Sell Order Executed!*\n${tokenInfo.symbol} sold successfully`,
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: keyboard },
-          }
-        );
+        // Send success message (image generation currently disabled)
+        await ctx.reply(`✅ *Sell Order Executed!*\n${tokenInfo.symbol} sold successfully\n\n` +
+                        `Amount: ${result.amountIn}\n` +
+                        `Price: $${result.price}\n` +
+                        `Total: ${result.amountOut} CORE\n` +
+                        `Transaction: [View](https://scan.coredao.org/tx/${result.transactionHash})`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard },
+        });
       } else {
         await ctx.telegram.editMessageText(
           ctx.chat!.id,
@@ -472,17 +477,10 @@ export class TradingCommands {
         return;
       }
 
-      // Generate portfolio image
-      const portfolioImage = await this.imageGenerator.generatePortfolioCard(
-        positions,
-        summary.totalValue,
-        summary.totalPnL
-      );
-
       // Delete loading message
       await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
 
-      // Send portfolio image
+      // Send portfolio summary (image generation disabled)
       const keyboard = [
         [
           Markup.button.callback('📊 View Positions', 'positions_detailed'),
@@ -494,14 +492,16 @@ export class TradingCommands {
         ],
       ];
 
-      await ctx.replyWithPhoto(
-        { source: portfolioImage },
-        {
-          caption: `💼 *Portfolio Overview*\n${summary.totalPositions} positions tracked`,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        }
-      );
+      const pnlSign = summary.totalPnL >= 0 ? '+' : '';
+      const caption = `💼 *Portfolio Overview*\n\n` +
+        `Positions: ${summary.totalPositions}\n` +
+        `Total Value: ${summary.totalValue.toFixed(2)} CORE\n` +
+        `Total P&L: ${pnlSign}${summary.totalPnL.toFixed(2)} CORE`;
+
+      await ctx.reply(caption, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
     } catch (error) {
       this.logger.error('Failed to show portfolio:', error);
       await ctx.telegram.editMessageText(
@@ -527,9 +527,6 @@ export class TradingCommands {
     try {
       const pnlData = await this.pnlCalculator.calculateUserPnL(ctx.session.userId, 7);
       
-      // Generate P&L chart image
-      const pnlChart = await this.imageGenerator.generatePnLChart(pnlData);
-
       // Delete loading message
       await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
 
@@ -550,14 +547,11 @@ export class TradingCommands {
         `Win Rate: ${pnlData.winRate.toFixed(1)}% (${pnlData.winningTrades}W/${pnlData.losingTrades}L)\n` +
         `Total: ${pnlData.totalPnL >= 0 ? '+' : ''}${pnlData.totalPnL.toFixed(2)} CORE`;
 
-      await ctx.replyWithPhoto(
-        { source: pnlChart },
-        {
-          caption: summary,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        }
-      );
+      // Send P&L summary (image generation disabled)
+      await ctx.reply(summary, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
     } catch (error) {
       this.logger.error('Failed to show trade history:', error);
       await ctx.telegram.editMessageText(
@@ -652,9 +646,6 @@ export class TradingCommands {
     }
 
     try {
-      // Generate position card
-      const positionImage = await this.imageGenerator.generatePositionCard(position);
-      
       // Delete loading message
       await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
 
@@ -668,14 +659,18 @@ export class TradingCommands {
         ],
       ];
 
-      await ctx.replyWithPhoto(
-        { source: positionImage },
-        {
-          caption: `📊 *${position.tokenSymbol} Position*`,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        }
-      );
+      const pnlSign = position.pnl >= 0 ? '+' : '';
+      const caption = `📊 *${position.tokenSymbol} Position*\n\n` +
+        `Amount: ${position.amount}\n` +
+        `Current Value: ${position.currentValue.toFixed(2)} CORE\n` +
+        `Entry Price: $${position.avgBuyPrice}\n` +
+        `Current Price: $${position.currentPrice}\n` +
+        `P&L: ${pnlSign}${position.pnlPercentage.toFixed(2)}%`;
+
+      await ctx.reply(caption, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
     } catch (error) {
       this.logger.error('Failed to show position:', error);
       await ctx.telegram.editMessageText(
@@ -700,7 +695,6 @@ export class TradingCommands {
 
     try {
       const pnlData = await this.pnlCalculator.calculateUserPnL(ctx.session.userId, days);
-      const pnlChart = await this.imageGenerator.generatePnLChart(pnlData);
 
       await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
 
@@ -715,14 +709,16 @@ export class TradingCommands {
         ],
       ];
 
-      await ctx.replyWithPhoto(
-        { source: pnlChart },
-        {
-          caption: `📈 *P&L Chart (${days} days)*`,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        }
-      );
+      const pnlSign = pnlData.totalPnL >= 0 ? '+' : '';
+      const caption = `📈 *P&L Chart (${days} days)*\n\n` +
+        `Total P&L: ${pnlSign}${pnlData.totalPnL.toFixed(2)} CORE\n` +
+        `Win Rate: ${pnlData.winRate.toFixed(1)}%\n` +
+        `Trades: ${pnlData.totalTrades} (${pnlData.winningTrades}W/${pnlData.losingTrades}L)`;
+
+      await ctx.reply(caption, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
     } catch (error) {
       this.logger.error('Failed to show P&L chart:', error);
       await ctx.telegram.editMessageText(
@@ -732,5 +728,36 @@ export class TradingCommands {
         '❌ Failed to generate chart'
       );
     }
+  }
+
+  /**
+   * Show trading menu
+   */
+  async showTradingMenu(ctx: BotContext): Promise<void> {
+    const menuText = `📈 *Trading Hub*\n\n` +
+      `Welcome to Core Meme Trading! Choose your action:`;
+
+    const keyboard = [
+      [
+        { text: '💰 Buy Token', callback_data: 'trading_buy' },
+        { text: '💸 Sell Token', callback_data: 'trading_sell' },
+      ],
+      [
+        { text: '🎯 Snipe Token', callback_data: 'trading_snipe' },
+        { text: '📊 Portfolio', callback_data: 'portfolio_view' },
+      ],
+      [
+        { text: '📜 Trade History', callback_data: 'trade_history' },
+        { text: '📈 P&L Chart', callback_data: 'view_pnl_chart' },
+      ],
+      [
+        { text: '🔙 Main Menu', callback_data: 'back' },
+      ],
+    ];
+
+    await ctx.reply(menuText, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard },
+    });
   }
 }

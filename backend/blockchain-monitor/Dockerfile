@@ -22,6 +22,10 @@ RUN pnpm install --filter @core-meme-platform/blockchain-monitor... --filter @co
 COPY shared ./shared
 COPY backend/blockchain-monitor ./backend/blockchain-monitor
 
+# Build shared workspace first
+WORKDIR /app/shared
+RUN pnpm run build
+
 # Build the application
 WORKDIR /app/backend/blockchain-monitor
 RUN pnpm run build
@@ -46,6 +50,7 @@ RUN pnpm install --prod --filter @core-meme-platform/blockchain-monitor... --fil
 
 # Copy built application from builder
 COPY --from=builder /app/backend/blockchain-monitor/dist /app/backend/blockchain-monitor/dist
+COPY --from=builder /app/shared/dist /app/shared/dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

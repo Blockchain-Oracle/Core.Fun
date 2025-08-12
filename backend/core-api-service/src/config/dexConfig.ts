@@ -9,7 +9,6 @@ interface DexAddresses {
 
 export interface DexNetworkConfig {
   IceCreamSwap?: DexAddresses;
-  ShadowSwap?: DexAddresses;
   tokens: {
     WCORE: string;
     USDT?: string;
@@ -42,14 +41,12 @@ export const DEX_CONFIG: DexConfigRoot = {
   // Core testnet chain ID: 1115/1114 (varies by infra)
   
   mainnet: {
-    // IceCreamSwap V2 (Confirmed from docs)
+    // IceCreamSwap V2 - Primary DEX on Core mainnet
     IceCreamSwap: {
       factory: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f',
       router: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4',
-      initCodeHash: '0xf52888d456dc5a5a37fd2ffeee852cf88bffe68e0f579c67b093d04db005b857',
+      initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3',
     },
-    
-    // ShadowSwap: not used on mainnet in our setup (omit or set to undefined)
     
     // Common token addresses
     tokens: {
@@ -63,18 +60,11 @@ export const DEX_CONFIG: DexConfigRoot = {
   },
   
   testnet: {
-    // ShadowSwap (testnet)
-    ShadowSwap: {
-      factory: '0x6e46ECa8d210C426ca6cA845feb2881Dc8c99426',
-      router: '0x524027673879FEDfFE8dD3baE1BF8FDD2Cd1bF13',
-      initCodeHash: '0x6eef19478e462b999a9ed867f57d8c87e8e60fb982a9c6b76df387b0c54e5f37',
-    },
-
-    // IceCreamSwap: not available on testnet (set to zero addresses)
+    // IceCreamSwap V2 - also available on testnet 
     IceCreamSwap: {
-      factory: '0x0000000000000000000000000000000000000000',
-      router: '0x0000000000000000000000000000000000000000',
-      initCodeHash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      factory: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f',
+      router: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4',
+      initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3',
     },
     
     // Common testnet tokens
@@ -147,7 +137,6 @@ export const DEX_CONFIG: DexConfigRoot = {
     // Volume estimation multipliers (volume as % of liquidity)
     volumeMultipliers: {
       IceCreamSwap: 0.1,    // 10% daily volume
-      ShadowSwap: 0.15,     // 15% daily volume
     },
   },
 };
@@ -159,7 +148,7 @@ export function getDexConfig(network: 'mainnet' | 'testnet'): DexNetworkConfig {
 
 // Helper function to get all DEX names
 export function getAllDexNames(): string[] {
-  return ['IceCreamSwap', 'ShadowSwap'];
+  return ['IceCreamSwap'];
 }
 
 // Helper function to validate token address

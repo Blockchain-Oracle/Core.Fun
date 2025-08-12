@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { randomBytes } from 'crypto';
 import { TradeParams, Route, TradingConfig, MEVProtectionConfig } from '../types';
 import { logger } from '../utils/logger';
 
@@ -206,7 +207,7 @@ export class MEVProtection {
 
     // Add random delay to prevent timing attacks
     if (this.mevConfig.frontRunProtection) {
-      const delay = Math.random() * 1000; // 0-1 second random delay
+      const delay = (randomBytes(2).readUInt16BE(0) / 65535) * 1000; // 0-1 second cryptographically secure random delay
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 

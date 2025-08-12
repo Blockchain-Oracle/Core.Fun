@@ -21,11 +21,9 @@ const ROUTER_ABI = [
   'event Swap(address indexed sender, uint amount0In, uint amount1In, uint amount0Out, uint amount1Out, address indexed to)',
 ];
 
-// DEX Router addresses
+// DEX Router addresses - Using only IcecreamSwap
 const DEX_ROUTERS = {
-  ShadowSwap: '0xd15CeE1DEaFBad6C0B3Fd7489677Cc102B141464',
-  LFGSwap: '0x52Ada6E8d553E5EaCA196c9D975DB7a76627dc61',
-  IcecreamSwap: '0xC5B19E6a5e4806A107B01f246232e65E195D9ae8',
+  IcecreamSwap: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // Correct IcecreamSwap V2 Router
 };
 
 export class TradeStreamHandler {
@@ -112,7 +110,6 @@ export class TradeStreamHandler {
       const block = await event.getBlock();
       
       // Parse transaction to determine token and amounts
-      // This is simplified - actual implementation would decode the transaction input
       const tradeData = await this.parseSwapTransaction(tx, receipt, dexName);
       
       if (!tradeData) return;
@@ -141,27 +138,35 @@ export class TradeStreamHandler {
 
   private async parseSwapTransaction(
     tx: any,
-    _receipt: any,
+    receipt: any,
     _dexName: string
   ): Promise<Partial<Trade> | null> {
     try {
-      // This would parse the actual transaction data
-      // For now, returning mock data
-      // In production, would decode the router method call and extract:
-      // - Token address
-      // - Trade direction (buy/sell)
-      // - Amounts
-      // - Price
+      // Parse actual transaction data from DEX router calls
+      const tradeData = await this.parseTradeTransaction(tx, receipt);
+      if (!tradeData) {
+        return null; // Not a valid trade transaction
+      }
+      
+      // Calculate price from amounts
+      let price = 0;
+      if (tradeData.amountToken && tradeData.amountCore) {
+        const tokenAmount = parseFloat(tradeData.amountToken);
+        const coreAmount = parseFloat(tradeData.amountCore);
+        if (tokenAmount > 0) {
+          price = coreAmount / tokenAmount;
+        }
+      }
       
       return {
-        txHash: tx.hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        tokenAddress: '0x' + '0'.repeat(40), // Mock address
-        tokenSymbol: 'MOCK',
-        trader: tx.from || '0x0000000000000000000000000000000000000000',
-        type: Math.random() > 0.5 ? 'buy' : 'sell',
-        amountToken: (Math.random() * 10000).toFixed(2),
-        amountCore: (Math.random() * 10).toFixed(4),
-        price: Math.random() * 0.01,
+        txHash: tx.hash,
+        tokenAddress: tradeData.tokenAddress,
+        tokenSymbol: tradeData.tokenSymbol || 'UNKNOWN',
+        trader: tx.from,
+        type: tradeData.type as 'buy' | 'sell',
+        amountToken: tradeData.amountToken || '0',
+        amountCore: tradeData.amountCore || '0',
+        price,
       };
     } catch (error) {
       this.logger.error('Error parsing swap transaction:', error);
@@ -186,5 +191,90 @@ export class TradeStreamHandler {
         trades: [trade],
       }));
     });
+  }
+
+  private async parseTradeTransaction(tx: any, receipt: any): Promise<any> {
+    try {
+      // Parse transaction input data to identify the method and parameters
+      const input = tx.input || tx.data;
+      if (!input || input === '0x') return null;
+
+      // Common DEX router and MemeFactory method signatures
+      const methodSignatures: { [key: string]: string } = {
+        '0x7ff36ab5': 'swapExactETHForTokens',
+        '0xfb3bdb41': 'swapETHForExactTokens',
+        '0x18cbafe5': 'swapExactTokensForETH',
+        '0x4a25d94a': 'swapTokensForExactETH',
+        '0x38ed1739': 'swapExactTokensForTokens',
+        // MemeFactory methods
+        '0xa6f2ae3a': 'buyToken',
+        '0xe4849b32': 'sellToken',
+      };
+
+      const methodId = input.slice(0, 10).toLowerCase();
+      const method = methodSignatures[methodId];
+
+      if (!method) return null;
+
+      // Determine trade type from method
+      const isBuy = method.includes('ETHForTokens') || method === 'buyToken';
+      const isSell = method.includes('TokensForETH') || method === 'sellToken';
+
+      // Parse logs to get actual amounts from Transfer events
+      let tokenAddress: string | undefined;
+      let amountToken = '0';
+      let amountCore = ethers.formatEther(tx.value || '0');
+      
+      // Look for Transfer events in logs
+      for (const log of receipt.logs) {
+        // ERC20 Transfer event signature
+        if (log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
+          // This is a token transfer
+          if (!tokenAddress && log.address !== '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f') { // Not WCORE
+            tokenAddress = log.address;
+            // Decode transfer amount (third topic or data)
+            if (log.data && log.data.length >= 66) {
+              amountToken = ethers.formatEther('0x' + log.data.slice(2, 66));
+            }
+          }
+        }
+      }
+
+      if (!tokenAddress) {
+        // Try to extract from input data for MemeFactory calls
+        if (method === 'buyToken' || method === 'sellToken') {
+          // First parameter is token address
+          tokenAddress = '0x' + input.slice(34, 74);
+        } else {
+          // For DEX swaps, extract from path parameter
+          return null; // Skip complex DEX decoding for now
+        }
+      }
+
+      // Fetch token symbol from contract
+      let tokenSymbol = 'UNKNOWN';
+      try {
+        const tokenContract = new ethers.Contract(
+          tokenAddress,
+          ['function symbol() view returns (string)'],
+          this.provider
+        );
+        tokenSymbol = await tokenContract.symbol();
+      } catch (e) {
+        // Ignore symbol fetch errors
+      }
+
+      return {
+        method,
+        tokenAddress,
+        amountToken,
+        amountCore,
+        tokenSymbol,
+        type: isBuy ? 'buy' : (isSell ? 'sell' : 'swap'),
+      };
+    } catch (error) {
+      this.logger.error('Error parsing trade transaction:', error);
+      return null;
+    }
   }
 }

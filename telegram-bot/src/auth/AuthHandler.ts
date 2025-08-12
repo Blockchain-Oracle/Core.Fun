@@ -109,16 +109,15 @@ export class AuthHandler {
       // Generate login URL
       const loginUrl = await this.generateLoginUrl(authCode, user);
 
-      // Send success message with login button
+      // Send success message without URL button (Telegram rejects localhost URLs)
       await ctx.reply(
         `✅ *Authentication Successful!*\n\n` +
-        `👤 Username: @${username}\n` +
-        `💼 Wallet: \`${user.walletAddress}\`\n\n` +
-        `Click the button below to complete login:`,
+        `👤 Username: ${username}\n` +
+        `💼 Wallet: ${user.walletAddress}\n\n` +
+        `Your account is ready! Use the menu below to continue:`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.url('🚀 Complete Login', loginUrl)],
             [Markup.button.callback('💼 View Wallet', 'wallet_view')],
             [Markup.button.callback('📊 Open Dashboard', 'dashboard')],
           ])
@@ -165,7 +164,7 @@ export class AuthHandler {
       await ctx.reply(
         `🎉 *Welcome to Core Meme Platform!*\n\n` +
         `Your account has been created successfully!\n\n` +
-        `👤 *Username:* @${username}\n` +
+        `👤 *Username:* ${this.escapeMarkdown(username)}\n` +
         `💼 *Wallet Address:*\n\`${wallet.address}\`\n\n` +
         `⚠️ *Important:*\n` +
         `• Your wallet has been automatically created\n` +
@@ -184,7 +183,7 @@ export class AuthHandler {
             [Markup.button.callback('📈 Start Trading', 'trade_menu')],
             [Markup.button.callback('🚨 Set Alerts', 'alerts_menu')],
             [Markup.button.callback('💎 Go Premium', 'subscribe_menu')],
-            [Markup.button.url('🌐 Open Web App', process.env.FRONTEND_URL || 'https://corememe.io')],
+            [Markup.button.callback('🌐 Get Web Link', 'get_web_link')],
           ])
         }
       );
@@ -238,7 +237,7 @@ export class AuthHandler {
   private async showMainMenu(ctx: BotContext, user: any) {
     const menuText = `
 👋 *Welcome back, ${user.username}!*\n\n
-💼 Wallet: \`${this.shortenAddress(user.walletAddress)}\`\n
+💼 Wallet: ${this.shortenAddress(user.walletAddress)}\n
 📊 Portfolio Value: $${user.portfolioValue || '0.00'}\n
 🎯 Subscription: ${user.subscriptionTier || 'Free'}\n\n
 What would you like to do today?
@@ -260,7 +259,7 @@ What would you like to do today?
           Markup.button.callback('⚙️ Settings', 'settings_menu'),
         ],
         [
-          Markup.button.url('🌐 Open Web App', process.env.FRONTEND_URL || 'https://corememe.io'),
+          Markup.button.callback('🌐 Get Web Link', 'get_web_link'),
         ],
       ])
     });
@@ -278,6 +277,225 @@ What would you like to do today?
   }
 
   /**
+   * Handle Web App authentication request from direct link
+   */
+  async handleWebAppAuthRequest(ctx: BotContext): Promise<void> {
+    const userId = ctx.from?.id;
+    const username = ctx.from?.username || `user_${userId}`;
+    
+    if (!userId) {
+      await ctx.reply('Error: Unable to get user information');
+      return;
+    }
+
+    try {
+      // Check if user exists, create if not
+      let user = await this.db.getUserByTelegramId(userId);
+      
+      if (!user) {
+        // Create new user with wallet
+        user = await this.createUserWithWallet(userId, username);
+        
+        await ctx.reply(
+          `✅ *Account Created!*\n\n` +
+          `👤 Username: ${username}\n` +
+          `💼 Wallet: ${user.walletAddress}\n\n` +
+          `Your account and wallet have been created successfully!`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      // Generate direct login URL (fallback method)
+      const loginUrl = await this.generateDirectLoginUrl(user);
+
+      // Send success message with the login URL for user to copy
+      await ctx.reply(
+        `🚀 *Ready for Web Access!*\n\n` +
+        `👤 *Username:* ${this.escapeMarkdown(username)}\n` +
+        `💼 *Wallet:* \`${this.shortenAddress(user.walletAddress)}\`\n\n` +
+        `🌐 *Web Access URL:*\n\`${loginUrl}\`\n\n` +
+        `Copy the URL above and paste it in your browser to access the web interface.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💼 View Wallet', 'wallet_view')],
+            [Markup.button.callback('📊 Dashboard', 'dashboard')],
+          ])
+        }
+      );
+
+      this.logger.info(`Web app auth request handled for user ${userId}`);
+
+    } catch (error) {
+      this.logger.error('Error in handleWebAppAuthRequest:', error);
+      await ctx.reply('❌ Authentication setup failed. Please try again.');
+    }
+  }
+
+  /**
+   * Handle Web App authentication request (legacy method)
+   */
+  async handleWebAppAuth(ctx: BotContext): Promise<void> {
+    const userId = ctx.from?.id;
+    const username = ctx.from?.username || `user_${userId}`;
+    
+    if (!userId) {
+      await ctx.reply('Error: Unable to get user information');
+      return;
+    }
+
+    try {
+      // Check if user exists, create if not
+      let user = await this.db.getUserByTelegramId(userId);
+      
+      if (!user) {
+        // Create new user with wallet
+        user = await this.createUserWithWallet(userId, username);
+        
+        await ctx.reply(
+          `✅ *Account Created!*\n\n` +
+          `👤 Username: ${username}\n` +
+          `💼 Wallet: ${user.walletAddress}\n\n` +
+          `Your account and wallet have been created successfully!`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      // Create session token for Web App
+      const sessionToken = await this.sessionManager.generateToken({
+        userId: user.id,
+        telegramId: user.telegramId,
+        username: user.username,
+        walletAddress: user.walletAddress,
+      });
+
+      // Send Web App authentication data back
+      await ctx.reply(
+        `🔐 *Authentication Complete*\n\n` +
+        `Your wallet is now connected to the web app!\n\n` +
+        `💼 Wallet: ${this.shortenAddress(user.walletAddress)}\n` +
+        `🔑 Session active for 7 days`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🌐 Get Web Link', callback_data: 'get_web_link' }],
+              [{ text: '💼 View Wallet', callback_data: 'wallet_view' }],
+            ]
+          }
+        }
+      );
+
+      this.logger.info(`Web App auth successful for user ${userId}`);
+
+    } catch (error) {
+      this.logger.error('Error in handleWebAppAuth:', error);
+      await ctx.reply('❌ Authentication failed. Please try again.');
+    }
+  }
+
+  /**
+   * Handle Web App data from frontend
+   */
+  async processWebAppData(webAppData: any): Promise<{
+    success: boolean;
+    user?: any;
+    token?: string;
+    error?: string;
+  }> {
+    try {
+      // Verify the Web App data is valid
+      if (!this.verifyWebAppData(webAppData)) {
+        return {
+          success: false,
+          error: 'Invalid Web App data signature'
+        };
+      }
+
+      const telegramUser = JSON.parse(webAppData.user);
+      const userId = telegramUser.id;
+      const username = telegramUser.username || `user_${userId}`;
+
+      // Check if user exists, create if not
+      let user = await this.db.getUserByTelegramId(userId);
+      
+      if (!user) {
+        // Create new user with wallet
+        user = await this.createUserWithWallet(userId, username);
+      }
+
+      // Generate session token
+      const token = await this.sessionManager.generateToken({
+        userId: user.id,
+        telegramId: user.telegramId,
+        username: user.username,
+        walletAddress: user.walletAddress,
+      });
+
+      return {
+        success: true,
+        user: {
+          id: user.id,
+          telegramId: user.telegramId,
+          username: user.username,
+          firstName: telegramUser.first_name,
+          lastName: telegramUser.last_name,
+          photoUrl: telegramUser.photo_url,
+          walletAddress: user.walletAddress,
+          createdAt: user.createdAt,
+          subscriptionTier: user.subscriptionTier || 'FREE',
+          isActive: true,
+        },
+        token
+      };
+
+    } catch (error) {
+      this.logger.error('Error processing Web App data:', error);
+      return {
+        success: false,
+        error: 'Failed to process authentication'
+      };
+    }
+  }
+
+  /**
+   * Verify Web App data signature
+   */
+  private verifyWebAppData(webAppData: any): boolean {
+    try {
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      if (!botToken) {
+        this.logger.warn('TELEGRAM_BOT_TOKEN not set, skipping Web App validation');
+        return true; // Skip validation in development
+      }
+
+      // Create the data check string
+      const { hash, ...data } = webAppData;
+      const dataCheckArr = Object.keys(data)
+        .sort()
+        .map(key => `${key}=${data[key]}`);
+      const dataCheckString = dataCheckArr.join('\n');
+
+      // Create secret key
+      const secretKey = crypto
+        .createHash('sha256')
+        .update(botToken)
+        .digest();
+
+      // Calculate hash
+      const calculatedHash = crypto
+        .createHmac('sha256', secretKey)
+        .update(dataCheckString)
+        .digest('hex');
+
+      return calculatedHash === hash;
+    } catch (error) {
+      this.logger.error('Web App data verification error:', error);
+      return false;
+    }
+  }
+
+  /**
    * Generate authentication code for web login
    */
   async generateAuthCode(): Promise<string> {
@@ -290,6 +508,47 @@ What would you like to do today?
     });
 
     return code;
+  }
+
+  /**
+   * Generate direct login URL (without auth code flow)
+   */
+  private async generateDirectLoginUrl(user: any): Promise<string> {
+    if (!user) {
+      throw new Error('User not found for login URL generation');
+    }
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    
+    // Generate JWT token
+    const token = await this.sessionManager.generateToken({
+      userId: user.id,
+      telegramId: user.telegramId,
+      username: user.username,
+      walletAddress: user.walletAddress,
+    });
+
+    // Generate a simple auth code for this session
+    const authCode = crypto.randomBytes(16).toString('hex');
+
+    // Generate signature
+    const signature = this.generateSignature({
+      authCode,
+      telegramId: user.telegramId,
+      walletAddress: user.walletAddress,
+      timestamp: Date.now(),
+    });
+
+    // Build URL with parameters
+    const params = new URLSearchParams({
+      code: authCode,
+      token,
+      signature,
+      address: user.walletAddress,
+      username: user.username || `user_${user.telegramId}`,
+      telegramId: user.telegramId.toString(),
+    });
+
+    return `${baseUrl}/auth/callback?${params.toString()}`;
   }
 
   /**
@@ -371,6 +630,14 @@ What would you like to do today?
    */
   private shortenAddress(address: string): string {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  /**
+   * Escape markdown characters in text
+   */
+  private escapeMarkdown(text: string): string {
+    // Remove @ symbol and escape other markdown characters
+    return text.replace(/@/g, '').replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
   }
 
   /**

@@ -101,7 +101,7 @@ export class DatabaseService {
           table.string('reserve1');
           table.string('total_supply');
           table.string('dex');
-          table.bigInteger('created_at');
+          table.bigInteger('pair_created_at'); // Renamed to avoid conflict
           table.integer('block_number');
           table.string('transaction_hash');
           table.timestamps(true, true);
@@ -109,7 +109,7 @@ export class DatabaseService {
           table.index(['token0']);
           table.index(['token1']);
           table.index(['dex']);
-          table.index(['created_at']);
+          table.index(['pair_created_at']);
         });
       }
 

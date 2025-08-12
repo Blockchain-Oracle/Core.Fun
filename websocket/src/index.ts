@@ -296,11 +296,22 @@ async function broadcastPriceUpdate(priceUpdate: any) {
   }
 }
 
-// Subscribe to Redis channels used by blockchain-monitor
-redisSub.subscribe('websocket:alerts');
-redisSub.subscribe('websocket:new_token');
-redisSub.subscribe('websocket:trade');
-redisSub.subscribe('websocket:price_update');
+// Subscribe to Redis channels used by blockchain-monitor when connected
+redisSub.on('ready', () => {
+  logger.info('Redis subscriber connected, subscribing to channels...');
+  redisSub.subscribe('websocket:alerts');
+  redisSub.subscribe('websocket:new_token');
+  redisSub.subscribe('websocket:trade');
+  redisSub.subscribe('websocket:price_update');
+});
+
+redisSub.on('error', (err) => {
+  logger.error('Redis subscriber error:', err);
+});
+
+redisSub.on('end', () => {
+  logger.warn('Redis subscriber connection ended');
+});
 
 // Cleanup inactive subscriptions periodically
 setInterval(async () => {
@@ -315,7 +326,7 @@ setInterval(async () => {
 }, 5 * 60 * 1000); // Every 5 minutes
 
 // Start server
-const PORT = process.env.WS_PORT || 3003;
+const PORT = process.env.WS_PORT || process.env.PORT || 8081;
 server.listen(PORT, () => {
   logger.info(`WebSocket server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);

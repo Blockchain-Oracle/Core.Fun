@@ -9,6 +9,7 @@ import { priceRouter } from './routes/price';
 import { healthRouter } from './routes/health';
 import { accountRouter } from './routes/account';
 import { statsRouter } from './routes/stats';
+import { authRouter } from './routes/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { createLogger } from '@core-meme/shared';
@@ -82,6 +83,7 @@ export class Server {
     this.app.use('/health', healthRouter);
 
     // API routes
+    this.app.use('/api/auth', authRouter);
     this.app.use('/api/token', tokenRouter);
     this.app.use('/api/contract', contractRouter);
     this.app.use('/api/price', priceRouter);

@@ -18,6 +18,14 @@ export interface PlatformContracts {
 
 // Load addresses from environment with validation
 function getContractAddress(envKey: string, defaultValue: string = '0x0000000000000000000000000000000000000000'): string {
+  // Special handling for MemeFactory which uses a different env var name
+  if (envKey === 'MEME_FACTORY_TESTNET' || envKey === 'MEME_FACTORY_MAINNET') {
+    const factoryAddress = process.env.MEME_FACTORY_ADDRESS;
+    if (factoryAddress && factoryAddress.startsWith('0x') && factoryAddress.length === 42) {
+      return factoryAddress.toLowerCase();
+    }
+  }
+  
   const address = process.env[envKey] || defaultValue;
   // Check if it's a valid address format (not the zero address placeholder)
   const isValidAddress = address !== defaultValue && 

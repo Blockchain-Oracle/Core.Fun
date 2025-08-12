@@ -7,6 +7,7 @@
 
 const Redis = require('ioredis');
 const WebSocket = require('ws');
+const { randomBytes } = require('crypto');
 
 // Configuration
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -111,7 +112,7 @@ async function simulateTrade() {
   console.log('\n💱 Simulating trade event...');
   
   const trade = {
-    transactionHash: '0x' + Math.random().toString(36).substring(2, 15),
+    transactionHash: '0x' + randomBytes(32).toString('hex'),
     tokenAddress: '0x1234567890123456789012345678901234567890',
     tokenSymbol: 'TEST',
     type: 'BUY',

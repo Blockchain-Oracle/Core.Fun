@@ -70,18 +70,11 @@ export class WalletCommands {
               Markup.button.callback('📤 Withdraw', 'withdraw'),
             ],
             [
-              Markup.button.callback('📊 Distribute', 'distribute'),
-              Markup.button.callback('🔄 Consolidate', 'consolidate'),
-            ],
-            [
               Markup.button.callback('➕ Add Wallet', 'add_wallet_menu'),
               Markup.button.callback('🔑 Export Key', 'wallet_export'),
             ],
             [
-              Markup.button.url(
-                '🌐 Wallet Manager',
-                `${process.env.FRONTEND_URL}/walletManager?telegramId=${ctx.session.telegramId}`
-              ),
+              Markup.button.callback('🌐 Wallet Manager', 'wallet_manager'),
             ],
             [
               Markup.button.url(
@@ -174,10 +167,7 @@ export class WalletCommands {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [
-              Markup.button.url(
-                '➕ Add Withdraw Address',
-                `${process.env.FRONTEND_URL}/walletManager?action=add_withdraw&telegramId=${ctx.session.telegramId}`
-              ),
+              Markup.button.callback('➕ Add Withdraw Address', 'add_withdraw_address'),
             ],
             [Markup.button.callback('🔙 Back', 'wallet_view')],
           ])
@@ -201,10 +191,7 @@ export class WalletCommands {
     }
 
     buttons.push([
-      Markup.button.url(
-        '➕ Add New Address',
-        `${process.env.FRONTEND_URL}/walletManager?action=add_withdraw`
-      ),
+      Markup.button.callback('➕ Add New Address', 'add_withdraw_address'),
     ]);
     buttons.push([Markup.button.callback('🔙 Back', 'wallet_view')]);
 
@@ -330,8 +317,6 @@ export class WalletCommands {
    * Open wallet manager in web
    */
   async openWalletManager(ctx: BotContext) {
-    const webUrl = `${process.env.FRONTEND_URL}/walletManager?telegramId=${ctx.session?.telegramId}`;
-    
     await ctx.reply(
       `🏦 *Wallet Manager*\n\n` +
       `Access advanced wallet features:\n` +
@@ -339,14 +324,53 @@ export class WalletCommands {
       `• Add withdraw addresses\n` +
       `• Distribute & consolidate funds\n` +
       `• Transaction history\n` +
-      `• Export/Import wallets\n`,
+      `• Export/Import wallets\n\n` +
+      `Use the main menu buttons to access these features.`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.url('🌐 Open Wallet Manager', webUrl)],
+          [Markup.button.callback('🔙 Back to Wallet', 'wallet_view')],
         ])
       }
     );
+  }
+
+  /**
+   * Show add funds information
+   */
+  async showAddFunds(ctx: BotContext): Promise<void> {
+    if (!ctx.session?.walletAddress) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+
+    const message = `💸 *Add Funds to Your Wallet*\n\n` +
+      `Send CORE tokens to your wallet address:\n\n` +
+      `\`${ctx.session.walletAddress}\`\n\n` +
+      `⚠️ *Important:*\n` +
+      `• Only send CORE tokens to this address\n` +
+      `• Use Core blockchain (Network ID: 1116)\n` +
+      `• Minimum deposit: 0.001 CORE\n` +
+      `• Funds will appear in your balance automatically\n\n` +
+      `🔗 You can copy the address above or scan the QR code.`;
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: '🔍 View on Explorer',
+              url: `https://scan.coredao.org/address/${ctx.session.walletAddress}`
+            }
+          ],
+          [
+            { text: '🔄 Check Balance', callback_data: 'refresh_balance' },
+            { text: '💼 Back to Wallet', callback_data: 'wallet_view' }
+          ]
+        ]
+      }
+    });
   }
 
   /**

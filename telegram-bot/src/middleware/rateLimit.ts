@@ -1,5 +1,6 @@
 import { BotContext } from '../bot';
 import { createLogger } from '@core-meme/shared';
+import { randomBytes } from 'crypto';
 
 const logger = createLogger({ service: 'rate-limit' });
 
@@ -60,7 +61,7 @@ export async function rateLimitMiddleware(ctx: BotContext, next: () => Promise<v
   }
 
   // Clean up old entries periodically
-  if (Math.random() < 0.01) { // 1% chance
+  if (randomBytes(1)[0] < 2.56) { // ~1% chance (256 / 100 ≈ 2.56)
     cleanupRateLimits();
   }
 

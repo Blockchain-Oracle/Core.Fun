@@ -216,14 +216,117 @@ export class AnalyticsService {
     pairs: string[];
   }> {
     try {
-      // This would query DEX pairs for liquidity
-      // For now, return mock data
+      let totalLiquidityUSD = 0;
+      const pairs: string[] = [];
+      
+      // IcecreamSwap V2 Factory contract address for Core chain
+      const icecreamFactoryAddress = '0x9E6d21E759A7A288b80eef94E4737D313D31c13f'; // IcecreamSwap V2 Factory
+      const factoryContract = new ethers.Contract(
+        icecreamFactoryAddress,
+        [
+          'function getPair(address tokenA, address tokenB) view returns (address)',
+          'function allPairsLength() view returns (uint256)'
+        ],
+        this.provider
+      );
+      
+      // WCORE address on Core chain
+      const wcoreAddress = '0x191e94fa59739e188dce837f7f6978d84727ad01'; // WCORE
+      
+      // Get pair address for token/WCORE
+      const pairAddress = await factoryContract.getPair(tokenAddress, wcoreAddress);
+      
+      if (pairAddress && pairAddress !== ethers.ZeroAddress) {
+        const pairContract = new ethers.Contract(
+          pairAddress,
+          [
+            'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+            'function token0() view returns (address)',
+            'function token1() view returns (address)',
+            'function totalSupply() view returns (uint256)'
+          ],
+          this.provider
+        );
+        
+        const [reserves, token0, token1] = await Promise.all([
+          pairContract.getReserves(),
+          pairContract.token0(),
+          pairContract.token1()
+        ]);
+        
+        // Determine which reserve is CORE
+        const isCoreToken0 = token0.toLowerCase() === wcoreAddress.toLowerCase();
+        const coreReserve = isCoreToken0 ? reserves.reserve0 : reserves.reserve1;
+        const tokenReserve = isCoreToken0 ? reserves.reserve1 : reserves.reserve0;
+        
+        if (coreReserve > 0 && tokenReserve > 0) {
+          // Get CORE price in USD from CoinGecko
+          let corePrice = 0.50; // Default fallback price
+          try {
+            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
+            const data = await response.json();
+            corePrice = data.coredaoorg?.usd || 0.50;
+          } catch (error) {
+            this.logger.warn('Failed to fetch CORE price from CoinGecko:', error);
+          }
+          
+          // Calculate liquidity in USD (CORE reserve * 2 * CORE price)
+          const coreReserveFormatted = parseFloat(ethers.formatEther(coreReserve));
+          const liquidityUSD = coreReserveFormatted * 2 * corePrice;
+          
+          totalLiquidityUSD += liquidityUSD;
+          pairs.push(pairAddress);
+          
+          this.logger.debug(`Found liquidity for ${tokenAddress}: $${liquidityUSD.toFixed(2)} on IcecreamSwap`);
+        }
+      }
+      
+      // Also check for pairs with USDT if available
+      const usdtAddress = '0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1'; // USDT on Core (if available)
+      try {
+        const usdtPairAddress = await factoryContract.getPair(tokenAddress, usdtAddress);
+        
+        if (usdtPairAddress && usdtPairAddress !== ethers.ZeroAddress && !pairs.includes(usdtPairAddress)) {
+          const pairContract = new ethers.Contract(
+            usdtPairAddress,
+            [
+              'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+              'function token0() view returns (address)',
+              'function token1() view returns (address)'
+            ],
+            this.provider
+          );
+          
+          const [reserves, token0] = await Promise.all([
+            pairContract.getReserves(),
+            pairContract.token0()
+          ]);
+          
+          const isUsdtToken0 = token0.toLowerCase() === usdtAddress.toLowerCase();
+          const usdtReserve = isUsdtToken0 ? reserves.reserve0 : reserves.reserve1;
+          
+          if (usdtReserve > 0) {
+            // Assuming USDT has 6 decimals
+            const usdtReserveFormatted = parseFloat(ethers.formatUnits(usdtReserve, 6));
+            const liquidityUSD = usdtReserveFormatted * 2; // USDT ≈ $1
+            
+            totalLiquidityUSD += liquidityUSD;
+            pairs.push(usdtPairAddress);
+            
+            this.logger.debug(`Found additional USDT liquidity for ${tokenAddress}: $${liquidityUSD.toFixed(2)}`);
+          }
+        }
+      } catch (error) {
+        // USDT pair may not exist, which is fine
+        this.logger.debug(`No USDT pair found for ${tokenAddress}`);
+      }
+      
       return {
-        liquidityUSD: 0,
-        pairs: [],
+        liquidityUSD: totalLiquidityUSD,
+        pairs,
       };
     } catch (error) {
-      this.logger.error(`Error getting liquidity info:`, error);
+      this.logger.error(`Error getting liquidity info for ${tokenAddress}:`, error);
       return { liquidityUSD: 0, pairs: [] };
     }
   }

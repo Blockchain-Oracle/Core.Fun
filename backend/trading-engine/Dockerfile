@@ -21,6 +21,10 @@ RUN pnpm install --filter @core-meme-platform/trading-engine... --filter @core-m
 COPY shared ./shared
 COPY backend/trading-engine ./backend/trading-engine
 
+# Build shared workspace first
+WORKDIR /app/shared
+RUN pnpm run build
+
 # Build the application
 WORKDIR /app/backend/trading-engine
 RUN pnpm run build

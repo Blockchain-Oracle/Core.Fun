@@ -1,6 +1,13 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+# Install build dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    pkgconfig
+
 # Install pnpm
 RUN npm install -g pnpm
 
@@ -22,12 +29,23 @@ RUN pnpm install --filter @core-meme/telegram-bot... --filter @core-meme/shared.
 COPY shared ./shared
 COPY telegram-bot ./telegram-bot
 
+# Build shared workspace first
+WORKDIR /app/shared
+RUN pnpm run build
+
 # Build the application
 WORKDIR /app/telegram-bot
 RUN pnpm run build
 
 # Production stage
 FROM node:20-alpine
+
+# Install minimal runtime dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    pkgconfig
 
 # Install pnpm
 RUN npm install -g pnpm
@@ -46,6 +64,7 @@ RUN pnpm install --prod --filter @core-meme/telegram-bot... --filter @core-meme/
 
 # Copy built application from builder
 COPY --from=builder /app/telegram-bot/dist /app/telegram-bot/dist
+COPY --from=builder /app/shared/dist /app/shared/dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

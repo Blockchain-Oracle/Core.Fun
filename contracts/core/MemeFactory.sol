@@ -230,7 +230,7 @@ contract MemeFactory is ReentrancyGuard, Ownable {
         if(!sale.isLaunched) revert MemeFactory__SaleClosed();
         
         // Transfer remaining tokens and ETH to DEX
-        // This would integrate with Core DEXes like ShadowSwap
+        // This would integrate with Core DEXes like IcecreamSwap
         // For now, transfer to creator
         
         MemeToken token = MemeToken(_token);

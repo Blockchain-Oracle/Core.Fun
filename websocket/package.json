@@ -4,7 +4,7 @@
   "description": "WebSocket server for real-time data streaming",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node src/index-refactored.ts",
+    "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index-refactored.js",
     "test": "jest"

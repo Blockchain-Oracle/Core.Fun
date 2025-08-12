@@ -4,11 +4,12 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createLogger } from '@core-meme/shared';
 import authRoutes from './routes/auth';
+import walletRoutes from './routes/wallet';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.API_PORT || process.env.PORT || 3001;
 const logger = createLogger({ service: 'api', enableFileLogging: false });
 
 // Middleware
@@ -33,6 +34,7 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api', authRoutes);
+app.use('/api', walletRoutes);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

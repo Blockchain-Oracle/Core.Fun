@@ -362,14 +362,11 @@ export class CoreAPIService {
     }
 
     try {
-      // Get price from multiple DEXes for best coverage
+      // Get price from IcecreamSwap DEX
       const dexConfig = getDexConfig(this.network);
       const tasks: Array<Promise<PriceData | null>> = [];
       if (dexConfig.IceCreamSwap && dexConfig.IceCreamSwap.factory !== '0x0000000000000000000000000000000000000000') {
         tasks.push(this.getPriceFromIceCreamSwap(tokenAddress));
-      }
-      if (dexConfig.ShadowSwap && dexConfig.ShadowSwap.factory !== '0x0000000000000000000000000000000000000000') {
-        tasks.push(this.getPriceFromShadowSwap(tokenAddress));
       }
       const dexPrices = await Promise.allSettled(tasks);
 
@@ -1075,63 +1072,6 @@ export class CoreAPIService {
     }
   }
 
-  /**
-   * Get token price from ShadowSwap DEX
-   */
-  private async getPriceFromShadowSwap(tokenAddress: string): Promise<PriceData | null> {
-    try {
-      const dexConfig = getDexConfig(this.network);
-      const FACTORY_ADDRESS = dexConfig.ShadowSwap?.factory;
-      if (!FACTORY_ADDRESS) {
-        this.logger.debug('ShadowSwap not configured for this network');
-        return null;
-      }
-      const { WCORE: WCORE_ADDRESS } = dexConfig.tokens;
-      
-      const factoryAbi = DEX_CONFIG.abis.factory;
-      const pairAbi = DEX_CONFIG.abis.pair;
-      
-      const factory = new ethers.Contract(FACTORY_ADDRESS, factoryAbi, this.provider);
-      const pairAddress = await factory.getPair(tokenAddress, WCORE_ADDRESS);
-      
-      if (pairAddress === ethers.ZeroAddress) {
-        this.logger.debug(`No ShadowSwap pair found for token ${tokenAddress}`);
-        return null;
-      }
-      
-      const pair = new ethers.Contract(pairAddress, pairAbi, this.provider);
-      const [reserves, token0] = await Promise.all([
-        pair.getReserves(),
-        pair.token0(),
-      ]);
-      
-      const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
-      const tokenReserve = isToken0 ? reserves[0] : reserves[1];
-      const coreReserve = isToken0 ? reserves[1] : reserves[0];
-      
-      const tokenAmount = Number(ethers.formatUnits(tokenReserve, 18));
-      const coreAmount = Number(ethers.formatUnits(coreReserve, 18));
-      
-      if (tokenAmount === 0) return null;
-      
-      const priceCore = coreAmount / tokenAmount;
-      const corePrice = await this.getCorePrice();
-      const priceUSD = priceCore * parseFloat(corePrice.usd);
-      const liquidity = coreAmount * 2 * parseFloat(corePrice.usd);
-      
-      return {
-        token: tokenAddress,
-        priceUSD,
-        priceCore,
-        volume24h: liquidity * DEX_CONFIG.priceCalculation.volumeMultipliers.ShadowSwap,
-        liquidity,
-        priceChange24h: 0,
-      };
-    } catch (error) {
-      this.logger.debug(`ShadowSwap price fetch failed for ${tokenAddress}:`, error);
-      return null;
-    }
-  }
 
   // CoreX removed from supported DEX list
 

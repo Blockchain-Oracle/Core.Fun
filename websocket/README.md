@@ -1,15 +1,17 @@
 # Core Meme Platform - WebSocket Server
 
-Real-time data streaming server for the Core Meme Platform.
+Real-time data streaming server for the Core Meme Platform, providing live blockchain data, price updates, and event notifications to all connected clients.
 
-## Features
+## 🚀 Features
 
-- **Real-time Price Updates**: Stream live token prices
-- **New Token Alerts**: Instant notifications for new token launches
-- **Trade Monitoring**: Live trade feed for specific tokens
-- **Custom Alerts**: Price, volume, whale, and rug alerts
+- **Real-time Price Updates**: Stream live token prices from bonding curves and DEX pairs
+- **New Token Alerts**: Instant notifications for new token launches on MemeFactory
+- **Trade Monitoring**: Live trade feed with transaction details
+- **Custom Alerts**: Price targets, volume spikes, whale activity, and rug warnings
 - **Scalable Architecture**: Supports 10,000+ concurrent connections
-- **Redis Pub/Sub**: Efficient message broadcasting
+- **Redis Pub/Sub**: Efficient message broadcasting and caching
+- **Blockchain Integration**: Direct connection to Core blockchain via ethers.js
+- **CoinGecko Integration**: Real-time CORE/USD price feeds
 
 ## Architecture
 

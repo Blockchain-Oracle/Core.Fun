@@ -71,6 +71,10 @@ export class WalletService {
    */
   async decryptPrivateKey(encryptedKey: string, telegramId: number): Promise<string> {
     try {
+      if (!encryptedKey || !encryptedKey.includes(':')) {
+        throw new Error('Invalid encrypted key format');
+      }
+
       const algorithm = 'aes-256-cbc';
       const key = crypto
         .createHash('sha256')
@@ -78,17 +82,29 @@ export class WalletService {
         .digest();
       
       const parts = encryptedKey.split(':');
+      if (parts.length !== 2) {
+        throw new Error('Invalid encrypted key format - expected IV:encrypted format');
+      }
+
       const iv = Buffer.from(parts[0], 'hex');
       const encrypted = parts[1];
+      
+      this.logger.debug(`Decrypting with telegramId: ${telegramId}, IV length: ${iv.length}`);
       
       const decipher = crypto.createDecipheriv(algorithm, key, iv);
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
       
+      // Validate that the decrypted key looks like a valid private key
+      if (!decrypted.startsWith('0x') || decrypted.length !== 66) {
+        throw new Error('Decrypted key does not appear to be a valid private key');
+      }
+      
       return decrypted;
     } catch (error) {
       this.logger.error('Failed to decrypt private key:', error);
-      throw new Error('Failed to decrypt wallet');
+      this.logger.error(`TelegramId used: ${telegramId}, EncryptedKey format: ${encryptedKey?.substring(0, 20)}...`);
+      throw new Error(`Failed to decrypt wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -317,17 +333,23 @@ export class WalletService {
   async exportPrivateKey(userId: string, walletAddress: string, telegramId: number): Promise<string> {
     let encryptedPrivateKey: string | undefined;
     let walletFound = false;
+    let userTelegramId: number | undefined;
 
     // First, check if this is the user's primary wallet
     const user = await this.db.getUserById(userId);
     if (user && user.walletAddress === walletAddress) {
       encryptedPrivateKey = user.encryptedPrivateKey;
+      userTelegramId = user.telegramId;
       walletFound = true;
     } else {
       // Check additional wallets table
       const wallet = await this.db.getWalletByAddress(walletAddress);
       if (wallet && wallet.userId === userId) {
         encryptedPrivateKey = wallet.encryptedPrivateKey;
+        // Get the user's telegram ID for decryption
+        if (user) {
+          userTelegramId = user.telegramId;
+        }
         walletFound = true;
       }
     }
@@ -340,10 +362,16 @@ export class WalletService {
       throw new Error('Private key not available for this wallet');
     }
 
-    // Decrypt private key
+    if (!userTelegramId) {
+      throw new Error('Unable to get user telegram ID for decryption');
+    }
+
+    this.logger.info(`Attempting to decrypt wallet for user ${userId}, telegramId: ${userTelegramId}`);
+
+    // Decrypt private key using the stored telegram ID
     const privateKey = await this.decryptPrivateKey(
       encryptedPrivateKey,
-      telegramId
+      userTelegramId
     );
 
     // Log export action for security

@@ -1,8 +1,13 @@
 import { Router, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import { z } from 'zod';
 import { ethers } from 'ethers';
 import { createRedisClient, createLogger } from '@core-meme/shared';
+
+// Extend Express Request type
+interface AuthRequest extends Request {
+  user?: string | JwtPayload;
+}
 
 const router: Router = Router();
 const redis = createRedisClient();
@@ -41,7 +46,7 @@ async function authenticate(req: Request, res: Response, next: any) {
       });
     }
     
-    req.user = decoded;
+    (req as AuthRequest).user = decoded;
     next();
   } catch (error) {
     res.status(401).json({
@@ -84,7 +89,7 @@ router.get('/wallet/info', authenticate, async (req: Request, res: Response) => 
     let corePrice = 0.50; // Default fallback
     try {
       const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
-      const data = await response.json();
+      const data: any = await response.json();
       corePrice = data.coredaoorg?.usd || 0.50;
     } catch (error) {
       logger.warn('Failed to fetch CORE price:', error);
@@ -398,7 +403,7 @@ router.get('/wallet/transactions', authenticate, async (req: Request, res: Respo
       });
       
       const response = await fetch(`${coreScanUrl}?${params}`);
-      const data = await response.json();
+      const data: any = await response.json();
       
       if (data.status === '1' && data.result) {
         for (const tx of data.result) {

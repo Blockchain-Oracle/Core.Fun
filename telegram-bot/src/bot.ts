@@ -1,4 +1,4 @@
-import { Telegraf, Context } from 'telegraf';
+import { Telegraf, Context, Markup } from 'telegraf';
 import { message } from 'telegraf/filters';
 import dotenv from 'dotenv';
 import { AuthHandler } from './auth/AuthHandler';
@@ -27,6 +27,7 @@ export interface BotContext extends Context {
     isPremium?: boolean;
     isPro?: boolean;
     pendingAction?: string;
+    awaitingInput?: string;
   };
   db?: DatabaseService;
 }
@@ -245,6 +246,63 @@ class CoreMemeBot {
       await this.sendSettingsMenu(ctx);
     });
 
+    this.bot.action('settings_notifications', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '🔔 **Notification Settings**\n\n' +
+        '• New Tokens: ✅ Enabled\n' +
+        '• Price Alerts: ✅ Enabled\n' +
+        '• Trade Confirmations: ✅ Enabled\n' +
+        '• Large Transactions: ⚠️ Premium Only\n' +
+        '• Whale Alerts: ⚠️ Pro Only\n\n' +
+        'Click on any option to toggle on/off',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Back', 'settings_menu')]
+          ])
+        }
+      );
+    });
+
+    this.bot.action('settings_security', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '🔒 **Security Settings**\n\n' +
+        '• Two-Factor Auth: ❌ Disabled\n' +
+        '• Transaction PIN: ❌ Disabled\n' +
+        '• Auto-Lock: 15 minutes\n' +
+        '• IP Whitelist: ❌ Disabled\n\n' +
+        'Security features help protect your account',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔐 Export Private Key', 'wallet_export')],
+            [Markup.button.callback('🔙 Back', 'settings_menu')]
+          ])
+        }
+      );
+    });
+
+    this.bot.action('settings_trading', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '📊 **Trading Settings**\n\n' +
+        '• Default Slippage: 5%\n' +
+        '• Gas Price: Standard\n' +
+        '• Max Gas: 0.01 CORE\n' +
+        '• Auto-Approve: ✅ Enabled\n' +
+        '• MEV Protection: ⚠️ Pro Only\n\n' +
+        'Adjust your default trading parameters',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Back', 'settings_menu')]
+          ])
+        }
+      );
+    });
+
     this.bot.action('dashboard', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.sendMainMenu(ctx);
@@ -277,6 +335,47 @@ class CoreMemeBot {
     });
 
     // Trading callbacks
+    this.bot.action('trading_buy', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '💰 **Buy Token**\n\n' +
+        'Please send the token address you want to buy:\n\n' +
+        'Example: `0x123...abc`',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Cancel', 'trade_menu')]
+          ])
+        }
+      );
+      if (ctx.session) {
+        ctx.session.awaitingInput = 'buy_token_address';
+      }
+    });
+
+    this.bot.action('trading_sell', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.showPortfolio(ctx);
+    });
+
+    this.bot.action('trading_snipe', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '🎯 **Snipe Token**\n\n' +
+        'Enter the token address to snipe on launch:\n\n' +
+        'Example: `0x123...abc`',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Cancel', 'trade_menu')]
+          ])
+        }
+      );
+      if (ctx.session) {
+        ctx.session.awaitingInput = 'snipe_token_address';
+      }
+    });
+
     this.bot.action(/^buy_(.+)$/, authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       const tokenAddress = ctx.match[1];
@@ -312,6 +411,12 @@ class CoreMemeBot {
       await this.tradingCommands.showPortfolio(ctx);
     });
 
+    // Trade history callback
+    this.bot.action('trade_history', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.showTradeHistory(ctx);
+    });
+
     // P&L chart callbacks
     this.bot.action('view_pnl_chart', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
@@ -338,6 +443,42 @@ class CoreMemeBot {
       await ctx.answerCbQuery();
       const alertType = ctx.match[1];
       await this.alertCommands.toggleAlert(ctx, alertType);
+    });
+
+    this.bot.action('create_alert', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.createAlert(ctx);
+    });
+
+    this.bot.action('view_all_alerts', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.viewAllAlerts(ctx);
+    });
+
+    this.bot.action('delete_alert', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.deleteAlert(ctx);
+    });
+
+    this.bot.action('alert_history', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.alertHistory(ctx);
+    });
+
+    this.bot.action(/^delete_alert_(.+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const alertId = ctx.match[1];
+      await this.alertCommands.confirmDeleteAlert(ctx, alertId);
+    });
+
+    this.bot.action('track_token', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.trackToken(ctx);
+    });
+
+    this.bot.action('manage_alerts', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.alertCommands.manageAlerts(ctx);
     });
 
     // Subscription callbacks

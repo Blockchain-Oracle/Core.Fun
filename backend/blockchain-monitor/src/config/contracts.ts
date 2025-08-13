@@ -18,11 +18,25 @@ export interface PlatformContracts {
 
 // Load addresses from environment with validation
 function getContractAddress(envKey: string, defaultValue: string = '0x0000000000000000000000000000000000000000'): string {
-  // Special handling for MemeFactory which uses a different env var name
+  // Special handling for contracts that use simplified env var names
   if (envKey === 'MEME_FACTORY_TESTNET' || envKey === 'MEME_FACTORY_MAINNET') {
     const factoryAddress = process.env.MEME_FACTORY_ADDRESS;
     if (factoryAddress && factoryAddress.startsWith('0x') && factoryAddress.length === 42) {
       return factoryAddress.toLowerCase();
+    }
+  }
+  
+  if (envKey === 'STAKING_CONTRACT_TESTNET' || envKey === 'STAKING_CONTRACT_MAINNET') {
+    const stakingAddress = process.env.STAKING_ADDRESS;
+    if (stakingAddress && stakingAddress.startsWith('0x') && stakingAddress.length === 42) {
+      return stakingAddress.toLowerCase();
+    }
+  }
+  
+  if (envKey === 'TREASURY_CONTRACT_TESTNET' || envKey === 'TREASURY_CONTRACT_MAINNET') {
+    const treasuryAddress = process.env.TREASURY_ADDRESS;
+    if (treasuryAddress && treasuryAddress.startsWith('0x') && treasuryAddress.length === 42) {
+      return treasuryAddress.toLowerCase();
     }
   }
   

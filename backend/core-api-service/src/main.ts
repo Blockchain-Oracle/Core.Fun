@@ -6,7 +6,7 @@ dotenv.config();
 
 // Start server
 async function main() {
-  const port = parseInt(process.env.PORT || '3001');
+  const port = parseInt(process.env.PORT || '3000');
   const server = new Server(port);
   
   try {

@@ -183,7 +183,7 @@ export class AuthHandler {
             [Markup.button.callback('📈 Start Trading', 'trade_menu')],
             [Markup.button.callback('🚨 Set Alerts', 'alerts_menu')],
             [Markup.button.callback('💎 Go Premium', 'subscribe_menu')],
-            [Markup.button.callback('🌐 Get Web Link', 'get_web_link')],
+            [Markup.button.callback('🌐 Login to Web', 'get_web_link')],
           ])
         }
       );
@@ -259,7 +259,7 @@ What would you like to do today?
           Markup.button.callback('⚙️ Settings', 'settings_menu'),
         ],
         [
-          Markup.button.callback('🌐 Get Web Link', 'get_web_link'),
+          Markup.button.callback('🌐 Login to Web', 'get_web_link'),
         ],
       ])
     });
@@ -308,18 +308,22 @@ What would you like to do today?
       // Generate direct login URL (fallback method)
       const loginUrl = await this.generateDirectLoginUrl(user);
 
-      // Send success message with the login URL for user to copy
+      // Send login URL as text since Telegram doesn't accept localhost URLs in buttons
       await ctx.reply(
-        `🚀 *Ready for Web Access!*\n\n` +
+        `🚀 *Login to Core.fun*\n\n` +
         `👤 *Username:* ${this.escapeMarkdown(username)}\n` +
         `💼 *Wallet:* \`${this.shortenAddress(user.walletAddress)}\`\n\n` +
-        `🌐 *Web Access URL:*\n\`${loginUrl}\`\n\n` +
-        `Copy the URL above and paste it in your browser to access the web interface.`,
+        `✅ *Your login link is ready!*\n\n` +
+        `🔗 *Click this link to login:*\n` +
+        `\`${loginUrl}\`\n\n` +
+        `_Copy and paste this URL in your browser if clicking doesn't work._`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('💼 View Wallet', 'wallet_view')],
-            [Markup.button.callback('📊 Dashboard', 'dashboard')],
+            [
+              Markup.button.callback('💼 View Wallet', 'wallet_view'),
+              Markup.button.callback('📊 Dashboard', 'dashboard')
+            ]
           ])
         }
       );
@@ -379,7 +383,7 @@ What would you like to do today?
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '🌐 Get Web Link', callback_data: 'get_web_link' }],
+              [{ text: '🌐 Login to Web', callback_data: 'get_web_link' }],
               [{ text: '💼 View Wallet', callback_data: 'wallet_view' }],
             ]
           }
@@ -511,44 +515,83 @@ What would you like to do today?
   }
 
   /**
-   * Generate direct login URL (without auth code flow)
+   * Generate direct login URL (similar to BullX format)
    */
   private async generateDirectLoginUrl(user: any): Promise<string> {
     if (!user) {
       throw new Error('User not found for login URL generation');
     }
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    // Use production URL or a placeholder for Telegram inline buttons
+    const baseUrl = process.env.FRONTEND_URL || 'https://core.fun';
     
-    // Generate JWT token
-    const token = await this.sessionManager.generateToken({
-      userId: user.id,
-      telegramId: user.telegramId,
-      username: user.username,
-      walletAddress: user.walletAddress,
-    });
+    try {
+      // Get user's encrypted private key from database
+      const encryptedKey = user.encryptedPrivateKey;
+      if (!encryptedKey) {
+        throw new Error('User wallet not found');
+      }
+      
+      // Decrypt the private key
+      const privateKey = await this.walletService.decryptPrivateKey(
+        encryptedKey,
+        user.telegramId
+      );
+      
+      // Create the message to sign (similar to BullX format)
+      const timestamp = Date.now();
+      const message = `Login to Core.fun\nAddress: ${user.walletAddress}\nTimestamp: ${timestamp}\nTelegram ID: ${user.telegramId}`;
+      
+      // Sign the message using the wallet's private key
+      const { ethers } = await import('ethers');
+      const wallet = new ethers.Wallet(privateKey);
+      const signature = await wallet.signMessage(message);
+      
+      // Create redirect URL data (base64 encoded like BullX)
+      const redirectData = Buffer.from(JSON.stringify({
+        redirectUrl: '',
+        referral: ''
+      })).toString('base64');
+      
+      // Generate JWT token for authentication
+      const token = await this.sessionManager.generateToken({
+        userId: user.id,
+        telegramId: user.telegramId,
+        username: user.username,
+        walletAddress: user.walletAddress,
+      });
+      
+      // Build URL with parameters similar to BullX format
+      const params = new URLSearchParams({
+        token,
+        address: user.walletAddress,
+        signature,
+        username: user.username || `user_${user.telegramId}`,
+        language: 'en',
+        telegramId: user.telegramId.toString(),
+        redirectUrl: redirectData
+      });
 
-    // Generate a simple auth code for this session
-    const authCode = crypto.randomBytes(16).toString('hex');
-
-    // Generate signature
-    const signature = this.generateSignature({
-      authCode,
-      telegramId: user.telegramId,
-      walletAddress: user.walletAddress,
-      timestamp: Date.now(),
-    });
-
-    // Build URL with parameters
-    const params = new URLSearchParams({
-      code: authCode,
-      token,
-      signature,
-      address: user.walletAddress,
-      username: user.username || `user_${user.telegramId}`,
-      telegramId: user.telegramId.toString(),
-    });
-
-    return `${baseUrl}/auth/callback?${params.toString()}`;
+      return `${baseUrl}/auth/callback?${params.toString()}`;
+    } catch (error) {
+      this.logger.error('Error generating login URL:', error);
+      
+      // Fallback to simple token-based auth if signature fails
+      const token = await this.sessionManager.generateToken({
+        userId: user.id,
+        telegramId: user.telegramId,
+        username: user.username,
+        walletAddress: user.walletAddress,
+      });
+      
+      const params = new URLSearchParams({
+        token,
+        address: user.walletAddress,
+        username: user.username || `user_${user.telegramId}`,
+        telegramId: user.telegramId.toString(),
+      });
+      
+      return `${baseUrl}/auth/callback?${params.toString()}`;
+    }
   }
 
   /**

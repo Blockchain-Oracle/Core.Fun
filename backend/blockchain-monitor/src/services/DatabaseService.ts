@@ -73,7 +73,7 @@ export class DatabaseService {
           table.integer('decimals');
           table.string('total_supply');
           table.string('creator');
-          table.bigInteger('created_at');
+          table.bigInteger('created_timestamp');
           table.integer('block_number');
           table.string('transaction_hash');
           table.boolean('is_verified').defaultTo(false);
@@ -85,7 +85,7 @@ export class DatabaseService {
           table.boolean('ownership_renounced').defaultTo(false);
           table.timestamps(true, true);
           
-          table.index(['created_at']);
+          table.index(['created_timestamp']);
           table.index(['symbol']);
           table.index(['creator']);
         });

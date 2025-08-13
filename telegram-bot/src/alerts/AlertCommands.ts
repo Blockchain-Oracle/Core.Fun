@@ -395,4 +395,183 @@ export class AlertCommands {
       await ctx.reply('❌ Error loading alerts. Please try again.');
     }
   }
+
+  async createAlert(ctx: BotContext) {
+    try {
+      const userId = ctx.from?.id.toString();
+      if (!userId) return;
+      
+      const user = await this.db.getUserByTelegramId(parseInt(userId));
+      if (!user) return;
+      
+      // Check user's alert limit
+      const alerts = await this.db.getUserAlerts(user.id, true);
+      const userTier = user.subscriptionTier || 'free';
+      const limits = { free: 5, premium: 50, pro: -1 };
+      const userLimit = limits[userTier as keyof typeof limits] || limits.free;
+      
+      if (userLimit !== -1 && alerts.length >= userLimit) {
+        await ctx.reply(
+          `❌ **Alert Limit Reached**\n\n` +
+          `You have reached your limit of ${userLimit} alerts.\n\n` +
+          `Upgrade to Premium for up to 50 alerts or Pro for unlimited alerts!`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('💎 Upgrade', 'subscribe_menu')],
+              [Markup.button.callback('🔙 Back', 'alerts_menu')]
+            ])
+          }
+        );
+        return;
+      }
+      
+      await ctx.reply(
+        '🔔 **Create Price Alert**\n\n' +
+        'Please send the token address you want to track:\n\n' +
+        'Example: `0x123...abc`',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Cancel', 'alerts_menu')]
+          ])
+        }
+      );
+      
+      // Set session state to expect token address
+      if (ctx.session) {
+        ctx.session.awaitingInput = 'alert_token_address';
+      }
+    } catch (error) {
+      this.logger.error('Error creating alert:', error);
+      await ctx.reply('❌ Error creating alert. Please try again.');
+    }
+  }
+
+  async deleteAlert(ctx: BotContext) {
+    try {
+      const userId = ctx.from?.id.toString();
+      if (!userId) return;
+      
+      const user = await this.db.getUserByTelegramId(parseInt(userId));
+      if (!user) return;
+      
+      const alerts = await this.db.getUserAlerts(user.id, true);
+      
+      if (alerts.length === 0) {
+        await ctx.reply(
+          '📭 **No Alerts to Delete**\n\n' +
+          'You don\'t have any active alerts.',
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('🔙 Back', 'alerts_menu')]
+            ])
+          }
+        );
+        return;
+      }
+      
+      let message = '🗑️ **Delete Alert**\n\n';
+      message += 'Select an alert to delete:\n\n';
+      
+      const buttons = alerts.slice(0, 10).map((alert: any, index: number) => {
+        const symbol = alert.token_symbol || 'Unknown';
+        const type = alert.alert_type === 'above' ? '📈' : '📉';
+        const price = parseFloat(alert.target_price).toFixed(6);
+        return [Markup.button.callback(
+          `${index + 1}. ${type} ${symbol} $${price}`,
+          `delete_alert_${alert.id}`
+        )];
+      });
+      
+      buttons.push([Markup.button.callback('🔙 Cancel', 'alerts_menu')]);
+      
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons)
+      });
+    } catch (error) {
+      this.logger.error('Error showing delete menu:', error);
+      await ctx.reply('❌ Error loading alerts. Please try again.');
+    }
+  }
+
+  async confirmDeleteAlert(ctx: BotContext, alertId: string) {
+    try {
+      const userId = ctx.from?.id.toString();
+      if (!userId) return;
+      
+      const user = await this.db.getUserByTelegramId(parseInt(userId));
+      if (!user) return;
+      
+      // Delete the alert
+      await this.db.deletePriceAlert(user.id, alertId);
+      
+      await ctx.reply(
+        '✅ **Alert Deleted Successfully**',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Back to Alerts', 'alerts_menu')]
+          ])
+        }
+      );
+    } catch (error) {
+      this.logger.error('Error deleting alert:', error);
+      await ctx.reply('❌ Error deleting alert. Please try again.');
+    }
+  }
+
+  async alertHistory(ctx: BotContext) {
+    try {
+      const userId = ctx.from?.id.toString();
+      if (!userId) return;
+      
+      const user = await this.db.getUserByTelegramId(parseInt(userId));
+      if (!user) return;
+      
+      // Get triggered alerts (inactive ones)
+      const alerts = await this.db.getUserAlerts(user.id, false);
+      
+      if (alerts.length === 0) {
+        await ctx.reply(
+          '📭 **No Alert History**\n\n' +
+          'No alerts have been triggered yet.',
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('➕ Create Alert', 'create_alert')],
+              [Markup.button.callback('🔙 Back', 'alerts_menu')]
+            ])
+          }
+        );
+        return;
+      }
+      
+      let message = '📜 **Alert History**\n\n';
+      message += 'Recently triggered alerts:\n\n';
+      
+      alerts.slice(0, 20).forEach((alert: any, index: number) => {
+        const symbol = alert.token_symbol || 'Unknown';
+        const type = alert.alert_type === 'above' ? '📈 Above' : '📉 Below';
+        const price = parseFloat(alert.target_price).toFixed(6);
+        const triggered = alert.triggered_at ? new Date(alert.triggered_at).toLocaleDateString() : 'N/A';
+        
+        message += `${index + 1}. **${symbol}**\n`;
+        message += `   ${type} $${price}\n`;
+        message += `   Triggered: ${triggered}\n\n`;
+      });
+      
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'alerts_menu')]
+        ])
+      });
+    } catch (error) {
+      this.logger.error('Error showing alert history:', error);
+      await ctx.reply('❌ Error loading alert history. Please try again.');
+    }
+  }
 }

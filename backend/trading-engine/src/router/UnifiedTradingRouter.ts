@@ -14,16 +14,18 @@ import {
   TradingEvents
 } from '../types';
 import { BondingCurveTrader } from '../traders/BondingCurveTrader';
-import { DexTrader } from '../traders/DexTrader';
 import { TokenAnalyzer } from '../services/TokenAnalyzer';
 import { PriceCalculator } from '../services/PriceCalculator';
 import { MEVProtection } from '../services/MEVProtection';
 import { logger } from '../utils/logger';
 
+/**
+ * Unified Trading Router for MemeFactory Platform
+ * Handles all bonding curve trades through the factory contract
+ */
 export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
   private provider: ethers.Provider;
   private bondingCurveTrader: BondingCurveTrader;
-  private dexTrader: DexTrader;
   private tokenAnalyzer: TokenAnalyzer;
   private priceCalculator: PriceCalculator;
   private mevProtection: MEVProtection;
@@ -38,7 +40,6 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
     this.config = config;
     
     this.bondingCurveTrader = new BondingCurveTrader(provider, config);
-    this.dexTrader = new DexTrader(provider, config);
     this.tokenAnalyzer = new TokenAnalyzer(provider, config);
     this.priceCalculator = new PriceCalculator(provider, config);
     this.mevProtection = new MEVProtection(provider, config);
@@ -49,23 +50,23 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
     signer: ethers.Signer
   ): Promise<TradeResult> {
     try {
-      logger.info('Executing trade', { params });
+      logger.info('Executing bonding curve trade', { params });
       this.emit('trade:initiated', params);
 
-      // Analyze token state
+      // Analyze token state from MemeFactory
       const tokenState = await this.tokenAnalyzer.analyzeToken(params.tokenAddress);
       if (!tokenState) {
         throw new TradingEngineError(
           TradingError.TOKEN_NOT_TRADEABLE,
-          `Token ${params.tokenAddress} not found or not tradeable`
+          `Token ${params.tokenAddress} not found in MemeFactory`
         );
       }
 
       // Validate trade feasibility
       await this.validateTrade(params, tokenState);
 
-      // Determine best route
-      const route = await this.findBestRoute(params, tokenState);
+      // Get bonding curve route
+      const route = await this.bondingCurveTrader.getRoute(params, tokenState);
       this.emit('trade:routed', route);
 
       // Check for MEV threats
@@ -80,13 +81,8 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
         }
       }
 
-      // Execute trade based on phase
-      let result: TradeResult;
-      if (tokenState.phase === TradingPhase.BONDING_CURVE) {
-        result = await this.bondingCurveTrader.execute(params, route, signer);
-      } else {
-        result = await this.dexTrader.execute(params, route, signer);
-      }
+      // Execute trade through MemeFactory
+      const result = await this.bondingCurveTrader.execute(params, route, signer);
 
       // Check slippage
       const actualSlippage = this.calculateActualSlippage(
@@ -115,31 +111,37 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
     params: TradeParams,
     tokenState: TokenState
   ): Promise<void> {
-    // Check if token is open for trading
+    // Check if token sale is open
     if (!tokenState.isOpen) {
+      if (tokenState.isLaunched) {
+        throw new TradingEngineError(
+          TradingError.TOKEN_NOT_TRADEABLE,
+          'Token has already launched to DEX'
+        );
+      }
       throw new TradingEngineError(
         TradingError.TOKEN_NOT_TRADEABLE,
-        'Token is not open for trading'
+        'Token sale is not open'
       );
     }
 
-    // Check sell restrictions for bonding curve
-    if (params.type === TradeType.SELL && 
-        tokenState.phase === TradingPhase.BONDING_CURVE && 
-        !tokenState.canSell) {
-      throw new TradingEngineError(
-        TradingError.TOKEN_NOT_TRADEABLE,
-        'Selling is not allowed during bonding curve phase'
-      );
+    // Check minimum amounts
+    if (params.type === TradeType.BUY) {
+      const minBuy = ethers.parseEther('0.001'); // 0.001 CORE minimum
+      if (BigInt(params.amount) < minBuy) {
+        throw new TradingEngineError(
+          TradingError.AMOUNT_TOO_LOW,
+          'Minimum buy amount is 0.001 CORE'
+        );
+      }
     }
 
-    // Check liquidity
-    const liquidity = await this.checkLiquidity(params, tokenState);
-    if (!liquidity.sufficient) {
-      throw new TradingEngineError(
-        TradingError.INSUFFICIENT_LIQUIDITY,
-        `Insufficient liquidity: ${liquidity.message}`
-      );
+    // Check if approaching launch threshold
+    if (tokenState.progressPercent && tokenState.progressPercent > 95) {
+      logger.warn('Token approaching launch threshold', {
+        token: params.tokenAddress,
+        progress: tokenState.progressPercent
+      });
     }
 
     // Check price impact
@@ -147,7 +149,7 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
       params,
       tokenState
     );
-    if (priceImpact > 10) { // 10% max price impact
+    if (priceImpact > 15) { // 15% max price impact for bonding curve
       throw new TradingEngineError(
         TradingError.PRICE_IMPACT_TOO_HIGH,
         `Price impact too high: ${priceImpact.toFixed(2)}%`
@@ -155,107 +157,24 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
     }
   }
 
-  private async findBestRoute(
-    params: TradeParams,
-    tokenState: TokenState
-  ): Promise<Route> {
-    const routes: Route[] = [];
-
-    // For bonding curve phase
-    if (tokenState.phase === TradingPhase.BONDING_CURVE) {
-      const bondingRoute = await this.bondingCurveTrader.getRoute(
-        params,
-        tokenState
-      );
-      routes.push(bondingRoute);
-    } 
-    // For DEX phase
-    else {
-      // Get routes from all available DEXes
-      const dexRoutes = await this.dexTrader.getAllRoutes(
-        params,
-        tokenState
-      );
-      routes.push(...dexRoutes);
-
-      // Consider multi-hop routes for better prices
-      if (params.type === TradeType.BUY) {
-        const multiHopRoutes = await this.dexTrader.getMultiHopRoutes(
-          params,
-          tokenState
+  async getQuote(params: TradeParams): Promise<Route> {
+    try {
+      const tokenState = await this.tokenAnalyzer.analyzeToken(params.tokenAddress);
+      if (!tokenState) {
+        throw new TradingEngineError(
+          TradingError.TOKEN_NOT_TRADEABLE,
+          'Token not found'
         );
-        routes.push(...multiHopRoutes);
       }
+
+      return await this.bondingCurveTrader.getRoute(params, tokenState);
+    } catch (error: any) {
+      throw this.handleError(error);
     }
-
-    // Sort by best output (considering fees)
-    const bestRoute = this.selectOptimalRoute(routes, params);
-    
-    if (!bestRoute) {
-      throw new TradingEngineError(
-        TradingError.ROUTE_NOT_FOUND,
-        'No valid route found for trade'
-      );
-    }
-
-    logger.info('Best route selected', { 
-      route: bestRoute.type,
-      dex: bestRoute.dex,
-      priceImpact: bestRoute.priceImpact 
-    });
-
-    return bestRoute;
   }
 
-  private selectOptimalRoute(
-    routes: Route[],
-    params: TradeParams
-  ): Route | null {
-    if (routes.length === 0) return null;
-
-    // Sort routes based on output amount (for buys) or input amount (for sells)
-    return routes.sort((a, b) => {
-      if (params.type === TradeType.BUY) {
-        // For buys, we want maximum output
-        return BigInt(b.amountOut) > BigInt(a.amountOut) ? 1 : -1;
-      } else {
-        // For sells, we want minimum input for desired output
-        return BigInt(a.amountIn) < BigInt(b.amountIn) ? 1 : -1;
-      }
-    })[0];
-  }
-
-  private async checkLiquidity(
-    params: TradeParams,
-    tokenState: TokenState
-  ): Promise<{ sufficient: boolean; message?: string }> {
-    if (tokenState.phase === TradingPhase.BONDING_CURVE) {
-      // For bonding curve, check if there's enough supply
-      if (params.type === TradeType.BUY) {
-        const remaining = BigInt(tokenState.totalSupply || '0') - 
-                         BigInt(tokenState.sold || '0');
-        if (remaining <= 0n) {
-          return { 
-            sufficient: false, 
-            message: 'No tokens remaining in bonding curve' 
-          };
-        }
-      }
-    } else {
-      // For DEX, check pool liquidity
-      const liquidity = BigInt(tokenState.liquidity || '0');
-      const tradeAmount = BigInt(params.amount);
-      
-      // Check if trade size is too large relative to liquidity
-      if (tradeAmount > liquidity / 10n) { // More than 10% of liquidity
-        return { 
-          sufficient: false, 
-          message: 'Trade size too large relative to pool liquidity' 
-        };
-      }
-    }
-
-    return { sufficient: true };
+  async getTokenState(tokenAddress: string): Promise<TokenState | null> {
+    return await this.tokenAnalyzer.analyzeToken(tokenAddress);
   }
 
   private calculateActualSlippage(
@@ -267,12 +186,10 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
     const expected = BigInt(params.minAmountOut);
     const actual = BigInt(actualAmountOut);
     
-    if (actual < expected) {
-      const slippage = ((expected - actual) * 10000n) / expected;
-      return Number(slippage) / 100; // Convert to percentage
-    }
+    if (actual >= expected) return 0;
     
-    return 0;
+    const slippage = Number(((expected - actual) * 10000n) / expected) / 100;
+    return slippage;
   }
 
   private handleError(error: any): TradingEngineError {
@@ -280,51 +197,44 @@ export class UnifiedTradingRouter extends EventEmitter<TradingEvents> {
       return error;
     }
 
-    // Parse common errors
-    if (error.message?.includes('insufficient balance')) {
+    if (error.code === 'CALL_EXCEPTION') {
+      if (error.reason?.includes('InsufficientETH')) {
+        return new TradingEngineError(
+          TradingError.INSUFFICIENT_BALANCE,
+          'Insufficient CORE balance'
+        );
+      }
+      if (error.reason?.includes('TokenAmountTooLow')) {
+        return new TradingEngineError(
+          TradingError.AMOUNT_TOO_LOW,
+          'Token amount below minimum'
+        );
+      }
+      if (error.reason?.includes('SaleClosed')) {
+        return new TradingEngineError(
+          TradingError.TOKEN_NOT_TRADEABLE,
+          'Token sale is closed'
+        );
+      }
+      if (error.reason?.includes('AmountExceeded')) {
+        return new TradingEngineError(
+          TradingError.AMOUNT_TOO_HIGH,
+          'Amount exceeds bonding curve limit'
+        );
+      }
+    }
+
+    if (error.code === 'INSUFFICIENT_FUNDS') {
       return new TradingEngineError(
         TradingError.INSUFFICIENT_BALANCE,
-        'Insufficient balance for trade',
-        error
+        'Insufficient balance for transaction'
       );
     }
 
-    if (error.message?.includes('deadline')) {
-      return new TradingEngineError(
-        TradingError.DEADLINE_EXCEEDED,
-        'Trade deadline exceeded',
-        error
-      );
-    }
-
-    if (error.message?.includes('gas')) {
-      return new TradingEngineError(
-        TradingError.GAS_PRICE_TOO_HIGH,
-        'Gas price exceeds maximum',
-        error
-      );
-    }
-
+    logger.error('Unexpected trading error', { error });
     return new TradingEngineError(
       TradingError.UNKNOWN_ERROR,
-      error.message || 'Unknown error occurred',
-      error
+      error.message || 'Unknown trading error'
     );
-  }
-
-  async getQuote(params: TradeParams): Promise<Route> {
-    const tokenState = await this.tokenAnalyzer.analyzeToken(params.tokenAddress);
-    if (!tokenState) {
-      throw new TradingEngineError(
-        TradingError.TOKEN_NOT_TRADEABLE,
-        'Token not found'
-      );
-    }
-
-    return this.findBestRoute(params, tokenState);
-  }
-
-  async getTokenState(address: string): Promise<TokenState | null> {
-    return this.tokenAnalyzer.analyzeToken(address);
   }
 }

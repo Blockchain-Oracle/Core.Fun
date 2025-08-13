@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { createLogger } from '@core-meme/shared';
 import authRoutes from './routes/auth';
 import walletRoutes from './routes/wallet';
+import tokenRoutes from './routes/tokens';
+import tradingRoutes from './routes/trading';
 
 dotenv.config();
 
@@ -51,6 +53,8 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api', authRoutes);
 app.use('/api', walletRoutes);
+app.use('/api', tokenRoutes);
+app.use('/api', tradingRoutes);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

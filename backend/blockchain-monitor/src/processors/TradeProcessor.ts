@@ -14,10 +14,10 @@ export class TradeProcessor {
   private alertService: AlertService;
   private redis: RedisClientType;
   
-  // Thresholds for alerts
-  private readonly LARGE_TRADE_USD = 10000; // $10k+
-  private readonly WHALE_TRADE_USD = 50000; // $50k+
-  private readonly PRICE_IMPACT_THRESHOLD = 5; // 5%
+  // Thresholds for alerts (adjusted for meme tokens)
+  private readonly LARGE_TRADE_CORE = 1; // 1+ CORE
+  private readonly WHALE_TRADE_CORE = 5; // 5+ CORE  
+  private readonly PRICE_IMPACT_THRESHOLD = 10; // 10% for bonding curve
 
   constructor(
     provider: ethers.JsonRpcProvider,

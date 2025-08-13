@@ -31,6 +31,14 @@ interface IMemeFactory {
         uint256 timestamp
     );
     
+    event TokenSold(
+        address indexed token,
+        address indexed seller,
+        uint256 amount,
+        uint256 proceeds,
+        uint256 timestamp
+    );
+    
     event TokenLaunched(
         address indexed token,
         uint256 liquidityAdded,

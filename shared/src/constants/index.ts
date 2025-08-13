@@ -28,24 +28,7 @@ export const NETWORK_CONFIG = {
   },
 };
 
-// DEX configurations - using IcecreamSwap V2 as the primary DEX on Core
-export const DEX_CONFIGS = {
-  ICECREAMSWAP: {
-    name: 'IcecreamSwap',
-    routerAddress: {
-      mainnet: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // IcecreamSwap Router V2
-      testnet: '0xBb5e1777A331ED93E07cF043363e48d320eb96c4', // Same router on testnet
-    },
-    factoryAddress: {
-      mainnet: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // IcecreamSwap Factory V2
-      testnet: '0x9E6d21E759A7A288b80eef94E4737D313D31c13f', // Same factory on testnet
-    },
-    initCodeHash: '0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3', // V2 init code hash
-    version: 'V2',
-  },
-};
-
-// WCORE addresses
+// WCORE addresses (for future DEX integrations after launch)
 export const WCORE_ADDRESS = {
   mainnet: '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f',
   testnet: '0x5c872990530Fe4f7322cA0c302762788e8199Ed0', // Updated from trading config

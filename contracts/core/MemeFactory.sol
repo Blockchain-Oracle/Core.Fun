@@ -68,6 +68,14 @@ contract MemeFactory is ReentrancyGuard, Ownable {
         uint256 timestamp
     );
     
+    event TokenSold(
+        address indexed token,
+        address indexed seller,
+        uint256 amount,
+        uint256 proceeds,
+        uint256 timestamp
+    );
+    
     event TokenLaunched(
         address indexed token,
         uint256 liquidityAdded,
@@ -220,6 +228,15 @@ contract MemeFactory is ReentrancyGuard, Ownable {
         
         (bool success, ) = msg.sender.call{value: amountAfterFee}("");
         if(!success) revert MemeFactory__TransferFailed();
+        
+        // Emit TokenSold event
+        emit TokenSold(
+            _token,
+            msg.sender,
+            _amount,
+            ethToReceive,
+            block.timestamp
+        );
     }
     
     // Launch token to DEX (creator only)

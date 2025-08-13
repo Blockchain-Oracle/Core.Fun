@@ -17,15 +17,17 @@ import { logger } from '../utils/logger';
 
 const MEMEFACTORY_ABI = [
   'function buyToken(address _token, uint256 _minTokens) external payable',
-  'function sellToken(address _token, uint256 _tokenAmount, uint256 _minCore) external',
-  'function calculateTokensOut(uint256 _currentSold, uint256 _coreAmount) external view returns (uint256)',
-  'function calculateCoreOut(uint256 _currentSold, uint256 _tokenAmount) external view returns (uint256)',
-  'function tokenSales(address) external view returns (uint256 sold, uint256 raised, bool launched, bool isOpen, uint256 launchTimestamp)',
-  'function INITIAL_PRICE() external view returns (uint256)',
-  'function FINAL_PRICE() external view returns (uint256)',
-  'function TARGET_SUPPLY() external view returns (uint256)',
-  'function PLATFORM_FEE() external view returns (uint256)',
-  'function TRADE_FEE() external view returns (uint256)'
+  'function sellToken(address _token, uint256 _amount, uint256 _minETH) external',
+  'function calculateTokensOut(uint256 _currentSold, uint256 _ethIn) external pure returns (uint256)',
+  'function calculateETHOut(uint256 _currentSold, uint256 _tokensIn) external pure returns (uint256)',
+  'function getTokenInfo(address _token) external view returns (tuple(address token, string name, string symbol, address creator, uint256 sold, uint256 raised, bool isOpen, bool isLaunched, uint256 createdAt, uint256 launchedAt))',
+  'function TOKEN_LIMIT() external view returns (uint256)',
+  'function TARGET() external view returns (uint256)',
+  'function MAX_SUPPLY() external view returns (uint256)',
+  'function creationFee() external view returns (uint256)',
+  'function platformTradingFee() external view returns (uint256)',
+  'event TokenPurchased(address indexed token, address indexed buyer, uint256 amount, uint256 cost, uint256 timestamp)',
+  'event TokenSold(address indexed token, address indexed seller, uint256 amount, uint256 proceeds, uint256 timestamp)'
 ];
 
 export class BondingCurveTrader {
@@ -171,9 +173,8 @@ export class BondingCurveTrader {
       : '120000'; // Typical gas for sell
 
     // Calculate fees
-    const platformFee = await this.factoryContract.PLATFORM_FEE();
-    const tradeFee = await this.factoryContract.TRADE_FEE();
-    const totalFeePercent = (Number(platformFee) + Number(tradeFee)) / 10000;
+    const tradingFee = await this.factoryContract.platformTradingFee();
+    const totalFeePercent = Number(tradingFee) / 10000; // platformTradingFee is in basis points
     const feeAmount = new Decimal(params.amount)
       .mul(totalFeePercent)
       .toFixed(0);
@@ -202,9 +203,9 @@ export class BondingCurveTrader {
       );
     }
 
-    const sale = await this.factoryContract.tokenSales(params.tokenAddress);
-    const currentSold = sale.sold.toString();
-    const targetSupply = await this.factoryContract.TARGET_SUPPLY();
+    const tokenInfo = await this.factoryContract.getTokenInfo(params.tokenAddress);
+    const currentSold = tokenInfo.sold.toString();
+    const targetSupply = await this.factoryContract.TOKEN_LIMIT();
 
     if (params.type === TradeType.BUY) {
       // Calculate tokens out for Core amount
@@ -227,16 +228,16 @@ export class BondingCurveTrader {
         willTriggerLaunch
       };
     } else {
-      // Calculate Core out for token amount
-      const coreOut = await this.factoryContract.calculateCoreOut(
+      // Calculate ETH out for token amount
+      const ethOut = await this.factoryContract.calculateETHOut(
         currentSold,
         params.amount
       );
 
       return {
         tokensOut: params.amount,
-        costInWei: coreOut.toString(),
-        pricePerToken: this.calculatePricePerToken(coreOut.toString(), params.amount),
+        costInWei: ethOut.toString(),
+        pricePerToken: this.calculatePricePerToken(ethOut.toString(), params.amount),
         currentSupply: currentSold,
         targetSupply: targetSupply.toString(),
         progressPercent: (Number(currentSold) / Number(targetSupply)) * 100,
@@ -279,15 +280,17 @@ export class BondingCurveTrader {
   private async calculateNextPriceIncrement(currentSold: string): Promise<string> {
     if (!this.factoryContract) return '0';
     
-    const initialPrice = await this.factoryContract.INITIAL_PRICE();
-    const finalPrice = await this.factoryContract.FINAL_PRICE();
-    const targetSupply = await this.factoryContract.TARGET_SUPPLY();
+    // Using the bonding curve formula from the contract
+    // basePrice = 0.0001 ether, priceIncrement = 0.0001 ether, step = 10000 ether
+    const basePrice = BigInt('100000000000000'); // 0.0001 ether in wei
+    const priceIncrement = BigInt('100000000000000'); // 0.0001 ether in wei
+    const step = BigInt('10000000000000000000000'); // 10000 ether in wei
     
-    // Linear bonding curve price increment
-    const priceRange = BigInt(finalPrice) - BigInt(initialPrice);
-    const increment = priceRange / BigInt(targetSupply);
+    const currentStep = BigInt(currentSold) / step;
+    const nextPrice = basePrice + (priceIncrement * (currentStep + 1n));
+    const currentPrice = basePrice + (priceIncrement * currentStep);
     
-    return increment.toString();
+    return (nextPrice - currentPrice).toString();
   }
 
   private async calculateGasPrice(): Promise<bigint> {
@@ -325,7 +328,7 @@ export class BondingCurveTrader {
         if (parsed?.name === 'TokenSold' && tradeType === TradeType.SELL) {
           return {
             amountIn: parsed.args.amount.toString(),
-            amountOut: parsed.args.coreReceived.toString()
+            amountOut: parsed.args.proceeds.toString()
           };
         }
       } catch {

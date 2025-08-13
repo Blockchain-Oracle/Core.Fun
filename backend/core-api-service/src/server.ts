@@ -10,6 +10,7 @@ import { healthRouter } from './routes/health';
 import { accountRouter } from './routes/account';
 import { statsRouter } from './routes/stats';
 import { authRouter } from './routes/auth';
+import { stakingRouter } from './routes/staking';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { createLogger } from '@core-meme/shared';
@@ -84,7 +85,8 @@ export class Server {
 
     // API routes
     this.app.use('/api/auth', authRouter);
-    this.app.use('/api/token', tokenRouter);
+    this.app.use('/api/tokens', tokenRouter);
+    this.app.use('/api/staking', stakingRouter);
     this.app.use('/api/contract', contractRouter);
     this.app.use('/api/price', priceRouter);
     this.app.use('/api/account', accountRouter);

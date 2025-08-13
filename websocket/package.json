@@ -1,5 +1,5 @@
 {
-  "name": "@core-meme/websocket-server",
+  "name": "@core-meme/websocket-legacy",
   "version": "1.0.0",
   "description": "WebSocket server for real-time data streaming",
   "main": "dist/index.js",

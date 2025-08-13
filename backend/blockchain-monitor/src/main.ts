@@ -6,11 +6,8 @@ import { AnalyticsService } from './services/AnalyticsService';
 import { AlertService } from './services/AlertService';
 import { TokenProcessor } from './processors/TokenProcessor';
 import { TradeProcessor } from './processors/TradeProcessor';
-import { LiquidityProcessor } from './processors/LiquidityProcessor';
 import { MemeFactoryMonitor } from './monitors/MemeFactoryMonitor';
-import { DexMonitor } from './monitors/DexMonitor';
 import { MonitorConfig } from './types';
-import { getDexConfigs } from './config/dex';
 import { 
   getPlatformContracts, 
   isMemeFactoryConfigured, 
@@ -38,7 +35,6 @@ class BlockchainMonitorService {
   private alertService: AlertService;
   private tokenProcessor: TokenProcessor;
   private tradeProcessor: TradeProcessor;
-  private liquidityProcessor: LiquidityProcessor;
   private monitors: Map<string, any> = new Map();
   private isRunning: boolean = false;
 
@@ -80,12 +76,6 @@ class BlockchainMonitorService {
       this.provider,
       this.db,
       this.analytics,
-      this.alertService
-    );
-    
-    this.liquidityProcessor = new LiquidityProcessor(
-      this.provider,
-      this.db,
       this.alertService
     );
   }
@@ -152,27 +142,7 @@ class BlockchainMonitorService {
         logger.info('✅ MemeFactory monitor started');
       }
     } else {
-      logger.info('⏭️  MemeFactory monitoring skipped (not configured)');
-    }
-    
-    // Start DEX monitors
-    const dexConfigs = getDexConfigs(this.network);
-    logger.info(`Starting DEX monitors for ${dexConfigs.length} DEX(es)`);
-    
-    for (const dexConfig of dexConfigs) {
-      logger.info(`Starting ${dexConfig.name} monitor`);
-      
-      const dexMonitor = new DexMonitor(
-        monitorConfig,
-        dexConfig,
-        this.tradeProcessor,
-        this.liquidityProcessor
-      );
-      
-      await dexMonitor.start();
-      this.monitors.set(`dex-${dexConfig.name}`, dexMonitor);
-      
-      logger.info(`✅ ${dexConfig.name} monitor started`);
+      logger.warn('⚠️  MemeFactory address not configured for', this.network);
     }
     
     logger.info(`✅ All monitors started (${this.monitors.size} total)`);
@@ -219,7 +189,6 @@ class BlockchainMonitorService {
     // Close services
     await this.tokenProcessor.close();
     await this.tradeProcessor.close();
-    await this.liquidityProcessor.close();
     await this.alertService.close();
     await this.db.close();
     

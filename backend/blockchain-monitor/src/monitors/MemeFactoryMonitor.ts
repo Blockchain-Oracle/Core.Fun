@@ -7,10 +7,12 @@ import { TokenProcessor } from '../processors/TokenProcessor';
 const MEME_FACTORY_ABI = [
   'event TokenCreated(address indexed token, address indexed creator, string name, string symbol, uint256 timestamp)',
   'event TokenPurchased(address indexed token, address indexed buyer, uint256 amount, uint256 cost, uint256 timestamp)',
+  'event TokenSold(address indexed token, address indexed seller, uint256 amount, uint256 proceeds, uint256 timestamp)',
   'event TokenLaunched(address indexed token, uint256 liquidityAdded, uint256 timestamp)',
   'event FeesWithdrawn(address indexed to, uint256 amount)',
   'event CreationFeeUpdated(uint256 newFee)',
   'event TradingFeeUpdated(uint256 newFee)',
+  'function getTokenInfo(address _token) external view returns (tuple(address token, string name, string symbol, address creator, uint256 sold, uint256 raised, bool isOpen, bool isLaunched, uint256 createdAt, uint256 launchedAt))',
 ];
 
 export class MemeFactoryMonitor extends EventMonitor {
@@ -107,6 +109,29 @@ export class MemeFactoryMonitor extends EventMonitor {
       });
     });
     
+    // Listen for TokenSold events (selling tokens back to bonding curve)
+    this.factoryContract.on('TokenSold', async (
+      token: string,
+      seller: string,
+      amount: bigint,
+      proceeds: bigint,
+      timestamp: bigint,
+      event: ethers.EventLog
+    ) => {
+      this.logger.info(`Token sold: ${ethers.formatEther(amount)} tokens for ${ethers.formatEther(proceeds)} CORE`);
+      
+      // Process as a sell trade for analytics
+      this.emit('TOKEN_SOLD', {
+        token: token.toLowerCase(),
+        seller: seller.toLowerCase(),
+        amount: amount.toString(),
+        proceeds: proceeds.toString(),
+        timestamp: Number(timestamp),
+        blockNumber: event.blockNumber,
+        transactionHash: event.transactionHash,
+      });
+    });
+    
     // Listen for TokenLaunched events
     this.factoryContract.on('TokenLaunched', async (
       token: string,
@@ -173,6 +198,9 @@ export class MemeFactoryMonitor extends EventMonitor {
             break;
           case 'TokenPurchased':
             await this.handleTokenPurchased(parsedLog, log);
+            break;
+          case 'TokenSold':
+            await this.handleTokenSold(parsedLog, log);
             break;
           case 'TokenLaunched':
             await this.handleTokenLaunched(parsedLog, log);
@@ -248,6 +276,27 @@ export class MemeFactoryMonitor extends EventMonitor {
     
     // Track volume metrics
     this.logger.debug(`Token purchase: ${ethers.formatEther(amount)} tokens for ${ethers.formatEther(cost)} CORE`);
+  }
+
+  private async handleTokenSold(
+    parsedLog: ethers.LogDescription,
+    log: ethers.Log
+  ): Promise<void> {
+    const [token, seller, amount, proceeds, timestamp] = parsedLog.args;
+    
+    // Emit sell event for analytics
+    this.emit('TOKEN_SOLD', {
+      token: token.toLowerCase(),
+      seller: seller.toLowerCase(),
+      amount: amount.toString(),
+      proceeds: proceeds.toString(),
+      timestamp: Number(timestamp),
+      blockNumber: log.blockNumber,
+      transactionHash: log.transactionHash,
+    });
+    
+    // Track volume metrics
+    this.logger.debug(`Token sell: ${ethers.formatEther(amount)} tokens for ${ethers.formatEther(proceeds)} CORE`);
   }
 
   private async handleTokenLaunched(

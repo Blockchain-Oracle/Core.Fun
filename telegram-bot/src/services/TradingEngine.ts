@@ -4,16 +4,13 @@ import { WalletManager } from './WalletManager';
 import { PriceService } from './PriceService';
 import { createLogger } from '@core-meme/shared';
 
-// DEX configurations for Core blockchain
-const DEX_CONFIGS = {
-  CORSWAP: {
-    routerAddress: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', // Replace with actual Core DEX
-    factoryAddress: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
-    version: 'v2',
-  },
+// Contract addresses from deployment
+const DEPLOYMENT = {
+  memeFactory: '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1',
+  staking: '0x95F1588ef2087f9E40082724F5Da7BAD946969CB',
+  platformToken: '0x96611b71A4DE5B8616164B650720ADe10948193F',
+  treasury: '0xe397a72377F43645Cd4DA02d709c378df6e9eE5a'
 };
-
-const WCORE_ADDRESS = '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f'; // Wrapped CORE address
 
 interface TradeResult {
   success: boolean;
@@ -41,12 +38,21 @@ interface SellParams {
   gasPriceMultiplier?: number;
 }
 
-// Router ABI for DEX interactions
-const ROUTER_ABI = [
-  'function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)',
-  'function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)',
-  'function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)',
-  'function factory() external view returns (address)',
+// MemeFactory ABI
+const MEMEFACTORY_ABI = [
+  'function buyToken(address _token, uint256 _minTokens) external payable',
+  'function sellToken(address _token, uint256 _amount, uint256 _minETH) external',
+  'function calculateTokensOut(uint256 _currentSold, uint256 _ethIn) external pure returns (uint256)',
+  'function calculateETHOut(uint256 _currentSold, uint256 _tokensIn) external pure returns (uint256)',
+  'function getTokenInfo(address _token) external view returns (tuple(address token, string name, string symbol, address creator, uint256 sold, uint256 raised, bool isOpen, bool isLaunched, uint256 createdAt, uint256 launchedAt))',
+  'function platformTradingFee() external view returns (uint256)'
+];
+
+// Staking ABI for fee discounts
+const STAKING_ABI = [
+  'function getUserFeeDiscount(address _user) external view returns (uint256)',
+  'function isPremiumUser(address _user) external view returns (bool)',
+  'function getUserTier(address _user) external view returns (uint256)'
 ];
 
 const ERC20_ABI = [
@@ -63,6 +69,8 @@ export class TradingEngine {
   private database: DatabaseService;
   private walletManager: WalletManager;
   private priceService: PriceService;
+  private factoryContract: ethers.Contract;
+  private stakingContract: ethers.Contract;
 
   constructor(database: DatabaseService) {
     this.database = database;
@@ -71,17 +79,30 @@ export class TradingEngine {
     
     const rpcUrl = process.env.CORE_RPC_URL || 'https://rpc.coredao.org';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    
+    // Initialize contracts
+    this.factoryContract = new ethers.Contract(
+      DEPLOYMENT.memeFactory,
+      MEMEFACTORY_ABI,
+      this.provider
+    );
+    
+    this.stakingContract = new ethers.Contract(
+      DEPLOYMENT.staking,
+      STAKING_ABI,
+      this.provider
+    );
   }
 
   /**
-   * Buy tokens with CORE
+   * Buy tokens through MemeFactory bonding curve
    */
   async buy(params: BuyParams): Promise<TradeResult> {
     return this.buyToken(params);
   }
 
   /**
-   * Sell tokens for CORE
+   * Sell tokens back to MemeFactory bonding curve
    */
   async sell(params: SellParams): Promise<TradeResult> {
     return this.sellToken(params);
@@ -97,7 +118,7 @@ export class TradingEngine {
     } = params;
 
     try {
-      this.logger.info('Executing buy', { wallet, token: tokenAddress, amount: amountCore });
+      this.logger.info('Executing bonding curve buy', { wallet, token: tokenAddress, amount: amountCore });
 
       // Get user ID from wallet address
       const user = await this.database.getUserByWalletAddress(wallet);
@@ -111,38 +132,41 @@ export class TradingEngine {
         throw new Error('Failed to get wallet signer');
       }
 
-      // Get router contract
-      const router = new ethers.Contract(
-        DEX_CONFIGS.CORSWAP.routerAddress,
-        ROUTER_ABI,
-        signer
-      );
+      // Get factory contract with signer
+      const factoryWithSigner = this.factoryContract.connect(signer);
 
-      // Build swap path
-      const path = [WCORE_ADDRESS, tokenAddress];
+      // Get token info to check if sale is open
+      const tokenInfo = await this.factoryContract.getTokenInfo(tokenAddress);
+      if (!tokenInfo.isOpen) {
+        throw new Error(tokenInfo.isLaunched ? 'Token already launched' : 'Token sale closed');
+      }
+
+      // Calculate expected tokens out
       const amountIn = ethers.parseEther(amountCore.toString());
+      const tokensOut = await this.factoryContract.calculateTokensOut(
+        tokenInfo.sold,
+        amountIn
+      );
+      
+      // Apply slippage
+      const minTokensOut = tokensOut * BigInt(100 - slippage) / 100n;
 
-      // Get expected output
-      const amounts = await router.getAmountsOut(amountIn, path);
-      const amountOutMin = amounts[1] * BigInt(100 - slippage) / 100n;
+      // Check for fee discount from staking
+      const feeDiscount = await this.getFeeDiscount(wallet);
+      this.logger.info('User fee discount from staking', { discount: feeDiscount });
 
       // Get gas price
       const feeData = await this.provider.getFeeData();
       const gasPrice = feeData.gasPrice! * BigInt(Math.floor(gasPriceMultiplier * 100)) / 100n;
 
-      // Set deadline (10 minutes from now)
-      const deadline = Math.floor(Date.now() / 1000) + 600;
-
-      // Execute swap
-      const tx = await router.swapExactETHForTokens(
-        amountOutMin,
-        path,
-        wallet,
-        deadline,
+      // Execute buy
+      const tx = await factoryWithSigner.buyToken(
+        tokenAddress,
+        minTokensOut,
         {
           value: amountIn,
           gasPrice,
-          gasLimit: 300000,
+          gasLimit: 200000,
         }
       );
 
@@ -150,62 +174,76 @@ export class TradingEngine {
 
       // Wait for confirmation
       const receipt = await tx.wait();
-
       if (!receipt || receipt.status === 0) {
         throw new Error('Transaction failed');
       }
 
-      const actualAmountOut = amounts[1];
-      const price = Number(amountIn) / Number(actualAmountOut);
+      // Parse events to get actual amounts
+      const purchaseEvent = receipt.logs.find((log: any) => {
+        try {
+          const parsed = this.factoryContract.interface.parseLog(log);
+          return parsed?.name === 'TokenPurchased';
+        } catch {
+          return false;
+        }
+      });
 
-      // Save trade to database
+      let actualTokens = tokensOut;
+      let actualCost = amountIn;
+      
+      if (purchaseEvent) {
+        const parsed = this.factoryContract.interface.parseLog(purchaseEvent);
+        actualTokens = parsed?.args.amount;
+        actualCost = parsed?.args.cost;
+      }
+
+      // Calculate price
+      const price = Number(ethers.formatEther(actualCost)) / Number(ethers.formatEther(actualTokens));
+
+      // Update database
       await this.database.saveTrade({
         userId: user.id,
-        walletAddress: wallet,
         tokenAddress,
         type: 'buy',
-        amountCore: amountCore,
-        amountToken: parseFloat(ethers.formatUnits(actualAmountOut, 18)),
+        amountCore: ethers.formatEther(actualCost),
+        amountToken: ethers.formatEther(actualTokens),
         price,
-        txHash: receipt.hash,
+        txHash: tx.hash,
         status: 'completed',
+        timestamp: Date.now()
       });
 
       return {
         success: true,
-        txHash: receipt.hash,
-        amountToken: ethers.formatUnits(actualAmountOut, 18),
-        amountCore: amountCore.toString(),
+        txHash: tx.hash,
+        amountToken: ethers.formatEther(actualTokens),
+        amountCore: ethers.formatEther(actualCost),
         price,
-        gasUsed: receipt.gasUsed.toString(),
+        gasUsed: receipt.gasUsed.toString()
       };
 
     } catch (error: any) {
-      this.logger.error('Buy failed', { error, params });
+      this.logger.error('Buy transaction failed', { error: error.message });
+      
       return {
         success: false,
         amountCore: amountCore.toString(),
-        error: error.message,
+        error: error.message || 'Transaction failed'
       };
     }
   }
 
   async sellToken(params: SellParams): Promise<TradeResult> {
-    const { 
-      wallet, 
-      tokenAddress, 
-      percentage, 
+    const {
+      wallet,
+      tokenAddress,
+      percentage,
       slippage = 10,
       gasPriceMultiplier = 1.2
     } = params;
 
     try {
-      this.logger.info('Executing sell', { wallet, token: tokenAddress, percentage });
-
-      // Validate percentage
-      if (percentage < 1 || percentage > 100) {
-        throw new Error('Percentage must be between 1 and 100');
-      }
+      this.logger.info('Executing bonding curve sell', { wallet, token: tokenAddress, percentage });
 
       // Get user ID from wallet address
       const user = await this.database.getUserByWalletAddress(wallet);
@@ -219,57 +257,56 @@ export class TradingEngine {
         throw new Error('Failed to get wallet signer');
       }
 
-      // Get token balance
+      // Get token contract
       const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+      
+      // Get user's token balance
       const balance = await tokenContract.balanceOf(wallet);
-
       if (balance === 0n) {
         throw new Error('No tokens to sell');
       }
 
-      // Calculate amount to sell based on percentage
+      // Calculate amount to sell
       const amountToSell = balance * BigInt(percentage) / 100n;
 
-      // Get router contract
-      const router = new ethers.Contract(
-        DEX_CONFIGS.CORSWAP.routerAddress,
-        ROUTER_ABI,
-        signer
-      );
-
-      // Approve router if needed
-      const allowance = await tokenContract.allowance(wallet, router.target);
-
-      if (allowance < amountToSell) {
-        this.logger.info('Approving router');
-        const approveTx = await tokenContract.approve(router.target, ethers.MaxUint256);
-        await approveTx.wait();
+      // Get token info
+      const tokenInfo = await this.factoryContract.getTokenInfo(tokenAddress);
+      if (tokenInfo.isLaunched) {
+        throw new Error('Token already launched, cannot sell back to bonding curve');
       }
 
-      // Build swap path
-      const path = [tokenAddress, WCORE_ADDRESS];
+      // Calculate expected ETH out
+      const ethOut = await this.factoryContract.calculateETHOut(
+        tokenInfo.sold,
+        amountToSell
+      );
+      
+      // Apply slippage
+      const minEthOut = ethOut * BigInt(100 - slippage) / 100n;
 
-      // Get expected output
-      const amounts = await router.getAmountsOut(amountToSell, path);
-      const amountOutMin = amounts[1] * BigInt(100 - slippage) / 100n;
+      // Check token approval
+      const allowance = await tokenContract.allowance(wallet, DEPLOYMENT.memeFactory);
+      if (allowance < amountToSell) {
+        const approveTx = await tokenContract.approve(DEPLOYMENT.memeFactory, amountToSell);
+        await approveTx.wait();
+        this.logger.info('Token approval completed');
+      }
+
+      // Get factory contract with signer
+      const factoryWithSigner = this.factoryContract.connect(signer);
 
       // Get gas price
       const feeData = await this.provider.getFeeData();
       const gasPrice = feeData.gasPrice! * BigInt(Math.floor(gasPriceMultiplier * 100)) / 100n;
 
-      // Set deadline (10 minutes from now)
-      const deadline = Math.floor(Date.now() / 1000) + 600;
-
-      // Execute swap
-      const tx = await router.swapExactTokensForETH(
+      // Execute sell
+      const tx = await factoryWithSigner.sellToken(
+        tokenAddress,
         amountToSell,
-        amountOutMin,
-        path,
-        wallet,
-        deadline,
+        minEthOut,
         {
           gasPrice,
-          gasLimit: 300000,
+          gasLimit: 200000,
         }
       );
 
@@ -277,125 +314,202 @@ export class TradingEngine {
 
       // Wait for confirmation
       const receipt = await tx.wait();
-
       if (!receipt || receipt.status === 0) {
         throw new Error('Transaction failed');
       }
 
-      const actualAmountOut = amounts[1];
-      const price = Number(actualAmountOut) / Number(amountToSell);
-
-      // Calculate P&L if we have buy history
-      const position = await this.database.getPosition(user.id, tokenAddress);
-      let pnl = 0;
-      let pnlPercentage = 0;
-
-      if (position) {
-        const sellValue = parseFloat(ethers.formatEther(actualAmountOut));
-        const costBasis = position.avgBuyPrice * parseFloat(ethers.formatUnits(amountToSell, 18));
-        pnl = sellValue - costBasis;
-        pnlPercentage = (pnl / costBasis) * 100;
-      }
-
-      // Save trade to database
-      await this.database.saveTrade({
-        userId: user.id,
-        walletAddress: wallet,
-        tokenAddress,
-        type: 'sell',
-        amountCore: parseFloat(ethers.formatEther(actualAmountOut)),
-        amountToken: parseFloat(ethers.formatUnits(amountToSell, 18)),
-        price,
-        txHash: receipt.hash,
-        pnl,
-        pnlPercentage,
-        status: 'completed',
+      // Parse events to get actual amounts
+      const sellEvent = receipt.logs.find((log: any) => {
+        try {
+          const parsed = this.factoryContract.interface.parseLog(log);
+          return parsed?.name === 'TokenSold';
+        } catch {
+          return false;
+        }
       });
 
-      // Update position
-      const remainingBalance = balance - amountToSell;
-      if (remainingBalance === 0n) {
-        await this.database.closePosition(user.id, tokenAddress);
-      } else {
-        await this.database.updatePosition({
-          userId: user.id,
-          tokenAddress,
-          amount: parseFloat(ethers.formatUnits(remainingBalance, 18)),
-        });
+      let actualTokens = amountToSell;
+      let actualProceeds = ethOut;
+      
+      if (sellEvent) {
+        const parsed = this.factoryContract.interface.parseLog(sellEvent);
+        actualTokens = parsed?.args.amount;
+        actualProceeds = parsed?.args.proceeds;
       }
+
+      // Calculate price
+      const price = Number(ethers.formatEther(actualProceeds)) / Number(ethers.formatEther(actualTokens));
+
+      // Update database
+      await this.database.saveTrade({
+        userId: user.id,
+        tokenAddress,
+        type: 'sell',
+        amountCore: ethers.formatEther(actualProceeds),
+        amountToken: ethers.formatEther(actualTokens),
+        price,
+        txHash: tx.hash,
+        status: 'completed',
+        timestamp: Date.now()
+      });
 
       return {
         success: true,
-        txHash: receipt.hash,
-        amountToken: ethers.formatUnits(amountToSell, 18),
-        amountCore: ethers.formatEther(actualAmountOut),
+        txHash: tx.hash,
+        amountToken: ethers.formatEther(actualTokens),
+        amountCore: ethers.formatEther(actualProceeds),
         price,
-        gasUsed: receipt.gasUsed.toString(),
+        gasUsed: receipt.gasUsed.toString()
       };
 
     } catch (error: any) {
-      this.logger.error('Sell failed', { error, params });
+      this.logger.error('Sell transaction failed', { error: error.message });
+      
       return {
         success: false,
         amountCore: '0',
-        error: error.message,
+        error: error.message || 'Transaction failed'
       };
     }
   }
 
-  async getBalance(walletAddress: string): Promise<any> {
+  /**
+   * Get fee discount based on staking tier
+   */
+  async getFeeDiscount(walletAddress: string): Promise<number> {
     try {
-      const balance = await this.provider.getBalance(walletAddress);
-      const coreAmount = parseFloat(ethers.formatEther(balance));
-      
-      // Get CORE price from price service
-      const priceData = await this.priceService.getCoreUsdPrice();
-      const usdAmount = coreAmount * priceData;
-
-      return {
-        coreAmount,
-        core: coreAmount.toFixed(4),
-        usdAmount,
-        usd: usdAmount.toFixed(2),
-      };
+      const discount = await this.stakingContract.getUserFeeDiscount(walletAddress);
+      return Number(discount); // Returns basis points (100 = 1%)
     } catch (error) {
-      this.logger.error('Failed to get balance', { error, wallet: walletAddress });
-      return { core: '0', usd: '0', coreAmount: 0, usdAmount: 0 };
+      this.logger.debug('Could not get fee discount', { error });
+      return 0;
     }
   }
 
-  async getTokenBalance(walletAddress: string, tokenAddress: string): Promise<any> {
+  /**
+   * Check if user has premium status from staking
+   */
+  async isPremiumUser(walletAddress: string): Promise<boolean> {
     try {
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
-      
-      const [balance, decimals, symbol] = await Promise.all([
-        tokenContract.balanceOf(walletAddress),
-        tokenContract.decimals(),
-        tokenContract.symbol(),
-      ]);
+      return await this.stakingContract.isPremiumUser(walletAddress);
+    } catch (error) {
+      this.logger.debug('Could not check premium status', { error });
+      return false;
+    }
+  }
 
-      const amount = parseFloat(ethers.formatUnits(balance, decimals));
+  /**
+   * Get user's staking tier
+   */
+  async getUserTier(walletAddress: string): Promise<number> {
+    try {
+      return Number(await this.stakingContract.getUserTier(walletAddress));
+    } catch (error) {
+      this.logger.debug('Could not get user tier', { error });
+      return 0;
+    }
+  }
 
-      // Get token price
-      const priceData = await this.priceService.getTokenPrice(tokenAddress);
-      const usdValue = amount * priceData.priceInUsd;
-
+  /**
+   * Get token information from factory
+   */
+  async getTokenInfo(tokenAddress: string): Promise<any> {
+    try {
+      const info = await this.factoryContract.getTokenInfo(tokenAddress);
       return {
-        amount,
-        symbol,
-        decimals,
-        usdValue,
-        formatted: `${amount.toFixed(4)} ${symbol}`,
+        token: info.token,
+        name: info.name,
+        symbol: info.symbol,
+        creator: info.creator,
+        sold: ethers.formatEther(info.sold),
+        raised: ethers.formatEther(info.raised),
+        isOpen: info.isOpen,
+        isLaunched: info.isLaunched,
+        createdAt: Number(info.createdAt),
+        launchedAt: Number(info.launchedAt),
+        progress: (Number(info.sold) / Number(ethers.parseEther('500000'))) * 100
       };
     } catch (error) {
-      this.logger.error('Failed to get token balance', { error, wallet: walletAddress, token: tokenAddress });
+      this.logger.error('Failed to get token info', { error });
+      return null;
+    }
+  }
+
+  /**
+   * Calculate price for a given amount
+   */
+  async calculateBuyPrice(tokenAddress: string, amountCore: number): Promise<{
+    tokensOut: string;
+    pricePerToken: number;
+    priceImpact: number;
+  }> {
+    try {
+      const tokenInfo = await this.factoryContract.getTokenInfo(tokenAddress);
+      const amountIn = ethers.parseEther(amountCore.toString());
+      
+      const tokensOut = await this.factoryContract.calculateTokensOut(
+        tokenInfo.sold,
+        amountIn
+      );
+      
+      const pricePerToken = amountCore / Number(ethers.formatEther(tokensOut));
+      
+      // Calculate price impact
+      const smallAmount = ethers.parseEther('0.001');
+      const smallTokensOut = await this.factoryContract.calculateTokensOut(
+        tokenInfo.sold,
+        smallAmount
+      );
+      const basePrice = 0.001 / Number(ethers.formatEther(smallTokensOut));
+      const priceImpact = ((pricePerToken - basePrice) / basePrice) * 100;
+      
       return {
-        amount: 0,
-        symbol: 'UNKNOWN',
-        decimals: 18,
-        usdValue: 0,
-        formatted: '0 UNKNOWN',
+        tokensOut: ethers.formatEther(tokensOut),
+        pricePerToken,
+        priceImpact
       };
+    } catch (error) {
+      this.logger.error('Failed to calculate buy price', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate sell proceeds for a given amount
+   */
+  async calculateSellProceeds(tokenAddress: string, tokenAmount: string): Promise<{
+    ethOut: string;
+    pricePerToken: number;
+    priceImpact: number;
+  }> {
+    try {
+      const tokenInfo = await this.factoryContract.getTokenInfo(tokenAddress);
+      const amountIn = ethers.parseEther(tokenAmount);
+      
+      const ethOut = await this.factoryContract.calculateETHOut(
+        tokenInfo.sold,
+        amountIn
+      );
+      
+      const pricePerToken = Number(ethers.formatEther(ethOut)) / Number(tokenAmount);
+      
+      // Calculate price impact
+      const smallAmount = ethers.parseEther('1000'); // 1000 tokens
+      const smallEthOut = await this.factoryContract.calculateETHOut(
+        tokenInfo.sold,
+        smallAmount
+      );
+      const basePrice = Number(ethers.formatEther(smallEthOut)) / 1000;
+      const priceImpact = ((basePrice - pricePerToken) / basePrice) * 100;
+      
+      return {
+        ethOut: ethers.formatEther(ethOut),
+        pricePerToken,
+        priceImpact
+      };
+    } catch (error) {
+      this.logger.error('Failed to calculate sell proceeds', { error });
+      throw error;
     }
   }
 }

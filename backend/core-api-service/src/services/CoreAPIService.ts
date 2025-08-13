@@ -4,54 +4,138 @@ import { createClient, RedisClientType } from 'redis';
 import { createLogger } from '@core-meme/shared';
 import type winston from 'winston';
 import { z } from 'zod';
-import { DEX_CONFIG, getDexConfig } from '../config/dexConfig';
+
+// Contract addresses from deployment
+const DEPLOYMENT = {
+  memeFactory: '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1',
+  staking: '0x95F1588ef2087f9E40082724F5Da7BAD946969CB',
+  platformToken: '0x96611b71A4DE5B8616164B650720ADe10948193F',
+  treasury: '0xe397a72377F43645Cd4DA02d709c378df6e9eE5a'
+};
+
+// Contract ABIs
+const MEMEFACTORY_ABI = [
+  'function createToken(string _name, string _symbol, string _description, string _image, string _twitter, string _telegram, string _website) external payable',
+  'function buyToken(address _token, uint256 _minTokens) external payable',
+  'function sellToken(address _token, uint256 _amount, uint256 _minETH) external',
+  'function calculateTokensOut(uint256 _currentSold, uint256 _ethIn) external pure returns (uint256)',
+  'function calculateETHOut(uint256 _currentSold, uint256 _tokensIn) external pure returns (uint256)',
+  'function getTokenInfo(address _token) external view returns (tuple(address token, string name, string symbol, address creator, uint256 sold, uint256 raised, bool isOpen, bool isLaunched, uint256 createdAt, uint256 launchedAt))',
+  'function getTokensByCreator(address _creator) external view returns (address[])',
+  'function getAllTokens() external view returns (address[])',
+  'function creationFee() external view returns (uint256)',
+  'function platformTradingFee() external view returns (uint256)',
+  'function totalTokensCreated() external view returns (uint256)',
+  'function totalVolume() external view returns (uint256)',
+  'function totalFeesCollected() external view returns (uint256)',
+  'function TOKEN_LIMIT() external view returns (uint256)',
+  'function TARGET() external view returns (uint256)',
+  'function MAX_SUPPLY() external view returns (uint256)'
+];
+
+const STAKING_ABI = [
+  'function stake(uint256 _amount) external',
+  'function unstake(uint256 _amount) external',
+  'function claimRewards() external',
+  'function getUserFeeDiscount(address _user) external view returns (uint256)',
+  'function isPremiumUser(address _user) external view returns (bool)',
+  'function getUserTier(address _user) external view returns (uint256)',
+  'function pendingReward(address _user) external view returns (uint256)',
+  'function getStakingStats(address _user) external view returns (uint256 stakedAmount, uint256 pendingRewardAmount, uint256 totalEarnedAmount, uint256 userTier, bool isPremium)',
+  'function pool() external view returns (uint256 totalStaked, uint256 accRewardPerShare, uint256 lastRewardTime, uint256 rewardRate)'
+];
+
+const MEMETOKEN_ABI = [
+  'function getMetadata() external view returns (string description, string image, string twitter, string telegram, string website, uint256 maxWallet, uint256 maxTransaction, bool tradingEnabled, address owner)',
+  'function balanceOf(address owner) view returns (uint256)',
+  'function totalSupply() view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'function name() view returns (string)',
+  'function symbol() view returns (string)'
+];
 
 // Response schemas
 const TokenInfoSchema = z.object({
   address: z.string(),
   name: z.string(),
   symbol: z.string(),
-  decimals: z.number(),
-  totalSupply: z.string(),
-  owner: z.string().optional(),
-  verified: z.boolean().optional(),
+  creator: z.string(),
+  sold: z.string(),
+  raised: z.string(),
+  isOpen: z.boolean(),
+  isLaunched: z.boolean(),
+  createdAt: z.number(),
+  launchedAt: z.number(),
+  progress: z.number(),
+  currentPrice: z.string(),
+  marketCap: z.string(),
+  metadata: z.object({
+    description: z.string(),
+    image: z.string(),
+    twitter: z.string(),
+    telegram: z.string(),
+    website: z.string()
+  }).optional()
 });
 
-const TokenHolderSchema = z.object({
-  address: z.string(),
-  balance: z.string(),
-  percentage: z.number(),
+const StakingInfoSchema = z.object({
+  stakedAmount: z.string(),
+  pendingRewards: z.string(),
+  totalEarned: z.string(),
+  tier: z.number(),
+  tierName: z.string(),
+  isPremium: z.boolean(),
+  feeDiscount: z.number()
 });
 
-const TransactionSchema = z.object({
-  hash: z.string(),
-  from: z.string(),
-  to: z.string(),
-  value: z.string(),
-  blockNumber: z.number(),
-  timestamp: z.number(),
-  status: z.number(),
+const PriceQuoteSchema = z.object({
+  tokensOut: z.string(),
+  pricePerToken: z.number(),
+  priceImpact: z.number(),
+  fee: z.string(),
+  minReceived: z.string()
 });
 
-const PriceDataSchema = z.object({
-  token: z.string(),
-  priceUSD: z.number(),
-  priceCore: z.number(),
-  volume24h: z.number(),
-  liquidity: z.number(),
-  priceChange24h: z.number(),
+const PlatformStatsSchema = z.object({
+  totalTokensCreated: z.number(),
+  totalVolume: z.string(),
+  totalFeesCollected: z.string(),
+  creationFee: z.string(),
+  tradingFee: z.number()
 });
 
 export type TokenInfo = z.infer<typeof TokenInfoSchema>;
-export type TokenHolder = z.infer<typeof TokenHolderSchema>;
-export type Transaction = z.infer<typeof TransactionSchema>;
-export type PriceData = z.infer<typeof PriceDataSchema>;
+export type StakingInfo = z.infer<typeof StakingInfoSchema>;
+export type PriceQuote = z.infer<typeof PriceQuoteSchema>;
+export type PlatformStats = z.infer<typeof PlatformStatsSchema>;
+export type TokenHolder = {
+  address: string;
+  balance: string;
+  percentage?: number;
+};
+export type Transaction = {
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  blockNumber: number;
+  timestamp: number;
+  status?: number;
+  [key: string]: any;
+};
+export type PriceData = {
+  address: string;
+  priceCore: number;
+  priceUSD: number;
+  liquidityCore?: number;
+  liquidityUSD?: number;
+  marketCapUSD?: number;
+  updatedAt: number;
+};
 
 interface CoreAPIConfig {
   mainnetRPC?: string;
   testnetRPC?: string;
-  mainnetAPI?: string;
-  testnetAPI?: string;
   apiKey?: string;
   network?: 'mainnet' | 'testnet';
   cacheEnabled?: boolean;
@@ -59,8 +143,7 @@ interface CoreAPIConfig {
     default?: number;
     tokenInfo?: number;
     priceData?: number;
-    holders?: number;
-    transactions?: number;
+    stakingInfo?: number;
   };
 }
 
@@ -71,25 +154,24 @@ export class CoreAPIService {
   private logger: winston.Logger;
   private config: Required<CoreAPIConfig>;
   private network: 'mainnet' | 'testnet';
+  private factoryContract: ethers.Contract;
+  private stakingContract: ethers.Contract;
 
   constructor(config: CoreAPIConfig = {}) {
-    this.network = config.network || 'mainnet';
+    this.network = config.network || 'testnet';
     
     // Set default configuration
     this.config = {
       mainnetRPC: config.mainnetRPC || process.env.CORE_MAINNET_RPC || 'https://rpc.coredao.org',
       testnetRPC: config.testnetRPC || process.env.CORE_TESTNET_RPC || 'https://rpc.test2.btcs.network',
-      mainnetAPI: config.mainnetAPI || process.env.CORE_SCAN_MAINNET_API || 'https://openapi.coredao.org/api',
-      testnetAPI: config.testnetAPI || process.env.CORE_SCAN_TESTNET_API || 'https://api.test2.btcs.network/api',
       apiKey: config.apiKey || process.env.CORE_SCAN_API_KEY || '',
       network: this.network,
       cacheEnabled: config.cacheEnabled !== false,
       cacheTTL: {
         default: config.cacheTTL?.default || 60,
-        tokenInfo: config.cacheTTL?.tokenInfo || 300,
-        priceData: config.cacheTTL?.priceData || 30,
-        holders: config.cacheTTL?.holders || 600,
-        transactions: config.cacheTTL?.transactions || 120,
+        tokenInfo: config.cacheTTL?.tokenInfo || 30,
+        priceData: config.cacheTTL?.priceData || 10,
+        stakingInfo: config.cacheTTL?.stakingInfo || 60,
       },
     };
 
@@ -97,8 +179,24 @@ export class CoreAPIService {
     const rpcUrl = this.network === 'mainnet' ? this.config.mainnetRPC : this.config.testnetRPC;
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
 
-    // Initialize API client
-    const apiUrl = this.network === 'mainnet' ? this.config.mainnetAPI : this.config.testnetAPI;
+    // Initialize contracts
+    this.factoryContract = new ethers.Contract(
+      DEPLOYMENT.memeFactory,
+      MEMEFACTORY_ABI,
+      this.provider
+    );
+
+    this.stakingContract = new ethers.Contract(
+      DEPLOYMENT.staking,
+      STAKING_ABI,
+      this.provider
+    );
+
+    // Initialize API client for Core Scan
+    const apiUrl = this.network === 'mainnet' 
+      ? 'https://openapi.coredao.org/api'
+      : 'https://api.test2.btcs.network/api';
+    
     this.apiClient = axios.create({
       baseURL: apiUrl,
       timeout: 10000,
@@ -111,7 +209,7 @@ export class CoreAPIService {
     if (this.config.apiKey) {
       this.apiClient.interceptors.request.use((config) => {
         config.params = {
-          ...config.params,
+          ...(config.params ?? {}),
           apikey: this.config.apiKey,
         };
         return config;
@@ -148,157 +246,385 @@ export class CoreAPIService {
       await this.redis.connect();
       this.logger.info('Redis connected successfully');
     } catch (error) {
-      this.logger.error('Failed to connect to Redis', error);
+      this.logger.error('Failed to connect to Redis:', error);
       this.redis = null;
     }
   }
 
-  private async getCached<T>(key: string): Promise<T | null> {
-    if (!this.redis) return null;
-    
-    try {
-      const cached = await this.redis.get(key);
-      if (cached) {
-        return JSON.parse(cached) as T;
-      }
-    } catch (error) {
-      this.logger.error(`Cache get error for key ${key}:`, error);
-    }
-    
-    return null;
-  }
+  // ============= MemeFactory Methods =============
 
-  private async setCached<T>(key: string, value: T, ttl?: number): Promise<void> {
-    if (!this.redis) return;
-    
-    try {
-      const ttlSeconds = ttl || this.config.cacheTTL.default || 60;
-      await this.redis.setEx(key, ttlSeconds, JSON.stringify(value));
-    } catch (error) {
-      this.logger.error(`Cache set error for key ${key}:`, error);
-    }
-  }
-
-  // Token Information
-  async getTokenInfo(address: string): Promise<TokenInfo | null> {
-    const cacheKey = `token:info:${this.network}:${address.toLowerCase()}`;
+  /**
+   * Get comprehensive token information
+   */
+  async getTokenInfo(tokenAddress: string): Promise<TokenInfo | null> {
+    const cacheKey = `token:${tokenAddress}`;
     
     // Check cache
-    const cached = await this.getCached<TokenInfo>(cacheKey);
-    if (cached) {
-      this.logger.debug(`Cache hit for token info: ${address}`);
-      return cached;
+    if (this.redis) {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
     }
 
     try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'token',
-          action: 'getToken',
-          contractaddress: address,
-        },
-      });
-
-      if (response.data.status === '1' && response.data.result) {
-        const tokenInfo = TokenInfoSchema.parse(response.data.result);
-        await this.setCached(cacheKey, tokenInfo, this.config.cacheTTL.tokenInfo);
-        return tokenInfo;
+      // Get token info from factory
+      const info = await this.factoryContract.getTokenInfo(tokenAddress);
+      
+      if (!info.token || info.token === ethers.ZeroAddress) {
+        return null;
       }
-    } catch (error) {
-      this.logger.error(`Failed to get token info for ${address}:`, error);
-    }
 
-    return null;
+      // Get token metadata
+      const tokenContract = new ethers.Contract(
+        tokenAddress,
+        MEMETOKEN_ABI,
+        this.provider
+      );
+
+      let metadata;
+      try {
+        const metadataRaw = await tokenContract.getMetadata();
+        metadata = {
+          description: metadataRaw[0],
+          image: metadataRaw[1],
+          twitter: metadataRaw[2],
+          telegram: metadataRaw[3],
+          website: metadataRaw[4]
+        };
+      } catch {
+        metadata = undefined;
+      }
+
+      // Calculate current price
+      const currentPrice = await this.getCurrentPrice(tokenAddress, info.sold);
+      
+      // Calculate market cap
+      const marketCap = (Number(ethers.formatEther(info.sold)) * currentPrice).toString();
+
+      const tokenInfo: TokenInfo = {
+        address: tokenAddress,
+        name: info.name,
+        symbol: info.symbol,
+        creator: info.creator,
+        sold: ethers.formatEther(info.sold),
+        raised: ethers.formatEther(info.raised),
+        isOpen: info.isOpen,
+        isLaunched: info.isLaunched,
+        createdAt: Number(info.createdAt),
+        launchedAt: Number(info.launchedAt),
+        progress: (Number(info.sold) / Number(await this.factoryContract.TOKEN_LIMIT())) * 100,
+        currentPrice: currentPrice.toString(),
+        marketCap,
+        metadata
+      };
+
+      // Cache result
+      if (this.redis) {
+        const ttl = (this.config.cacheTTL.tokenInfo ?? this.config.cacheTTL.default ?? 60);
+        await this.redis.setEx(
+          cacheKey,
+          ttl,
+          JSON.stringify(tokenInfo)
+        );
+      }
+
+      return tokenInfo;
+    } catch (error) {
+      this.logger.error('Failed to get token info:', error);
+      return null;
+    }
   }
 
-  // Token Holders
-  async getTokenHolders(
-    address: string, 
-    page: number = 1, 
-    limit: number = 100
-  ): Promise<TokenHolder[]> {
-    const cacheKey = `token:holders:${this.network}:${address.toLowerCase()}:${page}:${limit}`;
+  /**
+   * Get all tokens created by the factory
+   */
+  async getAllTokens(): Promise<string[]> {
+    try {
+      return await this.factoryContract.getAllTokens();
+    } catch (error) {
+      this.logger.error('Failed to get all tokens:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get tokens created by a specific creator
+   */
+  async getTokensByCreator(creator: string): Promise<string[]> {
+    try {
+      return await this.factoryContract.getTokensByCreator(creator);
+    } catch (error) {
+      this.logger.error('Failed to get tokens by creator:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Calculate buy quote
+   */
+  async getBuyQuote(tokenAddress: string, amountCore: string): Promise<PriceQuote | null> {
+    try {
+      const tokenInfo = await this.factoryContract.getTokenInfo(tokenAddress);
+      const amountIn = ethers.parseEther(amountCore);
+      
+      const tokensOut = await this.factoryContract.calculateTokensOut(
+        tokenInfo.sold,
+        amountIn
+      );
+      
+      const tradingFee = await this.factoryContract.platformTradingFee();
+      const fee = (amountIn * BigInt(tradingFee)) / 10000n;
+      
+      const pricePerToken = Number(amountCore) / Number(ethers.formatEther(tokensOut));
+      
+      // Calculate price impact
+      const smallAmount = ethers.parseEther('0.001');
+      const smallTokensOut = await this.factoryContract.calculateTokensOut(
+        tokenInfo.sold,
+        smallAmount
+      );
+      const basePrice = 0.001 / Number(ethers.formatEther(smallTokensOut));
+      const priceImpact = ((pricePerToken - basePrice) / basePrice) * 100;
+      
+      return {
+        tokensOut: ethers.formatEther(tokensOut),
+        pricePerToken,
+        priceImpact,
+        fee: ethers.formatEther(fee),
+        minReceived: ethers.formatEther(tokensOut * 95n / 100n) // 5% slippage
+      };
+    } catch (error) {
+      this.logger.error('Failed to get buy quote:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate sell quote
+   */
+  async getSellQuote(tokenAddress: string, tokenAmount: string): Promise<PriceQuote | null> {
+    try {
+      const tokenInfo = await this.factoryContract.getTokenInfo(tokenAddress);
+      const amountIn = ethers.parseEther(tokenAmount);
+      
+      const ethOut = await this.factoryContract.calculateETHOut(
+        tokenInfo.sold,
+        amountIn
+      );
+      
+      const tradingFee = await this.factoryContract.platformTradingFee();
+      const fee = (ethOut * BigInt(tradingFee)) / 10000n;
+      
+      const pricePerToken = Number(ethers.formatEther(ethOut)) / Number(tokenAmount);
+      
+      // Calculate price impact
+      const smallAmount = ethers.parseEther('1000');
+      const smallEthOut = await this.factoryContract.calculateETHOut(
+        tokenInfo.sold,
+        smallAmount
+      );
+      const basePrice = Number(ethers.formatEther(smallEthOut)) / 1000;
+      const priceImpact = ((basePrice - pricePerToken) / basePrice) * 100;
+      
+      return {
+        tokensOut: ethers.formatEther(ethOut),
+        pricePerToken,
+        priceImpact,
+        fee: ethers.formatEther(fee),
+        minReceived: ethers.formatEther(ethOut * 95n / 100n) // 5% slippage
+      };
+    } catch (error) {
+      this.logger.error('Failed to get sell quote:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get platform statistics
+   */
+  async getPlatformStats(): Promise<PlatformStats | null> {
+    const cacheKey = 'platform:stats';
     
-    const cached = await this.getCached<TokenHolder[]>(cacheKey);
-    if (cached) {
-      this.logger.debug(`Cache hit for token holders: ${address}`);
-      return cached;
+    // Check cache
+    if (this.redis) {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
     }
 
     try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'token',
-          action: 'getTokenHolders',
-          contractaddress: address,
-          page,
-          offset: limit,
-        },
-      });
+      const [
+        totalTokensCreated,
+        totalVolume,
+        totalFeesCollected,
+        creationFee,
+        tradingFee
+      ] = await Promise.all([
+        this.factoryContract.totalTokensCreated(),
+        this.factoryContract.totalVolume(),
+        this.factoryContract.totalFeesCollected(),
+        this.factoryContract.creationFee(),
+        this.factoryContract.platformTradingFee()
+      ]);
 
-      if (response.data.status === '1' && response.data.result) {
-        const holders = z.array(TokenHolderSchema).parse(response.data.result);
-        await this.setCached(cacheKey, holders, this.config.cacheTTL.holders);
-        return holders;
+      const stats: PlatformStats = {
+        totalTokensCreated: Number(totalTokensCreated),
+        totalVolume: ethers.formatEther(totalVolume),
+        totalFeesCollected: ethers.formatEther(totalFeesCollected),
+        creationFee: ethers.formatEther(creationFee),
+        tradingFee: Number(tradingFee) // basis points
+      };
+
+      // Cache result
+      if (this.redis) {
+        const ttl = (this.config.cacheTTL.default ?? 60);
+        await this.redis.setEx(
+          cacheKey,
+          ttl,
+          JSON.stringify(stats)
+        );
       }
-    } catch (error) {
-      this.logger.error(`Failed to get token holders for ${address}:`, error);
-    }
 
-    return [];
+      return stats;
+    } catch (error) {
+      this.logger.error('Failed to get platform stats:', error);
+      return null;
+    }
   }
 
-  // Token Transactions
-  async getTokenTransactions(
-    address: string,
-    startBlock: number = 0,
-    endBlock: number = 99999999,
-    page: number = 1,
-    limit: number = 100
-  ): Promise<Transaction[]> {
-    const cacheKey = `token:txs:${this.network}:${address.toLowerCase()}:${startBlock}:${endBlock}:${page}`;
+  // ============= Staking Methods =============
+
+  /**
+   * Get user's staking information
+   */
+  async getStakingInfo(userAddress: string): Promise<StakingInfo | null> {
+    const cacheKey = `staking:${userAddress}`;
     
-    const cached = await this.getCached<Transaction[]>(cacheKey);
-    if (cached) {
-      return cached;
+    // Check cache
+    if (this.redis) {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
     }
 
     try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'account',
-          action: 'tokentx',
-          contractaddress: address,
-          startblock: startBlock,
-          endblock: endBlock,
-          page,
-          offset: limit,
-          sort: 'desc',
-        },
-      });
+      const [
+        stats,
+        feeDiscount,
+        tier
+      ] = await Promise.all([
+        this.stakingContract.getStakingStats(userAddress),
+        this.stakingContract.getUserFeeDiscount(userAddress),
+        this.stakingContract.getUserTier(userAddress)
+      ]);
 
-      if (response.data.status === '1' && response.data.result) {
-        const transactions = z.array(TransactionSchema).parse(response.data.result);
-        await this.setCached(cacheKey, transactions, this.config.cacheTTL.transactions);
-        return transactions;
+      const tierNames = ['None', 'Bronze', 'Silver', 'Gold', 'Platinum'];
+      
+      const stakingInfo: StakingInfo = {
+        stakedAmount: ethers.formatEther(stats[0]),
+        pendingRewards: ethers.formatEther(stats[1]),
+        totalEarned: ethers.formatEther(stats[2]),
+        tier: Number(tier),
+        tierName: tierNames[Number(tier)] || 'None',
+        isPremium: stats[4],
+        feeDiscount: Number(feeDiscount) // basis points
+      };
+
+      // Cache result
+      if (this.redis) {
+        const ttl = (this.config.cacheTTL.stakingInfo ?? this.config.cacheTTL.default ?? 60);
+        await this.redis.setEx(
+          cacheKey,
+          ttl,
+          JSON.stringify(stakingInfo)
+        );
       }
-    } catch (error) {
-      this.logger.error(`Failed to get token transactions for ${address}:`, error);
-    }
 
-    return [];
+      return stakingInfo;
+    } catch (error) {
+      this.logger.error('Failed to get staking info:', error);
+      return null;
+    }
   }
 
-  // Contract Verification
-  async verifyContract(
+  /**
+   * Get staking pool information
+   */
+  async getStakingPoolInfo(): Promise<any> {
+    try {
+      const pool = await this.stakingContract.pool();
+      
+      return {
+        totalStaked: ethers.formatEther(pool[0]),
+        accRewardPerShare: pool[1].toString(),
+        lastRewardTime: Number(pool[2]),
+        rewardRate: ethers.formatEther(pool[3])
+      };
+    } catch (error) {
+      this.logger.error('Failed to get staking pool info:', error);
+      return null;
+    }
+  }
+
+  // ============= Helper Methods =============
+
+  /**
+   * Get contract ABI by address (via explorer) or by known name fallback
+   */
+  public async getContractABI(identifier: string): Promise<any | null> {
+    try {
+      const isAddress = /^0x[a-fA-F0-9]{40}$/.test(identifier);
+      if (isAddress) {
+        const { data } = await this.apiClient.get('', {
+          params: {
+            module: 'contract',
+            action: 'getabi',
+            address: identifier,
+          },
+        });
+        if (data && data.status === '1' && data.result) {
+          try {
+            return JSON.parse(data.result);
+          } catch {
+            // Some explorers return already-parsed JSON
+            return data.result;
+          }
+        }
+        return null;
+      }
+      const key = identifier.toLowerCase();
+      if (key === 'memefactory' || key === 'factory' || key === 'meme_factory') {
+        return MEMEFACTORY_ABI;
+      }
+      if (key === 'staking' || key === 'stake') {
+        return STAKING_ABI;
+      }
+      if (key === 'memetoken' || key === 'token' || key === 'meme_token') {
+        return MEMETOKEN_ABI;
+      }
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to get contract ABI:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Submit contract verification to Core Scan (Etherscan-compatible)
+   * Returns true if submission was accepted
+   */
+  public async verifyContract(
     address: string,
     sourceCode: string,
     contractName: string,
     compilerVersion: string,
-    constructorArgs: string = ''
+    constructorArgs: string
   ): Promise<boolean> {
     try {
-      const response = await this.apiClient.post('/api', {
+      const params: Record<string, any> = {
         module: 'contract',
         action: 'verifysourcecode',
         contractaddress: address,
@@ -308,221 +634,129 @@ export class CoreAPIService {
         compilerversion: compilerVersion,
         optimizationUsed: 1,
         runs: 200,
-        constructorArguements: constructorArgs,
-      });
-
-      if (response.data.status === '1') {
-        this.logger.info(`Contract verification submitted for ${address}`);
+        constructorArguements: (constructorArgs || '').replace(/^0x/, ''),
+      };
+      const { data } = await this.apiClient.post('', null, { params });
+      // Etherscan-like API returns { status: '1', message: 'OK', result: 'GUID' }
+      if (data && String(data.status) === '1') {
         return true;
       }
+      this.logger.warn('Contract verification submission failed', { response: data });
+      return false;
     } catch (error) {
-      this.logger.error(`Failed to verify contract ${address}:`, error);
+      this.logger.error('Failed to verify contract:', error);
+      return false;
     }
-
-    return false;
   }
 
-  // Get Contract ABI
-  async getContractABI(address: string): Promise<any[] | null> {
-    const cacheKey = `contract:abi:${this.network}:${address.toLowerCase()}`;
-    
-    const cached = await this.getCached<any[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
+  /**
+   * Calculate current price based on bonding curve
+   */
+  private async getCurrentPrice(tokenAddress: string, currentSold: bigint): Promise<number> {
     try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'contract',
-          action: 'getabi',
-          address,
-        },
-      });
-
-      if (response.data.status === '1' && response.data.result) {
-        const abi = JSON.parse(response.data.result);
-        await this.setCached(cacheKey, abi, (this.config.cacheTTL.default || 60) * 10);
-        return abi;
-      }
-    } catch (error) {
-      this.logger.error(`Failed to get contract ABI for ${address}:`, error);
+      // Calculate price for buying 1 token at current state
+      const oneEther = ethers.parseEther('1');
+      const tokensForOneEther = await this.factoryContract.calculateTokensOut(
+        currentSold,
+        oneEther
+      );
+      
+      // Price = 1 CORE / tokens received
+      return 1 / Number(ethers.formatEther(tokensForOneEther));
+    } catch {
+      return 0;
     }
-
-    return null;
   }
 
-  // Price Data (from DEX)
-  async getTokenPrice(tokenAddress: string): Promise<PriceData | null> {
-    const cacheKey = `token:price:${this.network}:${tokenAddress.toLowerCase()}`;
-    
-    const cached = await this.getCached<PriceData>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
+  /**
+   * Get transaction details
+   */
+  async getTransaction(txHash: string): Promise<any> {
     try {
-      // Get price from IcecreamSwap DEX
-      const dexConfig = getDexConfig(this.network);
-      const tasks: Array<Promise<PriceData | null>> = [];
-      if (dexConfig.IceCreamSwap && dexConfig.IceCreamSwap.factory !== '0x0000000000000000000000000000000000000000') {
-        tasks.push(this.getPriceFromIceCreamSwap(tokenAddress));
-      }
-      const dexPrices = await Promise.allSettled(tasks);
-
-      // Aggregate prices from successful DEX queries
-      const validPrices = dexPrices
-        .filter(result => result.status === 'fulfilled' && result.value !== null)
-        .map(result => (result as PromiseFulfilledResult<PriceData>).value!);
-
-      if (validPrices.length === 0) {
-        this.logger.warn(`No DEX prices found for token ${tokenAddress}`);
+      const tx = await this.provider.getTransaction(txHash);
+      const receipt = await this.provider.getTransactionReceipt(txHash);
+      
+      if (!tx || !receipt) {
         return null;
       }
 
-      // Calculate weighted average based on liquidity
-      const totalLiquidity = validPrices.reduce((sum, p) => sum + p.liquidity, 0);
-      
-      const priceData: PriceData = {
-        token: tokenAddress,
-        priceUSD: validPrices.reduce((sum, p) => sum + (p.priceUSD * p.liquidity), 0) / totalLiquidity,
-        priceCore: validPrices.reduce((sum, p) => sum + (p.priceCore * p.liquidity), 0) / totalLiquidity,
-        volume24h: validPrices.reduce((sum, p) => sum + p.volume24h, 0),
-        liquidity: totalLiquidity,
-        priceChange24h: validPrices[0].priceChange24h, // Use first available
+      return {
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to,
+        value: ethers.formatEther(tx.value),
+        gasPrice: ethers.formatUnits(tx.gasPrice || 0, 'gwei'),
+        gasUsed: receipt.gasUsed.toString(),
+        blockNumber: receipt.blockNumber,
+        status: receipt.status,
+        timestamp: (await this.provider.getBlock(receipt.blockNumber))?.timestamp
       };
-      
-      await this.setCached(cacheKey, priceData, this.config.cacheTTL.priceData);
-      return priceData;
     } catch (error) {
-      this.logger.error(`Failed to get price data for ${tokenAddress}:`, error);
+      this.logger.error('Failed to get transaction:', error);
+      return null;
     }
-
-    return null;
   }
 
-  // Get Block Number
+  /**
+   * Get current block number
+   */
   async getBlockNumber(): Promise<number> {
-    try {
-      return await this.provider.getBlockNumber();
-    } catch (error) {
-      this.logger.error('Failed to get block number:', error);
-      throw error;
-    }
+    return await this.provider.getBlockNumber();
   }
 
-  // Get Transaction
-  async getTransaction(hash: string): Promise<ethers.TransactionResponse | null> {
-    try {
-      return await this.provider.getTransaction(hash);
-    } catch (error) {
-      this.logger.error(`Failed to get transaction ${hash}:`, error);
-      return null;
-    }
-  }
-
-  // Get Transaction Receipt
-  async getTransactionReceipt(hash: string): Promise<ethers.TransactionReceipt | null> {
-    try {
-      return await this.provider.getTransactionReceipt(hash);
-    } catch (error) {
-      this.logger.error(`Failed to get transaction receipt ${hash}:`, error);
-      return null;
-    }
-  }
-
-  // Estimate Gas
-  async estimateGas(transaction: ethers.TransactionRequest): Promise<bigint> {
-    try {
-      return await this.provider.estimateGas(transaction);
-    } catch (error) {
-      this.logger.error('Failed to estimate gas:', error);
-      throw error;
-    }
-  }
-
-  // Get Gas Price
-  async getGasPrice(): Promise<bigint> {
-    try {
-      const feeData = await this.provider.getFeeData();
-      return feeData.gasPrice || BigInt(35000000000); // Default 35 Gwei
-    } catch (error) {
-      this.logger.error('Failed to get gas price:', error);
-      return BigInt(35000000000);
-    }
-  }
-
-  // Clear cache
-  async clearCache(pattern?: string): Promise<void> {
-    if (!this.redis) return;
-    
-    try {
-      if (pattern) {
-        const keys = await this.redis.keys(pattern);
-        if (keys.length > 0) {
-          await this.redis.del(keys);
-          this.logger.info(`Cleared ${keys.length} cache entries matching pattern: ${pattern}`);
-        }
-      } else {
-        await this.redis.flushDb();
-        this.logger.info('Cleared all cache entries');
-      }
-    } catch (error) {
-      this.logger.error('Failed to clear cache:', error);
-    }
-  }
-
-  // ============ ACCOUNTS MODULE ============
-  
   /**
-   * Get account balance for multiple addresses
+   * Get CORE price in USD (mock for now)
    */
-  async getBalanceMulti(addresses: string[]): Promise<{ account: string; balance: string }[]> {
-    const cacheKey = `balance:multi:${this.network}:${addresses.join(',')}`;
-    
-    const cached = await this.getCached<any[]>(cacheKey);
-    if (cached) return cached;
-    
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'account',
-          action: 'balancemulti',
-          address: addresses.join(','),
-          tag: 'latest',
-        },
-      });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result;
-        await this.setCached(cacheKey, result, this.config.cacheTTL.default);
-        return result;
+  async getCorePriceUSD(): Promise<number> {
+    // Etherscan-compatible stats.ethprice
+    const { data } = await this.apiClient.get('', {
+      params: {
+        module: 'stats',
+        action: 'ethprice',
+      },
+    });
+    if (String(data?.status ?? '1') === '1') {
+      const usd = Number(
+        data?.result?.ethusd ??
+        data?.result?.coreusd ??
+        data?.result?.usd ??
+        0
+      );
+      if (!isNaN(usd) && usd > 0) {
+        return usd;
       }
-    } catch (error) {
-      this.logger.error('Failed to get multi balance:', error);
     }
-    
-    return [];
+    throw new Error('Invalid CORE price response');
   }
-  
-  /**
-   * Get normal transactions by address
-   */
-  async getNormalTransactions(
+
+  // ============= Public Utility Methods for Routes =============
+
+  public getProvider(): ethers.JsonRpcProvider {
+    return this.provider;
+  }
+
+  public async getBalanceMulti(addresses: string[]): Promise<Array<{ address: string; balance: string; balanceCore: string }>> {
+    const results = await Promise.all(addresses.map(async (address) => {
+      const balance = await this.provider.getBalance(address);
+      return {
+        address,
+        balance: balance.toString(),
+        balanceCore: ethers.formatEther(balance),
+      };
+    }));
+    return results;
+  }
+
+  public async getNormalTransactions(
     address: string,
-    startBlock: number = 0,
-    endBlock: number = 99999999,
-    page: number = 1,
-    offset: number = 100,
-    sort: 'asc' | 'desc' = 'desc'
-  ): Promise<any[]> {
-    const cacheKey = `txs:normal:${this.network}:${address}:${startBlock}:${endBlock}:${page}`;
-    
-    const cached = await this.getCached<any[]>(cacheKey);
-    if (cached) return cached;
-    
+    startBlock: number,
+    endBlock: number,
+    page: number,
+    offset: number,
+    sort: 'asc' | 'desc'
+  ): Promise<Transaction[]> {
     try {
-      const response = await this.apiClient.get('/api', {
+      const { data } = await this.apiClient.get('', {
         params: {
           module: 'account',
           action: 'txlist',
@@ -534,36 +768,22 @@ export class CoreAPIService {
           sort,
         },
       });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result;
-        await this.setCached(cacheKey, result, this.config.cacheTTL.transactions);
-        return result;
-      }
+      return data?.result || [];
     } catch (error) {
       this.logger.error('Failed to get normal transactions:', error);
+      return [];
     }
-    
-    return [];
   }
-  
-  /**
-   * Get internal transactions by address
-   */
-  async getInternalTransactions(
+
+  public async getInternalTransactions(
     address: string,
-    startBlock: number = 0,
-    endBlock: number = 99999999,
-    page: number = 1,
-    offset: number = 100
-  ): Promise<any[]> {
-    const cacheKey = `txs:internal:${this.network}:${address}:${startBlock}:${endBlock}:${page}`;
-    
-    const cached = await this.getCached<any[]>(cacheKey);
-    if (cached) return cached;
-    
+    startBlock: number,
+    endBlock: number,
+    page: number,
+    offset: number,
+  ): Promise<Transaction[]> {
     try {
-      const response = await this.apiClient.get('/api', {
+      const { data } = await this.apiClient.get('', {
         params: {
           module: 'account',
           action: 'txlistinternal',
@@ -575,566 +795,172 @@ export class CoreAPIService {
           sort: 'desc',
         },
       });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result;
-        await this.setCached(cacheKey, result, this.config.cacheTTL.transactions);
-        return result;
-      }
+      return data?.result || [];
     } catch (error) {
       this.logger.error('Failed to get internal transactions:', error);
+      return [];
     }
-    
-    return [];
   }
-  
-  // ============ BLOCKS MODULE ============
-  
-  /**
-   * Get block by number
-   */
-  async getBlockByNumber(blockNumber: number): Promise<any> {
-    const cacheKey = `block:${this.network}:${blockNumber}`;
-    
-    const cached = await this.getCached<any>(cacheKey);
-    if (cached) return cached;
-    
+
+  public async getTokenTransactions(
+    contractAddress: string,
+    startBlock: number = 0,
+    endBlock: number = 99999999,
+    page: number = 1,
+    offset: number = 100,
+    sort: 'asc' | 'desc' = 'desc'
+  ): Promise<Transaction[]> {
     try {
-      const response = await this.apiClient.get('/api', {
+      const { data } = await this.apiClient.get('', {
         params: {
-          module: 'proxy',
-          action: 'eth_getBlockByNumber',
-          tag: `0x${blockNumber.toString(16)}`,
-          boolean: true,
+          module: 'account',
+          action: 'tokentx',
+          contractaddress: contractAddress,
+          startblock: startBlock,
+          endblock: endBlock,
+          page,
+          offset,
+          sort,
         },
       });
-      
-      if (response.data.result) {
-        const result = response.data.result;
-        await this.setCached(cacheKey, result, (this.config.cacheTTL.default || 60) * 10);
-        return result;
-      }
+      return data?.result || [];
     } catch (error) {
-      this.logger.error(`Failed to get block ${blockNumber}:`, error);
+      this.logger.error('Failed to get token transactions:', error);
+      return [];
     }
-    
-    return null;
   }
-  
-  /**
-   * Get block reward
-   */
-  async getBlockReward(blockNumber: number): Promise<any> {
-    const cacheKey = `block:reward:${this.network}:${blockNumber}`;
-    
-    const cached = await this.getCached<any>(cacheKey);
-    if (cached) return cached;
-    
+
+  public async getTransactionCount(address: string): Promise<number> {
     try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'block',
-          action: 'getblockreward',
-          blockno: blockNumber,
-        },
-      });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result;
-        await this.setCached(cacheKey, result, (this.config.cacheTTL.default || 60) * 60);
-        return result;
-      }
+      const count = await this.provider.getTransactionCount(address);
+      return count;
     } catch (error) {
-      this.logger.error(`Failed to get block reward ${blockNumber}:`, error);
+      this.logger.error('Failed to get transaction count:', error);
+      return 0;
     }
-    
-    return null;
   }
-  
-  // ============ CONTRACTS MODULE ============
-  
-  /**
-   * Get contract creation transaction
-   */
-  async getContractCreation(address: string): Promise<any> {
-    const cacheKey = `contract:creation:${this.network}:${address.toLowerCase()}`;
-    
-    const cached = await this.getCached<any>(cacheKey);
-    if (cached) return cached;
-    
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'contract',
-          action: 'getcontractcreation',
-          contractaddresses: address,
-        },
-      });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result[0];
-        await this.setCached(cacheKey, result, (this.config.cacheTTL.default || 60) * 60);
-        return result;
+
+  public async getAccountAnalytics(address: string): Promise<{ address: string; txCount: number; totalReceivedCore: string; totalSentCore: string; firstTxTimestamp?: number; lastTxTimestamp?: number; }>
+  {
+    const txs = await this.getNormalTransactions(address, 0, 99999999, 1, 100, 'desc');
+    let received = 0n;
+    let sent = 0n;
+    let firstTs: number | undefined;
+    let lastTs: number | undefined;
+    for (const tx of txs) {
+      const value = BigInt(tx.value || '0');
+      if (String(tx.to).toLowerCase() === address.toLowerCase()) {
+        received += value;
       }
-    } catch (error) {
-      this.logger.error(`Failed to get contract creation for ${address}:`, error);
-    }
-    
-    return null;
-  }
-  
-  /**
-   * Get source code for verified contract
-   */
-  async getSourceCode(address: string): Promise<any> {
-    const cacheKey = `contract:source:${this.network}:${address.toLowerCase()}`;
-    
-    const cached = await this.getCached<any>(cacheKey);
-    if (cached) return cached;
-    
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'contract',
-          action: 'getsourcecode',
-          address,
-        },
-      });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result[0];
-        await this.setCached(cacheKey, result, (this.config.cacheTTL.default || 60) * 60);
-        return result;
+      if (String(tx.from).toLowerCase() === address.toLowerCase()) {
+        sent += value;
       }
-    } catch (error) {
-      this.logger.error(`Failed to get source code for ${address}:`, error);
-    }
-    
-    return null;
-  }
-  
-  // ============ STATS MODULE ============
-  
-  /**
-   * Get total supply of CORE
-   */
-  async getTotalSupply(): Promise<string> {
-    const cacheKey = `stats:supply:${this.network}`;
-    
-    const cached = await this.getCached<string>(cacheKey);
-    if (cached) return cached;
-    
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'stats',
-          action: 'coresupply',
-        },
-      });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = response.data.result;
-        await this.setCached(cacheKey, result, (this.config.cacheTTL.default || 60) * 60);
-        return result;
+      const ts = Number(tx.timeStamp || tx.timestamp || 0);
+      if (ts) {
+        if (firstTs === undefined || ts < firstTs) firstTs = ts;
+        if (lastTs === undefined || ts > lastTs) lastTs = ts;
       }
-    } catch (error) {
-      this.logger.error('Failed to get total supply:', error);
     }
-    
-    return '0';
-  }
-  
-  /**
-   * Get CORE price
-   */
-  async getCorePrice(): Promise<{ btc: string; usd: string }> {
-    const cacheKey = `stats:price:${this.network}`;
-    
-    const cached = await this.getCached<any>(cacheKey);
-    if (cached) return cached;
-    
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'stats',
-          action: 'coreprice',
-        },
-      });
-      
-      if (response.data.status === '1' && response.data.result) {
-        const result = {
-          btc: response.data.result.corebtc,
-          usd: response.data.result.coreusd,
-        };
-        await this.setCached(cacheKey, result, this.config.cacheTTL.priceData);
-        return result;
-      }
-    } catch (error) {
-      this.logger.error('Failed to get CORE price:', error);
-    }
-    
-    return { btc: '0', usd: '0' };
-  }
-  
-  // ============ GETH PROXY MODULE ============
-  
-  /**
-   * Get transaction count (nonce) for address
-   */
-  async getTransactionCount(address: string): Promise<number> {
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'proxy',
-          action: 'eth_getTransactionCount',
-          address,
-          tag: 'latest',
-        },
-      });
-      
-      if (response.data.result) {
-        return parseInt(response.data.result, 16);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to get transaction count for ${address}:`, error);
-    }
-    
-    return 0;
-  }
-  
-  /**
-   * Send raw transaction
-   */
-  async sendRawTransaction(hex: string): Promise<string | null> {
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'proxy',
-          action: 'eth_sendRawTransaction',
-          hex,
-        },
-      });
-      
-      if (response.data.result) {
-        return response.data.result;
-      }
-    } catch (error) {
-      this.logger.error('Failed to send raw transaction:', error);
-    }
-    
-    return null;
-  }
-  
-  /**
-   * Call contract function
-   */
-  async call(to: string, data: string): Promise<string | null> {
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'proxy',
-          action: 'eth_call',
-          to,
-          data,
-          tag: 'latest',
-        },
-      });
-      
-      if (response.data.result) {
-        return response.data.result;
-      }
-    } catch (error) {
-      this.logger.error('Failed to call contract:', error);
-    }
-    
-    return null;
-  }
-  
-  /**
-   * Get code at address
-   */
-  async getCode(address: string): Promise<string> {
-    try {
-      const response = await this.apiClient.get('/api', {
-        params: {
-          module: 'proxy',
-          action: 'eth_getCode',
-          address,
-          tag: 'latest',
-        },
-      });
-      
-      if (response.data.result) {
-        return response.data.result;
-      }
-    } catch (error) {
-      this.logger.error(`Failed to get code for ${address}:`, error);
-    }
-    
-    return '0x';
-  }
-  
-  // ============ HELPER METHODS ============
-  
-  /**
-   * Check if address is a contract
-   */
-  async isContract(address: string): Promise<boolean> {
-    const code = await this.getCode(address);
-    return code !== '0x' && code !== '0x0';
-  }
-  
-  /**
-   * Get comprehensive token analytics
-   */
-  async getTokenAnalyticsExtended(address: string): Promise<any> {
-    const [
-      tokenInfo,
-      holders,
-      transactions,
-      sourceCode,
-      creationTx,
-      isVerified,
-    ] = await Promise.all([
-      this.getTokenInfo(address),
-      this.getTokenHolders(address, 1, 50),
-      this.getTokenTransactions(address),
-      this.getSourceCode(address),
-      this.getContractCreation(address),
-      this.isContract(address),
-    ]);
-    
-    // Calculate additional metrics
-    const uniqueAddresses = new Set(
-      transactions.flatMap((tx: any) => [tx.from, tx.to])
-    ).size;
-    
-    const topHolderPercentage = holders[0]?.percentage || 0;
-    const top10HoldersPercentage = holders
-      .slice(0, 10)
-      .reduce((sum: number, h: any) => sum + (h.percentage || 0), 0);
-    
-    return {
-      tokenInfo,
-      holders: {
-        count: holders.length,
-        topHolder: holders[0],
-        topHolderPercentage,
-        top10HoldersPercentage,
-      },
-      transactions: {
-        count: transactions.length,
-        uniqueTraders: uniqueAddresses,
-        last24h: transactions.filter((tx: any) => {
-          const txTime = parseInt(tx.timestamp) * 1000;
-          return Date.now() - txTime < 24 * 60 * 60 * 1000;
-        }).length,
-      },
-      contract: {
-        isContract: isVerified,
-        isVerified: sourceCode && sourceCode.SourceCode !== '',
-        creationTx: creationTx?.txHash,
-        creator: creationTx?.contractCreator,
-        deployedAt: creationTx?.timestamp,
-      },
-    };
-  }
-  
-  /**
-   * Get comprehensive account analytics
-   */
-  async getAccountAnalytics(address: string): Promise<any> {
-    const [
-      balance,
-      normalTxs,
-      internalTxs,
-      nonce,
-    ] = await Promise.all([
-      this.provider.getBalance(address),
-      this.getNormalTransactions(address, 0, 99999999, 1, 100),
-      this.getInternalTransactions(address, 0, 99999999, 1, 100),
-      this.getTransactionCount(address),
-    ]);
-    
     return {
       address,
-      balance: balance.toString(),
-      balanceCore: ethers.formatEther(balance),
-      nonce,
-      transactions: {
-        normal: normalTxs.length,
-        internal: internalTxs.length,
-        total: normalTxs.length + internalTxs.length,
-      },
-      firstTx: normalTxs[normalTxs.length - 1],
-      lastTx: normalTxs[0],
+      txCount: txs.length,
+      totalReceivedCore: ethers.formatEther(received),
+      totalSentCore: ethers.formatEther(sent),
+      firstTxTimestamp: firstTs,
+      lastTxTimestamp: lastTs,
     };
   }
 
-  // ============ DEX PRICE FETCHING METHODS ============
-
-  /**
-   * Get token price from IceCreamSwap DEX
-   */
-  private async getPriceFromIceCreamSwap(tokenAddress: string): Promise<PriceData | null> {
+  public async getTokenHolders(contractAddress: string, page: number = 1, offset: number = 100): Promise<TokenHolder[]> {
     try {
-      const dexConfig = getDexConfig(this.network);
-      if (!dexConfig.IceCreamSwap || dexConfig.IceCreamSwap.factory === '0x0000000000000000000000000000000000000000') {
-        this.logger.debug('IceCreamSwap not configured for this network');
-        return null;
-      }
-      const FACTORY_ADDRESS = dexConfig.IceCreamSwap.factory;
-      const { WCORE: WCORE_ADDRESS, USDT: USDT_ADDRESS } = dexConfig.tokens;
-      
-      // Use ABIs from config
-      const factoryAbi = DEX_CONFIG.abis.factory;
-      const pairAbi = DEX_CONFIG.abis.pair;
-      
-      const factory = new ethers.Contract(FACTORY_ADDRESS, factoryAbi, this.provider);
-      
-      // Try to find WCORE pair first (most common)
-      let pairAddress = await factory.getPair(tokenAddress, WCORE_ADDRESS);
-      let useUSDT = false;
-      
-      if (pairAddress === ethers.ZeroAddress) {
-        // Try USDT pair as fallback
-        if (USDT_ADDRESS) {
-          pairAddress = await factory.getPair(tokenAddress, USDT_ADDRESS);
-        }
-        useUSDT = true;
-        
-        if (pairAddress === ethers.ZeroAddress) {
-          this.logger.debug(`No IceCreamSwap pair found for token ${tokenAddress}`);
-          return null;
-        }
-      }
-      
-      const pair = new ethers.Contract(pairAddress, pairAbi, this.provider);
-      
-      // Get reserves and token ordering
-      const [reserves, token0] = await Promise.all([
-        pair.getReserves(),
-        pair.token0(),
-      ]);
-      
-      // Determine which token is which
-      const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
-      const tokenReserve = isToken0 ? reserves[0] : reserves[1];
-      const baseReserve = isToken0 ? reserves[1] : reserves[0];
-      
-      // Get token decimals (assume 18 for most tokens)
-      const tokenDecimals = 18;
-      const baseDecimals = useUSDT ? 6 : 18; // USDT has 6 decimals, WCORE has 18
-      
-      // Calculate price
-      const tokenAmount = Number(ethers.formatUnits(tokenReserve, tokenDecimals));
-      const baseAmount = Number(ethers.formatUnits(baseReserve, baseDecimals));
-      
-      if (tokenAmount === 0) return null;
-      
-      const priceInBase = baseAmount / tokenAmount;
-      
-      // Get CORE price in USD (if we need to convert)
-      let priceUSD = 0;
-      let priceCore = 0;
-      
-      if (useUSDT && USDT_ADDRESS) {
-        priceUSD = priceInBase;
-        // Get CORE price to calculate priceCore
-        const corePrice = await this.getCorePrice();
-        priceCore = priceUSD / parseFloat(corePrice.usd);
-      } else {
-        priceCore = priceInBase;
-        // Get CORE price in USD
-        const corePrice = await this.getCorePrice();
-        priceUSD = priceCore * parseFloat(corePrice.usd);
-      }
-      
-      // Calculate liquidity in USD
-      const liquidity = (useUSDT && USDT_ADDRESS)
-        ? baseAmount * 2
-        : priceCore * baseAmount * 2 * parseFloat((await this.getCorePrice()).usd);
-      
-      // Get 24h volume from events (simplified - would need event filtering)
-      const volume24h = liquidity * DEX_CONFIG.priceCalculation.volumeMultipliers.IceCreamSwap;
-      
-      return {
-        token: tokenAddress,
-        priceUSD,
-        priceCore,
-        volume24h,
-        liquidity,
-        priceChange24h: 0, // Would need historical data
-      };
+      const { data } = await this.apiClient.get('', {
+        params: {
+          module: 'token',
+          action: 'getTokenHolders',
+          contractaddress: contractAddress,
+          page,
+          offset,
+        },
+      });
+      return data?.result || [];
     } catch (error) {
-      this.logger.debug(`IceCreamSwap price fetch failed for ${tokenAddress}:`, error);
+      this.logger.error('Failed to get token holders:', error);
+      return [];
+    }
+  }
+
+  public async getTokenPrice(tokenAddress: string): Promise<PriceData | null> {
+    try {
+      // Try platform-specific pricing via bonding curve if token is known to factory
+      const info = await this.factoryContract.getTokenInfo(tokenAddress);
+      if (info && info.token && info.token !== ethers.ZeroAddress) {
+        const priceCore = await this.getCurrentPrice(tokenAddress, info.sold);
+        const coreUsd = await this.getCorePrice().catch(() => this.getCorePriceUSD());
+        return {
+          address: tokenAddress,
+          priceCore,
+          priceUSD: priceCore * (coreUsd || 0),
+          marketCapUSD: Number(ethers.formatEther(info.sold)) * priceCore * (coreUsd || 0),
+          updatedAt: Math.floor(Date.now() / 1000),
+        };
+      }
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to get token price:', error);
       return null;
     }
   }
 
+  public async getGasPrice(): Promise<bigint> {
+    try {
+      const feeData = await this.provider.getFeeData();
+      if (feeData.gasPrice != null) {
+        return feeData.gasPrice;
+      }
+      const hex = await this.provider.send('eth_gasPrice', []);
+      return BigInt(hex);
+    } catch (error) {
+      this.logger.error('Failed to get gas price:', error);
+      return 0n;
+    }
+  }
 
-  // CoreX removed from supported DEX list
+  public async getTotalSupply(): Promise<bigint> {
+    try {
+      const { data } = await this.apiClient.get('', {
+        params: {
+          module: 'stats',
+          action: 'ethsupply',
+        },
+      });
+      const result = data?.result;
+      if (typeof result === 'string') {
+        return BigInt(result);
+      }
+      return 0n;
+    } catch (error) {
+      this.logger.error('Failed to get total supply:', error);
+      return 0n;
+    }
+  }
 
-  // Historical price computation not implemented in current scope
+  public async getCorePrice(): Promise<number> {
+    try {
+      // Delegate to USD price helper (Etherscan-compatible endpoint)
+      return await this.getCorePriceUSD();
+    } catch (error) {
+      this.logger.error('Failed to get CORE price via explorer:', error);
+      return await this.getCorePriceUSD();
+    }
+  }
 
   /**
-   * Get liquidity pools for a token across all DEXes
+   * Clean up resources
    */
-  async getTokenLiquidityPools(tokenAddress: string): Promise<any[]> {
-    const pools = [];
-    const dexConfig = getDexConfig(this.network);
-    
-    // Check all configured DEXes
-    for (const [dexName, config] of Object.entries(dexConfig)) {
-      if (dexName === 'tokens') continue; // Skip token config
-      
-      try {
-        // Skip entries that are not DEX configs (e.g., tokens)
-        if (!(config as any) || !('factory' in (config as any))) {
-          continue;
-        }
-        if ((config as any).factory === '0x0000000000000000000000000000000000000000') {
-          continue;
-        }
-        const factoryAbi = DEX_CONFIG.abis.factory;
-        const factory = new ethers.Contract((config as any).factory, factoryAbi, this.provider);
-        
-        // Check for pools with common base tokens
-        for (const [tokenName, tokenAddr] of Object.entries(dexConfig.tokens)) {
-          try {
-            const pairAddress = await factory.getPair(tokenAddress, tokenAddr);
-            if (pairAddress !== ethers.ZeroAddress) {
-              pools.push({
-                dex: dexName,
-                factory: (config as any).factory,
-                pair: pairAddress,
-                baseToken: tokenName,
-                baseTokenAddress: tokenAddr,
-              });
-            }
-          } catch (err) {
-            // Pair doesn't exist, continue
-          }
-        }
-      } catch (error) {
-        this.logger.debug(`Failed to get ${dexName} pools:`, error);
-      }
-    }
-    
-    return pools;
-  }
-
-  // Get provider
-  getProvider(): ethers.JsonRpcProvider {
-    return this.provider;
-  }
-
-  // Close connections
   async close(): Promise<void> {
     if (this.redis) {
       await this.redis.quit();
     }
     this.provider.destroy();
-    this.logger.info('CoreAPIService closed');
   }
 }

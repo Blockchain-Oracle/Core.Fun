@@ -109,37 +109,30 @@ services:
   websocket:
     build: 
       context: .
-      dockerfile: websocket/Dockerfile
+      dockerfile: backend/websocket/Dockerfile
     container_name: core-websocket
     ports:
-      - "8081:8080"
+      - "8081:8081"
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      PORT: 8080
+      WS_PORT: 8081
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: core_meme_platform
-      POSTGRES_USER: core_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
-      CORE_API_URL: http://core-api:3001
+      CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      MEME_FACTORY_ADDRESS: ${MEME_FACTORY_TESTNET:-0x04242CfFdEC8F96A46857d4A50458F57eC662cE1}
       JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024_secure_key_for_auth}
-      SIGNATURE_SECRET: ${SIGNATURE_SECRET:-core_meme_signature_secret_2024_secure_key}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
-      core-api:
+      blockchain-monitor:
         condition: service_started
     restart: unless-stopped
     networks:
       - core-network
     volumes:
-      - ./websocket/logs:/app/websocket/logs
-    # The Dockerfile CMD runs the server; no override here
+      - ./backend/websocket/logs:/app/backend/websocket/logs
 
   # Blockchain Monitor
   blockchain-monitor:

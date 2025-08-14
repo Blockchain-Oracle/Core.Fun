@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { createLogger, createRedisClient } from '@core-meme/shared';
-import { memeFactoryService } from '../../api/src/services/MemeFactoryService';
+import { memeFactoryService } from '@core-meme/shared';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -150,6 +150,48 @@ io.on('connection', (socket) => {
     }
   });
   
+  // Handle subscription to alerts
+  socket.on('subscribe:alerts', async (data: any) => {
+    logger.info(`Socket ${socket.id} subscribing to alerts`);
+    socket.join('alerts');
+    socket.emit('subscribed', { channel: 'alerts' });
+  });
+  
+  // Handle subscription to all trades
+  socket.on('subscribe:trades', async (data: any) => {
+    logger.info(`Socket ${socket.id} subscribing to trades`);
+    socket.join('trades');
+    socket.emit('subscribed', { channel: 'trades' });
+  });
+  
+  // Handle subscription to price updates
+  socket.on('subscribe:prices', async (data: any) => {
+    logger.info(`Socket ${socket.id} subscribing to prices`);
+    socket.join('prices');
+    socket.emit('subscribed', { channel: 'prices' });
+  });
+  
+  // Handle unsubscription from alerts
+  socket.on('unsubscribe:alerts', (data: any) => {
+    logger.info(`Socket ${socket.id} unsubscribing from alerts`);
+    socket.leave('alerts');
+    socket.emit('unsubscribed', { channel: 'alerts' });
+  });
+  
+  // Handle unsubscription from trades
+  socket.on('unsubscribe:trades', (data: any) => {
+    logger.info(`Socket ${socket.id} unsubscribing from trades`);
+    socket.leave('trades');
+    socket.emit('unsubscribed', { channel: 'trades' });
+  });
+  
+  // Handle unsubscription from prices
+  socket.on('unsubscribe:prices', (data: any) => {
+    logger.info(`Socket ${socket.id} unsubscribing from prices`);
+    socket.leave('prices');
+    socket.emit('unsubscribed', { channel: 'prices' });
+  });
+  
   // Handle request for user's transactions
   socket.on('request:transactions', async () => {
     if (!authenticated) {
@@ -186,6 +228,52 @@ io.on('connection', (socket) => {
 import { StakingService } from './services/StakingService';
 
 const stakingService = new StakingService();
+
+// Set up Redis subscriber for blockchain monitor events
+const redisSubscriber = createRedisClient();
+
+// Redis event handlers
+redisSubscriber.on('message', (channel: string, message: string) => {
+  try {
+    const data = JSON.parse(message);
+    logger.debug(`Received Redis message on ${channel}:`, data);
+    
+    switch (channel) {
+      case 'websocket:alerts':
+        io.to('alerts').emit('alert', data);
+        break;
+        
+      case 'websocket:new_token':
+        io.to('public').emit('token:created', data);
+        io.to('tokens').emit('token:created', data);
+        break;
+        
+      case 'websocket:trade':
+        io.to('trades').emit('token:traded', data);
+        io.to(`token:${data.tokenAddress}`).emit('token:trade', data);
+        break;
+        
+      case 'websocket:price_update':
+        io.to('prices').emit('price:update', data);
+        io.to(`token:${data.tokenAddress}`).emit('price:update', data);
+        break;
+        
+      default:
+        logger.warn(`Unknown Redis channel: ${channel}`);
+    }
+  } catch (error) {
+    logger.error('Error processing Redis message:', error);
+  }
+});
+
+// Subscribe to blockchain monitor channels
+redisSubscriber.on('ready', () => {
+  logger.info('Redis subscriber connected, subscribing to blockchain monitor channels...');
+  redisSubscriber.subscribe('websocket:alerts');
+  redisSubscriber.subscribe('websocket:new_token');
+  redisSubscriber.subscribe('websocket:trade');
+  redisSubscriber.subscribe('websocket:price_update');
+});
 
 // Set up blockchain event listeners
 function setupBlockchainListeners() {
@@ -227,7 +315,7 @@ function setupBlockchainListeners() {
         const tokenInfo = await memeFactoryService.getTokenInfo(token);
         
         // Emit to token subscribers
-        io.to(`token:${token}`).emit('token:trade', {
+        const tradeData = {
           type: 'buy',
           address: token,
           trader: buyer,
@@ -235,14 +323,20 @@ function setupBlockchainListeners() {
           cost: ethers.formatEther(cost),
           timestamp: Number(timestamp),
           tokenInfo
-        });
+        };
+        
+        io.to(`token:${token}`).emit('token:trade', tradeData);
+        io.to('trades').emit('token:traded', tradeData); // Emit to general trades room
         
         // Emit price update
-        io.to(`token:${token}`).emit('price:update', {
+        const priceData = {
           address: token,
           price: tokenInfo?.currentPrice,
           marketCap: tokenInfo?.marketCap
-        });
+        };
+        
+        io.to(`token:${token}`).emit('price:update', priceData);
+        io.to('prices').emit('price:update', priceData); // Emit to general prices room
         
         // Emit to specific user if they're connected
         io.to(`user:${buyer}`).emit('user:trade', {
@@ -268,7 +362,7 @@ function setupBlockchainListeners() {
         const tokenInfo = await memeFactoryService.getTokenInfo(token);
         
         // Emit to token subscribers
-        io.to(`token:${token}`).emit('token:trade', {
+        const tradeData = {
           type: 'sell',
           address: token,
           trader: seller,
@@ -276,14 +370,20 @@ function setupBlockchainListeners() {
           proceeds: ethers.formatEther(proceeds),
           timestamp: Number(timestamp),
           tokenInfo
-        });
+        };
+        
+        io.to(`token:${token}`).emit('token:trade', tradeData);
+        io.to('trades').emit('token:traded', tradeData); // Emit to general trades room
         
         // Emit price update
-        io.to(`token:${token}`).emit('price:update', {
+        const priceData = {
           address: token,
           price: tokenInfo?.currentPrice,
           marketCap: tokenInfo?.marketCap
-        });
+        };
+        
+        io.to(`token:${token}`).emit('price:update', priceData);
+        io.to('prices').emit('price:update', priceData); // Emit to general prices room
         
         // Emit to specific user if they're connected
         io.to(`user:${seller}`).emit('user:trade', {
@@ -400,6 +500,9 @@ process.on('SIGTERM', () => {
   // Remove blockchain listeners
   memeFactoryService.removeAllListeners();
   stakingService.removeAllListeners();
+  
+  // Close Redis subscriber
+  redisSubscriber.disconnect();
   
   // Close WebSocket server
   io.close(() => {

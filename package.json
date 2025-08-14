@@ -31,8 +31,10 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@openzeppelin/contracts": "^5.0.0",
+    "@types/crypto-js": "^4.2.2",
     "@types/node": "^20.11.0",
     "concurrently": "^8.2.2",
+    "crypto-js": "^4.2.0",
     "dotenv": "^16.3.1",
     "hardhat": "^2.22.7",
     "turbo": "^1.11.0",

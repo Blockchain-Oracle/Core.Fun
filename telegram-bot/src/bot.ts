@@ -8,7 +8,7 @@ import { AlertCommands } from './alerts/AlertCommands';
 import { SubscriptionCommands } from './subscription/SubscriptionCommands';
 import { SessionManager } from './auth/SessionManager';
 import { DatabaseService } from './services/DatabaseService';
-import { WebSocketClient } from './services/WebSocketClient';
+import { SocketIOClient } from './services/SocketIOClient';
 import { WebhookHandler } from './services/WebhookHandler';
 import { createLogger } from '@core-meme/shared';
 import { authMiddleware } from './middleware/auth';
@@ -41,7 +41,7 @@ class CoreMemeBot {
   private subscriptionCommands: SubscriptionCommands;
   private sessionManager: SessionManager;
   private db: DatabaseService;
-  private wsClient: WebSocketClient;
+  private wsClient: SocketIOClient;
   private webhookHandler: WebhookHandler;
   private logger = createLogger({ service: 'telegram-bot' });
 
@@ -55,9 +55,11 @@ class CoreMemeBot {
     this.db = new DatabaseService();
     this.sessionManager = new SessionManager();
     
-    // Initialize WebSocket client
-    const wsUrl = process.env.WEBSOCKET_URL || 'ws://localhost:8081';
-    this.wsClient = new WebSocketClient({ url: wsUrl });
+    // Initialize Socket.IO client
+    const wsUrl = process.env.WEBSOCKET_URL || 'http://localhost:8081';
+    this.wsClient = new SocketIOClient({ 
+      url: wsUrl.replace('ws://', 'http://').replace('wss://', 'https://') 
+    });
     
     // Initialize handlers
     this.authHandler = new AuthHandler(this.db, this.sessionManager);
@@ -641,8 +643,8 @@ Manage your account settings and preferences:
       // Subscribe to channels
       this.wsClient.subscribe('alerts');
       this.wsClient.subscribe('tokens');
-      this.wsClient.subscribe('trades', { tokens: ['*'] }); // Subscribe to all trades
-      this.wsClient.subscribe('prices', { tokens: ['*'] }); // Subscribe to all price updates
+      this.wsClient.subscribe('trades'); // Subscribe to all trades
+      this.wsClient.subscribe('prices'); // Subscribe to all price updates
     });
 
     this.wsClient.on('disconnected', () => {
@@ -671,7 +673,7 @@ Manage your account settings and preferences:
     });
 
     // Handle new token events
-    this.wsClient.on('new-token', async (token) => {
+    this.wsClient.on('token:created', async (token) => {
       try {
         // Get users subscribed to new token alerts
         const subscribers = await this.db.getNewTokenSubscribers();
@@ -701,7 +703,7 @@ Manage your account settings and preferences:
     });
 
     // Handle trade events
-    this.wsClient.on('trade', async (trade) => {
+    this.wsClient.on('token:traded', async (trade) => {
       try {
         // Process copy trades
         await this.processCopyTrade(trade);
@@ -726,7 +728,7 @@ Manage your account settings and preferences:
     });
 
     // Handle price updates
-    this.wsClient.on('price-update', async (priceData) => {
+    this.wsClient.on('price:update', async (priceData) => {
       try {
         // Update cached prices
         await this.db.updateTokenPrice(priceData.tokenAddress, priceData.price);

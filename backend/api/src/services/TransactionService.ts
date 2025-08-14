@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { createLogger, createRedisClient } from '@core-meme/shared';
 import crypto from 'crypto';
-import { memeFactoryService } from './MemeFactoryService';
+import { memeFactoryService } from '@core-meme/shared';
 
 interface TransactionRequest {
   userId: string;
@@ -400,7 +400,7 @@ export class TransactionService {
       
       // Calculate total cost
       const gasCost = gasLimit * gasPrice;
-      const totalCost = gasCost + (tx.value || BigInt(0));
+      const totalCost = gasCost + BigInt(tx.value || 0);
       
       return {
         gasLimit: gasLimit.toString(),

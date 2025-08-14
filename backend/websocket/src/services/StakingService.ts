@@ -315,6 +315,8 @@ export class StakingService extends EventEmitter {
    */
   removeAllListeners() {
     this.stakingContract.removeAllListeners();
+    super.removeAllListeners();
     this.logger.info('All staking event listeners removed');
+    return this;
   }
 }

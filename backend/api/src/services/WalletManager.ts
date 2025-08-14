@@ -72,7 +72,7 @@ export class WalletManager {
 
   async getWalletWithSigner(userId: string): Promise<ethers.Wallet | null> {
     try {
-      const walletData = await this.getWallet(userId);
+      let walletData = await this.getWallet(userId);
       
       if (!walletData) {
         // Create wallet if doesn't exist

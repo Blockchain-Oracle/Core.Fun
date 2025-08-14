@@ -5,7 +5,7 @@ import { WalletManager } from '../services/WalletManager';
 import { DatabaseService } from '../services/DatabaseService';
 import { createLogger } from '@core-meme/shared';
 
-const router = Router();
+const router: Router = Router();
 const logger = createLogger({ service: 'trading-api' });
 
 // Contract addresses
@@ -114,7 +114,7 @@ router.post('/buy', authenticate, async (req: Request, res: Response) => {
     });
 
     // Execute buy transaction
-    const factoryWithSigner = factoryContract.connect(wallet);
+    const factoryWithSigner = factoryContract.connect(wallet) as any;
     const tx = await factoryWithSigner.buyToken(
       tokenAddress,
       minTokensOut,
@@ -262,7 +262,7 @@ router.post('/sell', authenticate, async (req: Request, res: Response) => {
     }
 
     // Execute sell transaction
-    const factoryWithSigner = factoryContract.connect(wallet);
+    const factoryWithSigner = factoryContract.connect(wallet) as any;
     const tx = await factoryWithSigner.sellToken(
       tokenAddress,
       amountToSell,
@@ -377,7 +377,7 @@ router.post('/create-token', authenticate, async (req: Request, res: Response) =
     });
 
     // Execute token creation
-    const factoryWithSigner = factoryContract.connect(wallet);
+    const factoryWithSigner = factoryContract.connect(wallet) as any;
     const tx = await factoryWithSigner.createToken(
       name,
       symbol,

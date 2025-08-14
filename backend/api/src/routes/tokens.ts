@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
-import { memeFactoryService } from '../services/MemeFactoryService';
+import { memeFactoryService } from '@core-meme/shared';
 import { transactionService } from '../services/TransactionService';
 import { createLogger } from '@core-meme/shared';
 

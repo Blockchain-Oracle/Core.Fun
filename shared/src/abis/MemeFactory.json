@@ -1,0 +1,17 @@
+[
+  "constructor(address _owner, address _feeRecipient, uint256 _creationFee, uint256 _tradingFee, uint256 _maxTokenSupply)",
+  "function factory() external view returns (address)",
+  "function tokenCount() external view returns (uint256)",
+  "function allTokens(uint256) external view returns (address)",
+  "function getTokenInfo(address tokenAddress) external view returns (address creator, string memory name, string memory symbol, uint256 totalSupply, uint256 availableSupply, uint256 reserveBalance, bool isLaunched, uint256 createdAt, uint256 launchedAt, uint256 creatorBalance)",
+  "function calculateBuyReturn(address tokenAddress, uint256 coreAmount) external view returns (uint256)",
+  "function calculateSellReturn(address tokenAddress, uint256 tokenAmount) external view returns (uint256)",
+  "function creationFee() external view returns (uint256)",
+  "function createToken(string memory name, string memory symbol, string memory description, string memory imageUrl, string memory twitter, string memory telegram, string memory website) external payable returns (address)",
+  "function buyToken(address tokenAddress) external payable",
+  "function sellToken(address tokenAddress, uint256 tokenAmount) external",
+  "event TokenCreated(address indexed token, address indexed creator, string name, string symbol, uint256 timestamp)",
+  "event TokenPurchased(address indexed token, address indexed buyer, uint256 amount, uint256 cost, uint256 timestamp)",
+  "event TokenSold(address indexed token, address indexed seller, uint256 amount, uint256 proceeds, uint256 timestamp)",
+  "event TokenLaunched(address indexed token, uint256 liquidityAdded, uint256 timestamp)"
+]

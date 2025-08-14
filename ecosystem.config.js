@@ -40,13 +40,13 @@ module.exports = {
     },
     {
       name: 'websocket-server',
-      cwd: './websocket',
+      cwd: './backend/websocket',
       script: 'dist/server.js',
       instances: 1,
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
-        PORT: 8081
+        WS_PORT: 8081
       },
       error_file: './logs/websocket-error.log',
       out_file: './logs/websocket-out.log',

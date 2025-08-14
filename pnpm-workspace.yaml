@@ -1,6 +1,5 @@
 packages:
   - 'backend/*'
   - 'telegram-bot'
-  - 'websocket'
   - 'shared'
   - 'contracts'

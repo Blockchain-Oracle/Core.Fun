@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
-import { createLogger } from '@core-meme/shared';
-import MemeFactoryABI from '../../../../contracts/artifacts/core/MemeFactory.sol/MemeFactory.json';
-import MemeTokenABI from '../../../../contracts/artifacts/core/MemeToken.sol/MemeToken.json';
+import { createLogger } from '../logger';
+import MemeFactoryABI from '../abis/MemeFactory.json';
+import MemeTokenABI from '../abis/MemeToken.json';
 
 interface TokenInfo {
   creator: string;
@@ -49,7 +49,7 @@ export class MemeFactoryService {
     
     this.factory = new ethers.Contract(
       this.factoryAddress,
-      MemeFactoryABI.abi,
+      MemeFactoryABI,
       this.provider
     );
 
@@ -102,7 +102,7 @@ export class MemeFactoryService {
       // Create token contract instance to get more details
       const tokenContract = new ethers.Contract(
         tokenAddress,
-        MemeTokenABI.abi,
+        MemeTokenABI,
         this.provider
       );
 
@@ -182,15 +182,14 @@ export class MemeFactoryService {
       const allEvents = [...purchases, ...sales].sort((a, b) => a.blockNumber - b.blockNumber);
 
       // Process events to create price history
-      const priceHistory = await Promise.all(allEvents.map(async (event) => {
+      const priceHistory = await Promise.all(allEvents.map(async (event: any) => {
         const block = await this.provider.getBlock(event.blockNumber);
-        const args = event.args as any;
         
         return {
           timestamp: block?.timestamp || 0,
-          price: ethers.formatEther(args.price || args.cost),
-          amount: ethers.formatEther(args.amount),
-          type: event.event === 'TokenPurchased' ? 'buy' : 'sell',
+          price: ethers.formatEther(event.args.price || event.args.cost),
+          amount: ethers.formatEther(event.args.amount),
+          type: event.eventName === 'TokenPurchased' ? 'buy' : 'sell',
           txHash: event.transactionHash
         };
       }));
@@ -222,15 +221,14 @@ export class MemeFactoryService {
         .sort((a, b) => b.blockNumber - a.blockNumber)
         .slice(0, limit);
 
-      return Promise.all(allTrades.map(async (event) => {
+      return Promise.all(allTrades.map(async (event: any) => {
         const block = await this.provider.getBlock(event.blockNumber);
-        const args = event.args as any;
         
         return {
-          type: event.event === 'TokenPurchased' ? 'buy' : 'sell',
-          trader: args.buyer || args.seller,
-          amount: ethers.formatEther(args.amount),
-          cost: ethers.formatEther(args.cost),
+          type: event.eventName === 'TokenPurchased' ? 'buy' : 'sell',
+          trader: event.args.buyer || event.args.seller,
+          amount: ethers.formatEther(event.args.amount),
+          cost: ethers.formatEther(event.args.cost),
           timestamp: block?.timestamp || 0,
           txHash: event.transactionHash,
           blockNumber: event.blockNumber
@@ -379,3 +377,6 @@ export class MemeFactoryService {
 
 // Export singleton instance
 export const memeFactoryService = new MemeFactoryService();
+
+// Export types
+export type { TokenData, TokenInfo };

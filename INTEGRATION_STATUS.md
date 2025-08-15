@@ -3,41 +3,27 @@
 ## ✅ All Services Fully Integrated
 
 ### 1. Blockchain Monitor (`/backend/blockchain-monitor`)
-- ✅ Connected to IcecreamSwap V2 Factory: `0x9E6d21E759A7A288b80eef94E4737D313D31c13f`
+- ✅ MemeFactory monitoring: `0x0eeF9597a9B231b398c29717e2ee89eF6962b784`
 - ✅ Real-time event monitoring via ethers.js
 - ✅ Token analytics with real blockchain data
 - ✅ CoinGecko API integration for CORE price
 - ✅ No mock implementations found
 
-### 2. Core API Service (`/backend/core-api-service`)
-- ✅ Core Scan API integration
-- ✅ IcecreamSwap V2 configuration
-- ✅ Redis caching for performance
-- ✅ Real blockchain data fetching
-- ✅ No mock implementations (except in test files)
-
-### 3. Trading Engine (`/backend/trading-engine`)
-- ✅ IcecreamSwap V2 Router: `0xBb5e1777A331ED93E07cF043363e48d320eb96c4`
-- ✅ MemeFactory integration: `0x04242CfFdEC8F96A46857d4A50458F57eC662cE1`
-- ✅ Real DEX trading implementation
-- ✅ MEV protection configured
-- ✅ No mock implementations found
-
-### 4. Backend API (`/backend/api`)
+### 2. Backend API (`/backend/api`)
 - ✅ WebSocket connection to port 8081
 - ✅ Real wallet balance queries
 - ✅ Database integration (PostgreSQL + Redis)
 - ✅ Real blockchain interactions
 - ✅ `.env.example` created for configuration
 
-### 5. Telegram Bot (`/telegram-bot`)
+### 3. Telegram Bot (`/telegram-bot`)
 - ✅ WebSocket connection to port 8081
 - ✅ Real wallet data in WebhookHandler (fixed)
 - ✅ Real token balance fetching (fixed)
 - ✅ Ethers.js integration for blockchain queries
 - ✅ Database-backed user management
 
-### 6. WebSocket Server (`/websocket`)
+### 4. WebSocket Server (`/backend/websocket`)
 - ✅ Running on port 8081
 - ✅ Real-time price streaming from blockchain
 - ✅ Bonding curve pricing from MemeFactory
@@ -56,7 +42,7 @@
          │                       │                          │
          ▼                       ▼                          ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   PostgreSQL    │     │      Redis       │     │  Trading Engine │
+│   PostgreSQL    │     │      Redis       │     │  MemeFactory    │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
                                  │                          │
                                  │                          │
@@ -69,10 +55,9 @@
 ## 📊 Real Data Sources
 
 ### Blockchain Data
-- **Contract Interactions**: 62+ instances using ethers.Contract
-- **IcecreamSwap V2**: Real DEX price and liquidity data
-- **MemeFactory**: Real bonding curve calculations
-- **Event Monitoring**: Real-time blockchain events
+- **Contract Interactions**: MemeFactory contract interactions via ethers.js
+- **MemeFactory**: Real bonding curve calculations and token launches
+- **Event Monitoring**: Real-time blockchain events for trades and launches
 
 ### External APIs
 - **CoinGecko**: CORE/USD price feeds
@@ -103,9 +88,9 @@ WS_PORT=8081
 
 ### Contract Addresses (Core Testnet)
 ```
-MemeFactory: 0x04242CfFdEC8F96A46857d4A50458F57eC662cE1
-Platform Token: 0x96611b71A4DE5B8616164B650720ADe10948193F
-Staking: 0x95F1588ef2087f9E40082724F5Da7BAD946969CB
+MemeFactory: 0x0eeF9597a9B231b398c29717e2ee89eF6962b784
+Platform Token: 0x26EfC13dF039c6B4E084CEf627a47c348197b655
+Staking: 0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa
 IcecreamSwap V2 Factory: 0x9E6d21E759A7A288b80eef94E4737D313D31c13f
 IcecreamSwap V2 Router: 0xBb5e1777A331ED93E07cF043363e48d320eb96c4
 ```

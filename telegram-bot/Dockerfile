@@ -1,86 +1,47 @@
 # Build stage
 FROM node:20-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    pkgconfig
-
 # Install pnpm
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Copy workspace manifests from repo root
-COPY pnpm-workspace.yaml package.json ./
-# Copy root tsconfig base
-COPY tsconfig.base.json ./
-# Copy package manifests for required workspaces
-COPY telegram-bot/package.json telegram-bot/package.json
-COPY telegram-bot/tsconfig.json telegram-bot/tsconfig.json
-COPY shared/package.json shared/package.json
+# Copy workspace files
+COPY package.json pnpm-workspace.yaml ./
+COPY shared/package.json ./shared/
+COPY telegram-bot/package.json ./telegram-bot/
 
-# Install only needed workspaces and their deps
-RUN pnpm install --filter @core-meme/telegram-bot... --filter @core-meme/shared...
+# Install dependencies
+RUN pnpm install --frozen-lockfile
 
-# Copy sources for build
+# Copy source code
 COPY shared ./shared
 COPY telegram-bot ./telegram-bot
 
-# Build shared workspace first
+# Build shared and telegram bot
 WORKDIR /app/shared
-RUN pnpm run build
+RUN pnpm build
 
-# Build the application
 WORKDIR /app/telegram-bot
-RUN pnpm run build
+RUN pnpm build
 
 # Production stage
 FROM node:20-alpine
 
-# Install minimal runtime dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    pkgconfig
-
-# Install pnpm
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Copy workspace manifests
-COPY pnpm-workspace.yaml package.json ./
-# Copy root tsconfig base (for any runtime tooling that references it)
-COPY tsconfig.base.json ./
-COPY telegram-bot/package.json telegram-bot/package.json
-COPY shared/package.json shared/package.json
+# Copy built application
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/telegram-bot ./telegram-bot
 
-# Install production dependencies only for the selected workspaces
-RUN pnpm install --prod --filter @core-meme/telegram-bot... --filter @core-meme/shared...
-
-# Copy built application from builder
-COPY --from=builder /app/telegram-bot/dist /app/telegram-bot/dist
-COPY --from=builder /app/shared/dist /app/shared/dist
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-
-USER nodejs
-
-# Health check (no HTTP endpoint; check process)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD pgrep -f "node dist/bot.js" > /dev/null || exit 1
-
-# Run from service workspace dir
 WORKDIR /app/telegram-bot
 
-# Start the telegram bot
+# Create logs directory
+RUN mkdir -p logs
+
+EXPOSE 3004
+
 CMD ["node", "dist/bot.js"]

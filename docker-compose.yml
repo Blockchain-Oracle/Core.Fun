@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis Cache
   redis:
@@ -41,12 +39,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # Core API Service
-  core-api:
+  # API Service (Main Backend)
+  api:
     build:
       context: .
-      dockerfile: backend/core-api-service/Dockerfile
-    container_name: core-api-service
+      dockerfile: backend/api/Dockerfile
+    container_name: core-api
     ports:
       - "3001:3001"
     environment:
@@ -59,11 +57,10 @@ services:
       POSTGRES_DB: core_meme_platform
       POSTGRES_USER: core_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
-      CORE_MAINNET_RPC: ${CORE_MAINNET_RPC:-https://rpc.coredao.org}
-      CORE_TESTNET_RPC: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
-      CORE_SCAN_MAINNET_API: ${CORE_SCAN_MAINNET_API:-https://openapi.coredao.org/api}
-      CORE_SCAN_TESTNET_API: ${CORE_SCAN_TESTNET_API:-https://api.test2.btcs.network/api}
-      CORE_SCAN_API_KEY: ${CORE_SCAN_API_KEY}
+      CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS:-0x0eeF9597a9B231b398c29717e2ee89eF6962b784}
+      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-core_meme_encryption_secret_2024}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       redis:
@@ -74,36 +71,39 @@ services:
     networks:
       - core-network
     volumes:
-      - ./backend/core-api-service/logs:/app/backend/core-api-service/logs
-      - ./backend/core-api-service/.env:/app/backend/core-api-service/.env:ro
-    # Use Dockerfile CMD (node dist/main.js) to start; avoid build step in runtime image
+      - ./backend/api/logs:/app/backend/api/logs
 
-  # Trading Engine
-  trading-engine:
+  # Blockchain Monitor
+  blockchain-monitor:
     build:
       context: .
-      dockerfile: backend/trading-engine/Dockerfile
-    container_name: core-trading-engine
+      dockerfile: backend/blockchain-monitor/Dockerfile
+    container_name: core-blockchain-monitor
     ports:
       - "3003:3003"
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      REDIS_HOST: redis
-      POSTGRES_HOST: postgres
-      TRADING_ENGINE_PORT: 3003
       NETWORK: ${NETWORK:-testnet}
-      CORE_RPC_URL: ${CORE_RPC_URL}
-      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024_secure_key_for_auth}
-      SIGNATURE_SECRET: ${SIGNATURE_SECRET:-core_meme_signature_secret_2024_secure_key}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: core_meme_platform
+      POSTGRES_USER: core_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
+      CORE_TESTNET_RPC: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS:-0x0eeF9597a9B231b398c29717e2ee89eF6962b784}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - core-network
     volumes:
-      - ./backend/trading-engine/.env:/app/backend/trading-engine/.env:ro
-    # Use Dockerfile CMD (node dist/server.js) to start; avoid build step in runtime image
+      - ./backend/blockchain-monitor/logs:/app/backend/blockchain-monitor/logs
 
   # WebSocket Server
   websocket:
@@ -119,9 +119,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
-      MEME_FACTORY_ADDRESS: ${MEME_FACTORY_TESTNET:-0x04242CfFdEC8F96A46857d4A50458F57eC662cE1}
-      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024_secure_key_for_auth}
-      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://localhost:3002
+      MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS:-0x0eeF9597a9B231b398c29717e2ee89eF6962b784}
+      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       redis:
@@ -134,55 +134,14 @@ services:
     volumes:
       - ./backend/websocket/logs:/app/backend/websocket/logs
 
-  # Blockchain Monitor
-  blockchain-monitor:
-    build:
-      context: .
-      dockerfile: backend/blockchain-monitor/Dockerfile
-    container_name: core-blockchain-monitor
-    environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      NETWORK: ${NETWORK:-testnet}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: core_meme_platform
-      POSTGRES_USER: core_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
-      CORE_MAINNET_RPC: ${CORE_MAINNET_RPC:-https://rpc.coredao.org}
-      CORE_TESTNET_RPC: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
-      CORE_SCAN_MAINNET_API: ${CORE_SCAN_MAINNET_API:-https://openapi.coredao.org/api}
-      CORE_SCAN_TESTNET_API: ${CORE_SCAN_TESTNET_API:-https://api.test2.btcs.network/api}
-      CORE_SCAN_API_KEY: ${CORE_SCAN_API_KEY}
-      MEME_FACTORY_TESTNET: ${MEME_FACTORY_TESTNET:-0x04242CfFdEC8F96A46857d4A50458F57eC662cE1}
-      MEME_FACTORY_MAINNET: ${MEME_FACTORY_MAINNET}
-      STAKING_TESTNET: ${STAKING_TESTNET:-0x95F1588ef2087f9E40082724F5Da7BAD946969CB}
-      STAKING_MAINNET: ${STAKING_MAINNET}
-      PLATFORM_TOKEN_TESTNET: ${PLATFORM_TOKEN_TESTNET:-0x96611b71A4DE5B8616164B650720ADe10948193F}
-      PLATFORM_TOKEN_MAINNET: ${PLATFORM_TOKEN_MAINNET}
-      TREASURY_ADDRESS: ${TREASURY_ADDRESS:-0xe397a72377F43645Cd4DA02d709c378df6e9eE5a}
-      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024_secure_key_for_auth}
-      SIGNATURE_SECRET: ${SIGNATURE_SECRET:-core_meme_signature_secret_2024_secure_key}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - core-network
-    volumes:
-      - ./backend/blockchain-monitor/logs:/app/backend/blockchain-monitor/logs
-      - ./backend/blockchain-monitor/.env:/app/backend/blockchain-monitor/.env:ro
-
   # Telegram Bot
   telegram-bot:
     build:
       context: .
       dockerfile: telegram-bot/Dockerfile
     container_name: core-telegram-bot
+    ports:
+      - "3004:3004"
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       REDIS_HOST: redis
@@ -192,19 +151,21 @@ services:
       POSTGRES_DB: core_meme_platform
       POSTGRES_USER: core_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
-      WEBSOCKET_URL: ws://websocket:8080
+      API_URL: http://api:3001
+      WEBSOCKET_URL: ws://websocket:8081
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL}
-      ADMIN_TELEGRAM_ID: ${ADMIN_TELEGRAM_ID}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024_secure_key_for_auth}
-      SIGNATURE_SECRET: ${SIGNATURE_SECRET:-core_meme_signature_secret_2024_secure_key}
+      ADMIN_TELEGRAM_IDS: ${TELEGRAM_ADMIN_IDS}
+      JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-core_meme_encryption_secret_2024}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      api:
+        condition: service_started
       websocket:
         condition: service_started
     restart: unless-stopped
@@ -212,7 +173,6 @@ services:
       - core-network
     volumes:
       - ./telegram-bot/logs:/app/telegram-bot/logs
-      - ./telegram-bot/.env:/app/telegram-bot/.env:ro
 
 networks:
   core-network:

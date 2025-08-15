@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { createLogger } from '@core-meme/shared';
 import { EventEmitter } from 'events';
 
-const STAKING_CONTRACT = '0x95F1588ef2087f9E40082724F5Da7BAD946969CB';
+const STAKING_CONTRACT = '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa';
 
 const STAKING_ABI = [
   'event Staked(address indexed user, uint256 amount, uint256 timestamp)',

@@ -95,7 +95,6 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/corememe
 REDIS_URL=redis://localhost:6379
 
 # API Services
-TRADING_ENGINE_URL=http://localhost:3002
 API_URL=http://localhost:3001
 FRONTEND_URL=http://localhost:3000
 ```

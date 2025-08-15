@@ -6,6 +6,8 @@ import { AnalyticsService } from './services/AnalyticsService';
 import { AlertService } from './services/AlertService';
 import { TokenProcessor } from './processors/TokenProcessor';
 import { TradeProcessor } from './processors/TradeProcessor';
+import { StakingProcessor } from './processors/StakingProcessor';
+import Redis from 'ioredis';
 import { MemeFactoryMonitor } from './monitors/MemeFactoryMonitor';
 import { MonitorConfig } from './types';
 import { 
@@ -35,7 +37,9 @@ class BlockchainMonitorService {
   private alertService: AlertService;
   private tokenProcessor: TokenProcessor;
   private tradeProcessor: TradeProcessor;
+  private stakingProcessor: StakingProcessor;
   private monitors: Map<string, any> = new Map();
+  private redis: Redis;
   private isRunning: boolean = false;
 
   constructor() {
@@ -78,6 +82,49 @@ class BlockchainMonitorService {
       this.analytics,
       this.alertService
     );
+    
+    // Initialize Redis for StakingProcessor
+    const redisConfig = {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0'),
+      retryStrategy: (times: number) => {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+      }
+    };
+    
+    this.redis = new Redis(redisConfig);
+    
+    // Initialize StakingProcessor
+    this.stakingProcessor = new StakingProcessor(
+      this.provider,
+      this.db,
+      this.redis,
+      logger
+    );
+    
+    // Listen to staking events
+    this.stakingProcessor.on('staked', (data) => {
+      logger.info('User staked tokens:', data);
+    });
+    
+    this.stakingProcessor.on('unstaked', (data) => {
+      logger.info('User unstaked tokens:', data);
+    });
+    
+    this.stakingProcessor.on('rewardsClaimed', (data) => {
+      logger.info('User claimed rewards:', data);
+    });
+    
+    this.stakingProcessor.on('tierUpdated', (data) => {
+      logger.info('User tier updated:', data);
+    });
+    
+    this.stakingProcessor.on('revenueDistributed', (data) => {
+      logger.info('Revenue distributed to stakers:', data);
+    });
   }
 
   async start(): Promise<void> {
@@ -100,6 +147,11 @@ class BlockchainMonitorService {
       
       // Start monitors
       await this.startMonitors();
+      
+      // Start StakingProcessor
+      logger.info('Starting StakingProcessor...');
+      await this.stakingProcessor.start();
+      logger.info('✅ StakingProcessor started');
       
       this.isRunning = true;
       logger.info('✅ Blockchain Monitor Service started successfully');
@@ -186,11 +238,18 @@ class BlockchainMonitorService {
       await monitor.stop();
     }
     
+    // Stop StakingProcessor
+    logger.info('Stopping StakingProcessor...');
+    await this.stakingProcessor.stop();
+    
     // Close services
     await this.tokenProcessor.close();
     await this.tradeProcessor.close();
     await this.alertService.close();
     await this.db.close();
+    
+    // Close Redis connection
+    this.redis.disconnect();
     
     // Close providers
     if (this.wsProvider) {
@@ -219,6 +278,11 @@ class BlockchainMonitorService {
       currentBlock: blockNumber,
       monitors: monitorStatuses,
       platformContracts: getPlatformContracts(this.network),
+      stakingProcessor: {
+        running: true,
+        stakingAddress: process.env.STAKING_ADDRESS || '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa',
+        tokenAddress: process.env.PLATFORM_TOKEN_ADDRESS || '0x26EfC13dF039c6B4E084CEf627a47c348197b655'
+      }
     };
   }
 }

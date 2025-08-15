@@ -92,5 +92,4 @@ export function createHttpStream(logger: winston.Logger) {
 export const apiLogger = createLogger({ service: 'api', enableFileLogging: false });
 export const telegramLogger = createLogger({ service: 'telegram-bot' });
 export const websocketLogger = createLogger({ service: 'websocket-server' });
-export const tradingLogger = createLogger({ service: 'trading-engine' });
 export const blockchainLogger = createLogger({ service: 'blockchain-monitor' });

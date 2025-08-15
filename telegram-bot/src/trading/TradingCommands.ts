@@ -59,74 +59,151 @@ export class TradingCommands {
    * Show buy panel with token info
    */
   private async showBuyPanel(ctx: BotContext, tokenAddress: string) {
-    const loadingMsg = await ctx.reply('🔄 Loading token info...');
+    const loadingMsg = await ctx.reply('🔄 Loading complete token data...');
 
     try {
-      // Get token info
+      // Get COMPLETE token info including ALL metadata
       const tokenInfo = await this.tradingExecutor.getTokenInfo(tokenAddress);
       
-      // Format message
-      let message = `💰 *${tokenInfo.symbol} / ${tokenInfo.name}*\n\n`;
-      message += `📊 *Market Data:*\n`;
-      message += `Price: $${tokenInfo.price.toFixed(8)}\n`;
-      message += `24h: ${tokenInfo.priceChange24h > 0 ? '📈' : '📉'} ${tokenInfo.priceChange24h.toFixed(2)}%\n`;
-      message += `MC: $${this.formatNumber(tokenInfo.marketCap)}\n`;
-      message += `Liq: $${this.formatNumber(tokenInfo.liquidity)}\n`;
-      message += `Vol: $${this.formatNumber(tokenInfo.volume24h)}\n`;
-      message += `Holders: ${tokenInfo.holders}\n`;
+      // Delete loading message first
+      await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
       
-      if (tokenInfo.isHoneypot) {
-        message += `\n⚠️ *WARNING: HONEYPOT DETECTED*`;
-      }
-      if (tokenInfo.rugScore > 50) {
-        message += `\n⚠️ *Rug Score: ${tokenInfo.rugScore}/100*`;
-      }
-
-      message += `\n\nAddress: \`${tokenAddress}\``;
-
-      // Create buy buttons
-      const keyboard = [
-        [
-          Markup.button.callback('0.1 CORE', `buy_amount_${tokenAddress}_0.1`),
-          Markup.button.callback('0.25 CORE', `buy_amount_${tokenAddress}_0.25`),
-          Markup.button.callback('0.5 CORE', `buy_amount_${tokenAddress}_0.5`),
-        ],
-        [
-          Markup.button.callback('1 CORE', `buy_amount_${tokenAddress}_1`),
-          Markup.button.callback('2 CORE', `buy_amount_${tokenAddress}_2`),
-          Markup.button.callback('5 CORE', `buy_amount_${tokenAddress}_5`),
-        ],
-        [
-          Markup.button.callback('💰 Custom Amount', `buy_custom_${tokenAddress}`),
-          Markup.button.callback('🦍 Ape (Max)', `buy_ape_${tokenAddress}`),
-        ],
-        [
-          Markup.button.callback('📊 Chart', `chart_${tokenAddress}`),
-          Markup.button.url('🔍 Explorer', `https://scan.coredao.org/address/${tokenAddress}`),
-        ],
-        [
-          Markup.button.callback('❌ Cancel', 'cancel'),
-        ],
-      ];
-
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        message,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
+      // CRITICAL: Display token image if available
+      if (tokenInfo.image_url || tokenInfo.imageUrl || tokenInfo.image) {
+        const imageUrl = tokenInfo.image_url || tokenInfo.imageUrl || tokenInfo.image;
+        if (imageUrl) {
+          try {
+            await ctx.replyWithPhoto(imageUrl, {
+              caption: `🖼️ *${tokenInfo.symbol}* Token Image`,
+              parse_mode: 'Markdown'
+            });
+          } catch (imgError) {
+            this.logger.warn('Failed to send token image:', imgError);
+          }
         }
-      );
+      }
+      
+      // Format COMPLETE message with ALL data
+      let message = `💰 *${tokenInfo.symbol} / ${tokenInfo.name}*\n`;
+      message += `━━━━━━━━━━━━━━━━━━\n\n`;
+      
+      // DESCRIPTION - MUST SHOW
+      if (tokenInfo.description) {
+        message += `📝 *Description:*\n${tokenInfo.description}\n\n`;
+      }
+      
+      // MARKET DATA
+      message += `📊 *Market Data:*\n`;
+      message += `├ Price: $${tokenInfo.price?.toFixed(8) || '0.00'}\n`;
+      message += `├ 24h: ${(tokenInfo.priceChange24h || 0) > 0 ? '📈' : '📉'} ${(tokenInfo.priceChange24h || 0).toFixed(2)}%\n`;
+      message += `├ Market Cap: $${this.formatNumber(tokenInfo.marketCap || 0)}\n`;
+      message += `├ Liquidity: $${this.formatNumber(tokenInfo.liquidity || 0)}\n`;
+      message += `├ Volume 24h: $${this.formatNumber(tokenInfo.volume24h || 0)}\n`;
+      message += `└ Holders: ${tokenInfo.holders || 0}\n\n`;
+      
+      // BONDING CURVE PROGRESS - MUST SHOW
+      const isCreated = tokenInfo.status === 'CREATED';
+      const isLaunched = tokenInfo.status === 'LAUNCHED' || tokenInfo.status === 'GRADUATED';
+      
+      if (isCreated || !isLaunched) {
+        // Get bonding curve data with safe fallbacks
+        const bondingCurve = tokenInfo.bondingCurve || { raisedAmount: 0, targetAmount: 3, progress: 0 };
+        const raisedAmount = tokenInfo.raised || 
+                          (bondingCurve && 'raisedAmount' in bondingCurve ? bondingCurve.raisedAmount : 0);
+        const targetAmount = (bondingCurve && 'targetAmount' in bondingCurve ? bondingCurve.targetAmount : 3);
+        const progress = tokenInfo.graduationPercentage || 
+                        (bondingCurve && 'progress' in bondingCurve ? bondingCurve.progress : 0) || 
+                        (raisedAmount / targetAmount * 100);
+                        
+        message += `📈 *Bonding Curve:*\n`;
+        message += `├ Progress: ${Number(progress).toFixed(1)}% to graduation\n`;
+        message += `├ Raised: ${raisedAmount} CORE\n`;
+        message += `├ Target: ${targetAmount} CORE\n`;
+        message += `└ Status: ${Number(progress) >= 100 ? '✅ Ready to Graduate' : '🔄 Bonding Active'}\n\n`;
+      }
+      
+      // TRADING CONTROLS - MUST SHOW
+      if (tokenInfo.maxWallet || tokenInfo.maxTransaction || tokenInfo.tradingEnabled !== undefined) {
+        message += `🔒 *Trading Controls:*\n`;
+        message += `├ Trading: ${tokenInfo.tradingEnabled ? '✅ Enabled' : '🔴 Disabled'}\n`;
+        if (tokenInfo.maxWallet && tokenInfo.maxWallet !== '0') {
+          message += `├ Max Wallet: ${(Number(tokenInfo.maxWallet) / 1e18).toFixed(2)} tokens\n`;
+        }
+        if (tokenInfo.maxTransaction && tokenInfo.maxTransaction !== '0') {
+          message += `├ Max TX: ${(Number(tokenInfo.maxTransaction) / 1e18).toFixed(2)} tokens\n`;
+        }
+        message += `\n`;
+      }
+      
+      // SAFETY WARNINGS
+      if (tokenInfo.isHoneypot) {
+        message += `⚠️ *WARNING: HONEYPOT DETECTED*\n`;
+      }
+      if (tokenInfo.rugScore && tokenInfo.rugScore > 50) {
+        message += `⚠️ *High Rug Score: ${tokenInfo.rugScore}/100*\n`;
+      }
+      
+      message += `\n📋 *Contract:* \`${tokenAddress}\``;
+
+      // Create COMPLETE keyboard with social links and buy buttons
+      const keyboard = [];
+      
+      // SOCIAL LINK BUTTONS - MUST HAVE
+      const socialButtons = [];
+      if (tokenInfo.twitter) {
+        socialButtons.push(
+          Markup.button.url('🐦 Twitter', tokenInfo.twitter)
+        );
+      }
+      if (tokenInfo.telegram) {
+        socialButtons.push(
+          Markup.button.url('💬 Telegram', tokenInfo.telegram)
+        );
+      }
+      if (tokenInfo.website) {
+        socialButtons.push(
+          Markup.button.url('🌐 Website', tokenInfo.website)
+        );
+      }
+      if (socialButtons.length > 0) {
+        keyboard.push(socialButtons);
+      }
+      
+      // Buy amount buttons
+      keyboard.push([
+        Markup.button.callback('0.1 CORE', `buy_amount_${tokenAddress}_0.1`),
+        Markup.button.callback('0.25 CORE', `buy_amount_${tokenAddress}_0.25`),
+        Markup.button.callback('0.5 CORE', `buy_amount_${tokenAddress}_0.5`),
+      ]);
+      keyboard.push([
+        Markup.button.callback('1 CORE', `buy_amount_${tokenAddress}_1`),
+        Markup.button.callback('2 CORE', `buy_amount_${tokenAddress}_2`),
+        Markup.button.callback('5 CORE', `buy_amount_${tokenAddress}_5`),
+      ]);
+      keyboard.push([
+        Markup.button.callback('💰 Custom Amount', `buy_custom_${tokenAddress}`),
+        Markup.button.callback('🦍 Ape (Max)', `buy_ape_${tokenAddress}`),
+      ]);
+      keyboard.push([
+        Markup.button.callback('📊 Chart', `chart_${tokenAddress}`),
+        Markup.button.url('🔍 Explorer', `https://scan.coredao.org/address/${tokenAddress}`),
+      ]);
+      keyboard.push([
+        Markup.button.callback('❌ Cancel', 'cancel'),
+      ]);
+
+      // Send the complete message with all data
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
     } catch (error) {
       this.logger.error('Failed to show buy panel:', error);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        '❌ Failed to load token info'
-      );
+      // Try to delete loading message if it still exists
+      try {
+        await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
+      } catch {}
+      await ctx.reply('❌ Failed to load token info');
     }
   }
 

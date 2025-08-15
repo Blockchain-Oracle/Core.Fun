@@ -23,22 +23,6 @@ module.exports = {
       watch: false
     },
     {
-      name: 'core-api-service',
-      cwd: './backend/core-api-service',
-      script: 'dist/main.js',
-      instances: 1,
-      exec_mode: 'fork',
-      env: {
-        NODE_ENV: 'production'
-      },
-      error_file: './logs/core-api-error.log',
-      out_file: './logs/core-api-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s'
-    },
-    {
       name: 'websocket-server',
       cwd: './backend/websocket',
       script: 'dist/server.js',
@@ -50,23 +34,6 @@ module.exports = {
       },
       error_file: './logs/websocket-error.log',
       out_file: './logs/websocket-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s'
-    },
-    {
-      name: 'trading-engine',
-      cwd: './backend/trading-engine',
-      script: 'dist/server.js',
-      instances: 2,
-      exec_mode: 'cluster',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3003
-      },
-      error_file: './logs/trading-error.log',
-      out_file: './logs/trading-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       autorestart: true,
       max_restarts: 10,

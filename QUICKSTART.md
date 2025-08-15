@@ -54,10 +54,10 @@ pnpm deploy:testnet
 echo "MEME_FACTORY_ADDRESS=0x..." >> ../.env
 ```
 
-### 3. Start Core API Service
+### 3. Start API Service
 ```bash
 # In a new terminal
-cd backend/core-api-service
+cd backend/api
 pnpm install
 pnpm dev
 # Runs on http://localhost:3001
@@ -66,10 +66,10 @@ pnpm dev
 ### 4. Start WebSocket Server
 ```bash
 # In a new terminal
-cd websocket
+cd backend/websocket
 pnpm install
 pnpm dev
-# Runs on ws://localhost:8080
+# Runs on ws://localhost:8081
 ```
 
 ### 5. Start Telegram Bot (Optional)
@@ -90,13 +90,13 @@ pnpm dev
 
 ## Testing the Setup
 
-### Test Core API
+### Test API
 ```bash
 # Health check
 curl http://localhost:3001/health
 
 # Get token info
-curl http://localhost:3001/api/token/0x...
+curl http://localhost:3001/api/tokens/0x...
 
 # Get Core price
 curl http://localhost:3001/api/stats/price

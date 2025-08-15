@@ -2,11 +2,11 @@
   "network": "coreTestnet",
   "chainId": "1114",
   "contracts": {
-    "platformToken": "0x96611b71A4DE5B8616164B650720ADe10948193F",
-    "staking": "0x95F1588ef2087f9E40082724F5Da7BAD946969CB",
-    "memeFactory": "0x04242CfFdEC8F96A46857d4A50458F57eC662cE1",
+    "platformToken": "0x26EfC13dF039c6B4E084CEf627a47c348197b655",
+    "staking": "0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa",
+    "memeFactory": "0x0eeF9597a9B231b398c29717e2ee89eF6962b784",
     "treasury": "0xe397a72377F43645Cd4DA02d709c378df6e9eE5a"
   },
   "deployer": "0xe397a72377F43645Cd4DA02d709c378df6e9eE5a",
-  "timestamp": "2025-08-10T02:10:15.926Z"
+  "timestamp": "2025-08-14T20:03:32.062Z"
 }

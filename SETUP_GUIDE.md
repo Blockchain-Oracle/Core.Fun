@@ -38,7 +38,7 @@ This guide will walk you through setting up the entire Core Meme Platform ecosys
                │                        │
                ▼                        ▼
 ┌──────────────────────┐    ┌─────────────────────────┐
-│   WebSocket Server   │    │      API Gateway        │
+│   WebSocket Server   │    │      API Service        │
 │     Port: 8081       │◄───│       Port: 3001        │
 └──────────┬───────────┘    └────────┬────────────────┘
            │                          │
@@ -53,13 +53,13 @@ This guide will walk you through setting up the entire Core Meme Platform ecosys
 │                PostgreSQL Database                    │
 │                    Port: 5432                         │
 └──────────────────────────────────────────────────────┘
-           ▲            ▲            ▲
-           │            │            │
-┌──────────┴───┐ ┌──────┴──────┐ ┌─┴──────────────┐
-│ Blockchain   │ │   Trading   │ │  Telegram Bot  │
-│  Monitor     │ │   Engine    │ │   Port: 3002   │
-│ (Background) │ │  Port: 3003 │ └────────────────┘
-└──────────────┘ └─────────────┘
+           ▲                         ▲
+           │                         │
+┌──────────┴───────────┐ ┌──────────┴──────────────┐
+│ Blockchain Monitor   │ │    Telegram Bot        │
+│    Port: 3003        │ │     Port: 3004         │
+│   (Background)       │ └────────────────────────┘
+└──────────────────────┘
 ```
 
 ## Quick Start

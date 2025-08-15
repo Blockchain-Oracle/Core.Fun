@@ -38,15 +38,15 @@ export const WCORE_ADDRESS = {
 export const CONTRACT_ADDRESSES = {
   memeFactory: {
     mainnet: '', // To be deployed
-    testnet: '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1',
+    testnet: '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
   },
   platformToken: {
     mainnet: '', // To be deployed
-    testnet: '0x96611b71A4DE5B8616164B650720ADe10948193F',
+    testnet: '0x26EfC13dF039c6B4E084CEf627a47c348197b655',
   },
   staking: {
     mainnet: '', // To be deployed
-    testnet: '0x95F1588ef2087f9E40082724F5Da7BAD946969CB',
+    testnet: '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa',
   },
   treasury: {
     mainnet: '', // To be deployed

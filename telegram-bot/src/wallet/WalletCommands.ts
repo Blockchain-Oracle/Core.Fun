@@ -7,7 +7,7 @@ import { createLogger } from '@core-meme/shared';
 export class WalletCommands {
   private logger = createLogger({ service: 'wallet-commands' });
   private db: DatabaseService;
-  private walletService: WalletService;
+  public walletService: WalletService;
 
   constructor(db: DatabaseService) {
     this.db = db;

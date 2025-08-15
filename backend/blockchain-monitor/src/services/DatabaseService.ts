@@ -81,6 +81,7 @@ export class DatabaseService {
           table.string('website');
           table.string('twitter');
           table.string('telegram');
+          table.string('image_url');
           table.string('status').defaultTo('CREATED');
           table.boolean('ownership_renounced').defaultTo(false);
           table.timestamps(true, true);
@@ -273,7 +274,40 @@ export class DatabaseService {
 
   // Token methods
   async saveToken(token: Token): Promise<void> {
-    await this.db('tokens').insert(token).onConflict('address').merge();
+    // Remove fields that don't exist in the database
+    const { blockNumber, transactionHash, ...dbToken } = token;
+    
+    // Map fields to database column names
+    const tokenData = {
+      address: dbToken.address,
+      name: dbToken.name,
+      symbol: dbToken.symbol,
+      decimals: dbToken.decimals,
+      total_supply: dbToken.totalSupply,
+      creator_address: dbToken.creator,
+      description: dbToken.description || '',
+      created_at: new Date(dbToken.createdAt * 1000),
+      is_verified: dbToken.isVerified || false,
+      website: dbToken.website || null,
+      twitter: dbToken.twitter || null,
+      telegram: dbToken.telegram || null,
+      // CRITICAL: IMAGE URL MUST BE SAVED
+      image_url: (dbToken as any).image_url || null,
+      // TRADING CONTROLS - ALL MUST BE SAVED
+      max_wallet: (dbToken as any).max_wallet || '0',
+      max_transaction: (dbToken as any).max_transaction || '0',
+      trading_enabled: (dbToken as any).trading_enabled !== false,
+      launch_block: (dbToken as any).launch_block || 0,
+      // BONDING CURVE DATA
+      sold: (dbToken as any).sold || '0',
+      raised: (dbToken as any).raised || '0',
+      bonding_curve_progress: (dbToken as any).bondingCurveProgress || 0,
+      current_price: (dbToken as any).currentPrice || '0',
+      // METADATA TRACKING
+      metadata_updated_at: new Date()
+    };
+    
+    await this.db('tokens').insert(tokenData).onConflict('address').merge();
   }
 
   async updateToken(token: Partial<Token>): Promise<void> {

@@ -48,6 +48,28 @@ interface TokenInfo {
   holders: number;
   isHoneypot: boolean;
   rugScore: number;
+  // Token metadata fields from MemeToken contract
+  description?: string;
+  image?: string;
+  image_url?: string; // Alternative field name used in some services
+  imageUrl?: string; // Alternative field name used in some services
+  twitter?: string;
+  telegram?: string;
+  website?: string;
+  // Trading control fields
+  maxWallet?: string;
+  maxTransaction?: string;
+  tradingEnabled?: boolean;
+  // Additional fields
+  status?: string;
+  graduationPercentage?: number;
+  bondingCurve?: {
+    progress: number;
+    raisedAmount: number;
+    targetAmount: number;
+  };
+  raised?: number;
+  stakingBenefits?: any;
 }
 
 export class TradingExecutor {
@@ -63,7 +85,7 @@ export class TradingExecutor {
     this.provider = new ethers.JsonRpcProvider(
       process.env.CORE_RPC_URL || 'https://rpc.coredao.org'
     );
-    this.tradingEngineUrl = process.env.TRADING_ENGINE_URL || 'http://localhost:3002';
+    this.tradingEngineUrl = process.env.API_URL || 'http://localhost:3001';
   }
 
   /**
@@ -88,16 +110,12 @@ export class TradingExecutor {
         throw new Error(`High rug risk detected (score: ${tokenInfo.rugScore})`);
       }
 
-      // Call trading engine API
-      const response = await fetch(`${this.tradingEngineUrl}/api/trade/buy`, {
+      // Call API to execute buy
+      const response = await fetch(`${this.tradingEngineUrl}/api/tokens/${params.tokenAddress}/buy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          walletAddress: params.walletAddress,
-          tokenAddress: params.tokenAddress,
-          amountCore: parseFloat(params.amount),
-          slippage: params.slippage || 10,
-          gasPrice: params.gasPrice || 'normal',
+          coreAmount: params.amount
         }),
       });
 
@@ -169,16 +187,12 @@ export class TradingExecutor {
         sellAmount = (position.amount * params.percentage) / 100;
       }
 
-      // Call trading engine API
-      const response = await fetch(`${this.tradingEngineUrl}/api/trade/sell`, {
+      // Call API to execute sell
+      const response = await fetch(`${this.tradingEngineUrl}/api/tokens/${params.tokenAddress}/sell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          walletAddress: params.walletAddress,
-          tokenAddress: params.tokenAddress,
-          amountToken: sellAmount.toString(),
-          slippage: params.slippage || 10,
-          gasPrice: params.gasPrice || 'normal',
+          tokenAmount: sellAmount.toString()
         }),
       });
 

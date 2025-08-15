@@ -9,20 +9,20 @@ This document details how all services in the Core Meme Platform connect and com
 │                         Frontend (Web App)                      │
 │                                                                  │
 │  Connects to:                                                   │
-│  • API Gateway (REST) - http://localhost:3001                   │
+│  • API Service (REST) - http://localhost:3001                   │
 │  • WebSocket Server - ws://localhost:8081                       │
 │  • Wallet (MetaMask/WalletConnect)                             │
 └────────────────────────────────────────────────────────────────┘
                     │                           │
                     ▼                           ▼
 ┌─────────────────────────────┐   ┌──────────────────────────────┐
-│      API Gateway            │   │     WebSocket Server         │
+│      API Service            │   │     WebSocket Server         │
 │      Port: 3001             │◄──│        Port: 8081           │
 │                             │   │                              │
 │ • REST API endpoints        │   │ • Real-time price updates    │
 │ • Authentication            │   │ • Live trade streams         │
-│ • Rate limiting             │   │ • Alert notifications        │
-│ • Request routing           │   │ • New token events           │
+│ • Token trading             │   │ • Alert notifications        │
+│ • Wallet management         │   │ • New token events           │
 └─────────────────────────────┘   └──────────────────────────────┘
          │         │                        │         │
          ▼         ▼                        ▼         ▼
@@ -34,12 +34,15 @@ This document details how all services in the Core Meme Platform connect and com
 │  │   Port: 5432    │        │    Port: 6379    │            │
 │  └─────────────────┘        └──────────────────┘            │
 └──────────────────────────────────────────────────────────────┘
-         ▲         ▲         ▲         ▲         ▲
-         │         │         │         │         │
-┌────────┴──┐ ┌───┴────┐ ┌──┴────┐ ┌──┴──────┐ ┌┴──────────┐
-│Blockchain │ │Trading │ │Core   │ │Telegram │ │Analytics  │
-│Monitor    │ │Engine  │ │API    │ │Bot      │ │Service    │
-└───────────┘ └────────┘ └───────┘ └─────────┘ └───────────┘
+         ▲         ▲                    ▲         ▲
+         │         │                    │         │
+┌────────┴───────┐ │              ┌────┴──────┐  │
+│Blockchain      │ │              │Telegram   │  │
+│Monitor         │ │              │Bot        │  │
+│Port: 3003      │ │              │Port: 3004 │  │
+└────────────────┘ │              └───────────┘  │
+                   │                              │
+                   └──────────────────────────────┘
 ```
 
 ## Connection Details
@@ -60,12 +63,10 @@ postgresql://core_user:password@localhost:5432/core_meme_platform
 ```
 
 **Services that connect:**
-- ✅ API Gateway
+- ✅ API Service
 - ✅ WebSocket Server
-- ✅ Trading Engine
 - ✅ Blockchain Monitor
 - ✅ Telegram Bot
-- ✅ Core API Service
 
 ### 2. Redis Cache (Port 6379)
 
@@ -75,505 +76,212 @@ postgresql://core_user:password@localhost:5432/core_meme_platform
 - Pub/Sub messaging
 - Rate limiting
 - Temporary data storage
+- Wallet encryption keys
 
 **Connection String:**
 ```
 redis://localhost:6379
 ```
 
-**Pub/Sub Channels:**
+**Services that connect:**
+- ✅ API Service
+- ✅ WebSocket Server
+- ✅ Blockchain Monitor
+- ✅ Telegram Bot
+
+### 3. WebSocket Server (Port 8081)
+
+**Provides real-time updates for:**
+- Token price changes
+- New token launches
+- Trade executions
+- Bonding curve updates
+- Alert triggers
+
+**Clients that connect:**
+- Frontend Web App
+- Telegram Bot
+
+**Event Types:**
 ```javascript
-// Price updates
-'price:update:TOKEN_ADDRESS'
-
-// New tokens
-'token:new'
-
-// Trade events
-'trade:TOKEN_ADDRESS'
-
-// Alerts
-'alert:USER_ID'
-
-// System events
-'system:maintenance'
-'system:update'
-```
-
-### 3. API Gateway (Port 3001)
-
-**Main REST API hub that routes requests to appropriate services.**
-
-**External Endpoints:**
-```
-GET  /health                    # Health check
-GET  /api/tokens                # List all tokens
-GET  /api/tokens/:address       # Get token details
-GET  /api/prices/:address       # Get token price
-POST /api/tokens/create         # Create new token
-POST /api/trade/buy             # Execute buy
-POST /api/trade/sell            # Execute sell
-GET  /api/user/portfolio        # Get portfolio
-POST /api/alerts               # Create alert
-```
-
-**Internal Communication:**
-```javascript
-// Calls Trading Engine
-await fetch('http://localhost:3003/api/trade/execute', {
-  headers: { 'X-Internal-Key': INTERNAL_API_KEY }
+// Subscribe to events
+socket.emit('subscribe', { 
+  events: ['price', 'trades', 'newTokens'] 
 });
 
-// Calls Core API Service
-await fetch('http://localhost:3001/api/blockchain/info');
-
-// Publishes to Redis
-redis.publish('price:update:TOKEN', priceData);
+// Receive updates
+socket.on('price:update', (data) => { ... });
+socket.on('trade:new', (data) => { ... });
+socket.on('token:created', (data) => { ... });
 ```
 
-### 4. WebSocket Server (Port 8081)
+### 4. API Service (Port 3001)
 
-**Real-time bidirectional communication.**
+**Main backend service handling:**
+- User authentication (Telegram OAuth)
+- Token creation through MemeFactory
+- Buy/sell trades on bonding curves
+- Wallet management (custodial)
+- Transaction history
+- Portfolio tracking
 
-**Client Connection:**
-```javascript
-const ws = new WebSocket('ws://localhost:8081');
-
-// Authentication
-ws.send(JSON.stringify({
-  type: 'auth',
-  token: 'JWT_TOKEN'
-}));
-
-// Subscribe to channels
-ws.send(JSON.stringify({
-  type: 'subscribe',
-  channel: 'price:0x123...',
-  params: { interval: 1000 }
-}));
+**Endpoints:**
+```
+POST /api/auth/telegram        - Telegram login
+GET  /api/tokens               - List all tokens
+POST /api/tokens/create        - Create new token
+POST /api/tokens/:address/buy  - Buy tokens
+POST /api/tokens/:address/sell - Sell tokens
+GET  /api/wallet/info          - Wallet balance
 ```
 
-**Channels:**
-```javascript
-// Price updates
-{
-  type: 'price',
-  channel: 'price:TOKEN_ADDRESS',
-  data: {
-    price: 0.001,
-    change24h: 15.5,
-    volume: 100000,
-    timestamp: Date.now()
-  }
-}
+### 5. Blockchain Monitor (Port 3003)
 
-// New token alerts
-{
-  type: 'new_token',
-  data: {
-    address: '0x...',
-    name: 'Token Name',
-    symbol: 'TKN',
-    initialPrice: 0.0001
-  }
-}
+**Monitors MemeFactory events:**
+- TokenCreated
+- TokenPurchased  
+- TokenSold
+- TokenLaunched (graduated to DEX)
+- PlatformFeeUpdated
 
-// Trade events
-{
-  type: 'trade',
-  channel: 'trades:TOKEN_ADDRESS',
-  data: {
-    type: 'buy',
-    amount: 1000,
-    price: 0.001,
-    trader: '0x...',
-    txHash: '0x...'
-  }
-}
+**Publishes to Redis channels:**
+```
+websocket:new_token    - New token created
+websocket:trade        - Trade executed
+websocket:price_update - Price changed
+websocket:alerts       - Alert triggered
 ```
 
-### 5. Trading Engine (Port 3003)
+### 6. Telegram Bot (Port 3004)
 
-**Handles all trade execution and DEX interactions.**
-
-**API Endpoints:**
-```
-POST /api/trade/buy
-{
-  tokenAddress: '0x...',
-  amountCore: 1.0,
-  slippage: 0.01,
-  deadline: 1234567890
-}
-
-POST /api/trade/sell
-{
-  tokenAddress: '0x...',
-  amountToken: 1000,
-  slippage: 0.01
-}
-
-POST /api/trade/simulate
-GET  /api/trade/estimate-gas
-```
+**Provides trading interface via Telegram:**
+- Wallet creation and management
+- Token trading commands
+- Portfolio tracking
+- Price alerts
+- Copy trading
 
 **Connects to:**
-- Core Blockchain RPC
-- DEX Smart Contracts (IcecreamSwap, ShadowSwap)
-- PostgreSQL (trade history)
-- Redis (rate limiting)
+- API Service (HTTP) - For trades and data
+- WebSocket Server - For real-time updates
+- PostgreSQL - For user data
+- Redis - For session management
 
-### 6. Blockchain Monitor (Background Service)
+## Data Flow Examples
 
-**Monitors blockchain for events and updates database.**
-
-**Monitoring:**
-```javascript
-// Events watched
-- TokenCreated (from MemeFactory)
-- Buy/Sell (from DEX routers)
-- Transfer (from tokens)
-- LiquidityAdded/Removed
-- PriceUpdate (from oracles)
+### Token Purchase Flow
 ```
-
-**Updates:**
-- Token prices every block
-- Holder counts
-- Liquidity changes
-- Volume tracking
-- Honeypot detection
-
-### 7. Telegram Bot (Port 3002 for webhooks)
-
-**User interface through Telegram.**
-
-**Connections:**
-```javascript
-// WebSocket connection for real-time data
-const ws = new WebSocket('ws://localhost:8081');
-ws.on('message', (data) => {
-  // Send alerts to users
-  bot.telegram.sendMessage(chatId, formatAlert(data));
-});
-
-// Trading Engine for trade execution
-const executeTrade = async (params) => {
-  const response = await fetch('http://localhost:3003/api/trade/buy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params)
-  });
-  return response.json();
-};
-
-// API Gateway for data
-const getTokenInfo = async (address) => {
-  const response = await fetch(`http://localhost:3001/api/tokens/${address}`);
-  return response.json();
-};
-```
-
-### 8. Core API Service
-
-**Wrapper for Core blockchain interactions.**
-
-**Functions:**
-- Get block data
-- Get transaction receipts
-- Call smart contract methods
-- Estimate gas prices
-- Get account balances
-
-## Inter-Service Communication
-
-### Authentication Flow
-
-```mermaid
-sequenceDiagram
-    User->>Telegram Bot: /start
-    Telegram Bot->>API Gateway: Generate auth token
-    API Gateway->>PostgreSQL: Create user session
-    API Gateway-->>Telegram Bot: Return JWT
-    Telegram Bot-->>User: Authenticated
-    User->>WebSocket: Connect with JWT
-    WebSocket->>Redis: Validate session
-    WebSocket-->>User: Connected
-```
-
-### Trade Execution Flow
-
-```mermaid
-sequenceDiagram
-    User->>Telegram Bot: /buy TOKEN 1
-    Telegram Bot->>Trading Engine: Execute buy
-    Trading Engine->>Core RPC: Check balances
-    Trading Engine->>Core RPC: Estimate gas
-    Trading Engine->>DEX Contract: Swap tokens
-    DEX Contract-->>Trading Engine: Transaction hash
-    Trading Engine->>PostgreSQL: Save trade
-    Trading Engine->>Redis: Publish event
-    Redis-->>WebSocket: Trade event
-    WebSocket-->>All Clients: Broadcast trade
-    Trading Engine-->>Telegram Bot: Trade result
-    Telegram Bot-->>User: Success message
+1. User initiates buy via Frontend/Telegram
+2. Request sent to API Service
+3. API Service decrypts user wallet
+4. Transaction sent to MemeFactory contract
+5. Blockchain Monitor detects TokenPurchased event
+6. Event published to Redis
+7. WebSocket Server broadcasts to connected clients
+8. Frontend/Telegram updates UI
 ```
 
 ### Price Update Flow
-
-```mermaid
-sequenceDiagram
-    Blockchain Monitor->>Core RPC: Get latest block
-    Core RPC-->>Blockchain Monitor: Block data
-    Blockchain Monitor->>DEX Contracts: Get reserves
-    DEX Contracts-->>Blockchain Monitor: Price data
-    Blockchain Monitor->>PostgreSQL: Update prices
-    Blockchain Monitor->>Redis: Publish price
-    Redis-->>WebSocket: Price update
-    WebSocket-->>All Clients: Broadcast price
+```
+1. Blockchain Monitor detects trade event
+2. Calculates new price from bonding curve
+3. Publishes to Redis channel
+4. WebSocket Server receives update
+5. Broadcasts to subscribed clients
+6. Frontend updates price display
 ```
 
-## Configuration
+## Service Dependencies
 
-### Service Discovery
+| Service | Depends On | Required For |
+|---------|-----------|--------------|
+| API Service | PostgreSQL, Redis, Blockchain | Core functionality |
+| WebSocket Server | Redis, PostgreSQL | Real-time updates |
+| Blockchain Monitor | PostgreSQL, Redis, Core RPC | Event monitoring |
+| Telegram Bot | API Service, WebSocket, PostgreSQL, Redis | Telegram interface |
 
-**Environment Variables:**
-```bash
-# Each service needs to know where others are
-API_GATEWAY_URL=http://localhost:3001
-WEBSOCKET_URL=ws://localhost:8081
-TRADING_ENGINE_URL=http://localhost:3003
-CORE_RPC_URL=https://rpc.coredao.org
-POSTGRES_HOST=localhost
-REDIS_HOST=localhost
+## Environment Variables
+
+Each service requires specific environment variables:
+
+### Common (All Services)
+```env
+NODE_ENV=production
+NETWORK=testnet
+CORE_RPC_URL=https://rpc.test2.btcs.network
+MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
 ```
 
-### Internal API Keys
+### Service-Specific
+```env
+# API Service
+JWT_SECRET=...
+ENCRYPTION_SECRET=...
 
-**For service-to-service authentication:**
-```javascript
-// Trading Engine validates requests
-app.use((req, res, next) => {
-  const apiKey = req.headers['x-internal-key'];
-  if (apiKey !== process.env.INTERNAL_API_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-});
+# WebSocket
+WS_PORT=8081
+CORS_ORIGINS=...
+
+# Telegram Bot
+TELEGRAM_BOT_TOKEN=...
+API_URL=http://localhost:3001
+
+# Blockchain Monitor
+START_BLOCK=0
+CONFIRMATIONS=3
 ```
 
-### Health Checks
+## Health Checks
 
-**Each service exposes health endpoint:**
-```javascript
-app.get('/health', async (req, res) => {
-  const checks = {
-    service: 'running',
-    database: await checkDatabase(),
-    redis: await checkRedis(),
-    dependencies: await checkDependencies()
-  };
-  
-  const healthy = Object.values(checks).every(v => v === true || v === 'running');
-  res.status(healthy ? 200 : 503).json(checks);
-});
-```
+Each service exposes health endpoints:
 
-## Message Formats
-
-### Redis Pub/Sub
-
-```javascript
-// Publishing
-redis.publish('channel:name', JSON.stringify({
-  type: 'event_type',
-  data: { /* payload */ },
-  timestamp: Date.now(),
-  source: 'service_name'
-}));
-
-// Subscribing
-redis.subscribe('channel:name');
-redis.on('message', (channel, message) => {
-  const data = JSON.parse(message);
-  handleEvent(data);
-});
-```
-
-### WebSocket Messages
-
-```javascript
-// Client to Server
-{
-  type: 'subscribe' | 'unsubscribe' | 'ping',
-  channel: 'channel_name',
-  params: { /* optional */ }
-}
-
-// Server to Client
-{
-  type: 'data' | 'error' | 'subscribed' | 'pong',
-  channel: 'channel_name',
-  data: { /* payload */ },
-  timestamp: Date.now()
-}
-```
-
-### REST API Responses
-
-```javascript
-// Success
-{
-  success: true,
-  data: { /* result */ },
-  timestamp: Date.now()
-}
-
-// Error
-{
-  success: false,
-  error: {
-    code: 'ERROR_CODE',
-    message: 'Human readable message',
-    details: { /* optional */ }
-  },
-  timestamp: Date.now()
-}
-```
-
-## Security
-
-### Network Isolation
-
-```yaml
-# Docker networks
-networks:
-  public:    # Frontend-facing services
-  internal:  # Service-to-service
-  database:  # Database access only
-```
-
-### Rate Limiting
-
-```javascript
-// Per service
-const rateLimit = require('express-rate-limit');
-
-const limiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 100, // requests
-  keyGenerator: (req) => req.user?.id || req.ip
-});
-
-app.use('/api', limiter);
-```
-
-### Authentication
-
-```javascript
-// JWT validation middleware
-const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token' });
-  
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
-```
-
-## Monitoring
-
-### Logs Aggregation
-
-```bash
-# Centralized logging
-tail -f logs/*.log | grep ERROR
-
-# Service-specific
-docker logs -f core-api --since 1h
-
-# Pattern search
-grep "trade:execute" logs/trading-engine.log
-```
-
-### Metrics Collection
-
-```javascript
-// Prometheus metrics
-const promClient = require('prom-client');
-
-const httpRequestDuration = new promClient.Histogram({
-  name: 'http_request_duration_seconds',
-  help: 'Duration of HTTP requests in seconds',
-  labelNames: ['method', 'route', 'status']
-});
-
-app.use((req, res, next) => {
-  const end = httpRequestDuration.startTimer();
-  res.on('finish', () => {
-    end({ method: req.method, route: req.path, status: res.statusCode });
-  });
-  next();
-});
-```
+- API Service: `GET http://localhost:3001/health`
+- WebSocket: `GET http://localhost:8081/health`
+- Blockchain Monitor: `GET http://localhost:3003/health`
+- Telegram Bot: `GET http://localhost:3004/health`
 
 ## Troubleshooting
 
-### Service Can't Connect
+### Connection Issues
+
+1. **PostgreSQL Connection Failed**
+   - Check if PostgreSQL is running: `docker-compose ps postgres`
+   - Verify credentials in `.env`
+   - Check network connectivity
+
+2. **Redis Connection Failed**
+   - Check if Redis is running: `docker-compose ps redis`
+   - Test connection: `redis-cli ping`
+
+3. **WebSocket Not Connecting**
+   - Check CORS settings
+   - Verify port 8081 is not blocked
+   - Check firewall rules
+
+4. **Blockchain Monitor Not Syncing**
+   - Verify RPC URL is accessible
+   - Check contract address is correct
+   - Review logs for specific errors
+
+## Monitoring
+
+Use these commands to monitor services:
 
 ```bash
-# Check if service is running
-docker ps | grep service-name
-lsof -i :PORT
+# View all logs
+docker-compose logs -f
 
-# Test connectivity
-telnet localhost PORT
-curl http://localhost:PORT/health
+# View specific service
+docker-compose logs -f api
 
-# Check firewall
-sudo ufw status
+# Check service status
+docker-compose ps
+
+# Monitor Redis
+redis-cli monitor
+
+# Check PostgreSQL connections
+docker exec -it core-meme-postgres psql -U core_user -c "SELECT * FROM pg_stat_activity;"
 ```
-
-### Message Not Received
-
-```bash
-# Monitor Redis pub/sub
-redis-cli MONITOR | grep channel_name
-
-# Check WebSocket connections
-netstat -an | grep 8081
-
-# View service logs
-tail -f logs/websocket.log | grep ERROR
-```
-
-### Database Connection Issues
-
-```sql
--- Check connections
-SELECT pid, usename, application_name, client_addr, state 
-FROM pg_stat_activity;
-
--- Kill stuck connection
-SELECT pg_terminate_backend(pid) 
-FROM pg_stat_activity 
-WHERE state = 'idle' AND state_change < NOW() - INTERVAL '1 hour';
-```
-
-## Best Practices
-
-1. **Always use connection pooling** for database connections
-2. **Implement retry logic** for service-to-service calls
-3. **Use circuit breakers** for external dependencies
-4. **Cache frequently accessed data** in Redis
-5. **Log all inter-service communications** for debugging
-6. **Version your APIs** for backward compatibility
-7. **Use health checks** before routing traffic
-8. **Implement graceful shutdowns** for all services
-9. **Monitor and alert** on connection failures
-10. **Document all API changes** in this guide

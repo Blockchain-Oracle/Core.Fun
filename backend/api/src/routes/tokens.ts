@@ -1,12 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
-import { memeFactoryService } from '@core-meme/shared';
+import { memeFactoryService, ContractDataService } from '@core-meme/shared';
 import { transactionService } from '../services/TransactionService';
 import { createLogger } from '@core-meme/shared';
+import { db } from '../db';
+import { CoreScanService } from '../services/CoreScanService';
+import { ethers } from 'ethers';
 
 const router: Router = Router();
 const logger = createLogger({ service: 'api-tokens', enableFileLogging: false });
+
+// Initialize services for complete data fetching
+const coreScanService = new CoreScanService('testnet');
+const contractDataService = new ContractDataService(
+  process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network',
+  process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
+  process.env.STAKING_ADDRESS || '0x0000000000000000000000000000000000000000'
+);
 
 // Validation schemas
 const CreateTokenSchema = z.object({
@@ -54,16 +65,101 @@ const authenticateToken = (req: Request, res: Response, next: any) => {
 
 /**
  * GET /api/tokens
- * Get all tokens from the factory
+ * Get all tokens from the database with proper formatting
  */
 router.get('/tokens', async (req: Request, res: Response) => {
   try {
-    const tokens = await memeFactoryService.getAllTokens();
+    // Fetch tokens directly from database
+    const tokens = await db('tokens')
+      .select('*')
+      .orderBy('created_at', 'desc');
+    
+    // Constants for calculations
+    const TARGET_CORE = 3; // 3 CORE to graduate
+    const CORE_PRICE_USD = 50; // 1 CORE = $50
+    
+    // Transform tokens to match frontend expectations
+    const formattedTokens = tokens.map(token => {
+      // Parse values
+      const liquidityAdded = parseFloat(token.liquidity_added || '0');
+      const totalSupplyWei = token.total_supply || '1000000000000000000000000';
+      const totalSupply = parseFloat(totalSupplyWei) / 1e18;
+      
+      // Calculate graduation percentage
+      const graduationPercentage = Math.min((liquidityAdded / TARGET_CORE) * 100, 100);
+      
+      // Price calculations
+      const priceCore = parseFloat(token.price_core || '0.000001');
+      const priceUsd = priceCore * CORE_PRICE_USD;
+      
+      // Market cap calculation
+      const marketCap = totalSupply * priceUsd;
+      
+      // Status determination
+      let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = 'CREATED';
+      if (token.is_launched) {
+        status = 'GRADUATED';
+      } else if (graduationPercentage >= 100) {
+        status = 'LAUNCHED';
+      }
+      
+      // Convert created_at to Unix timestamp (seconds)
+      const createdAtTimestamp = token.created_at 
+        ? Math.floor(new Date(token.created_at).getTime() / 1000)
+        : Math.floor(Date.now() / 1000);
+      
+      return {
+        // Core fields
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        decimals: token.decimals || 18,
+        totalSupply: totalSupplyWei,
+        creator: token.creator_address || '',
+        createdAt: createdAtTimestamp,
+        blockNumber: 0, // Not stored in DB
+        transactionHash: '', // Not stored in DB
+        
+        // Status fields
+        status: status,
+        isVerified: token.is_verified || false,
+        ownershipRenounced: false, // Would need to check on-chain
+        
+        // Price data
+        price: priceUsd,
+        priceChange24h: parseFloat(token.price_change_24h || '0'),
+        
+        // Market data
+        marketCap: marketCap,
+        volume24h: parseFloat(token.volume_24h || '0'),
+        liquidity: liquidityAdded * CORE_PRICE_USD,
+        
+        // Stats
+        holders: token.holders_count || 0,
+        transactions24h: token.transactions_count || 0,
+        
+        // Graduation progress
+        graduationPercentage: graduationPercentage,
+        targetAmount: TARGET_CORE,
+        raisedAmount: liquidityAdded,
+        
+        // Social links
+        description: token.description || '',
+        website: token.website || '',
+        twitter: token.twitter || '',
+        telegram: token.telegram || '',
+        image_url: token.image_url || '',
+        
+        // Safety scores (would need real calculation)
+        rugScore: 0,
+        isHoneypot: false
+      };
+    });
     
     res.json({
       success: true,
-      tokens,
-      count: tokens.length
+      tokens: formattedTokens,
+      count: formattedTokens.length
     });
   } catch (error: any) {
     logger.error('Error fetching tokens:', error);
@@ -76,11 +172,13 @@ router.get('/tokens', async (req: Request, res: Response) => {
 
 /**
  * GET /api/tokens/:address
- * Get detailed information about a specific token
+ * Get COMPLETE token information including all metadata, socials, and analytics
+ * THIS IS THE CRITICAL ENDPOINT - MUST RETURN EVERYTHING
  */
 router.get('/tokens/:address', async (req: Request, res: Response) => {
   try {
     const { address } = req.params;
+    const userAddress = (req as any).user?.address;
     
     if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
       return res.status(400).json({
@@ -89,18 +187,108 @@ router.get('/tokens/:address', async (req: Request, res: Response) => {
       });
     }
     
-    const tokenInfo = await memeFactoryService.getTokenInfo(address);
+    logger.info(`Fetching COMPLETE data for token ${address}`);
     
-    if (!tokenInfo) {
-      return res.status(404).json({
-        success: false,
-        error: 'Token not found'
-      });
+    // 1. Get COMPLETE contract data - ALL FIELDS
+    const contractData = await contractDataService.getCompleteTokenData(address);
+    
+    // 2. Get analytics from Core Scan API
+    const analytics = await coreScanService.getTokenAnalytics(address);
+    
+    // 3. Get user's staking benefits if authenticated
+    let stakingBenefits = null;
+    if (userAddress) {
+      stakingBenefits = await contractDataService.getUserStakingBenefits(userAddress);
     }
+    
+    // 4. Calculate price impact for different amounts
+    const priceImpacts = {
+      small: await contractDataService.calculatePriceImpact(address, '0.1', true),
+      medium: await contractDataService.calculatePriceImpact(address, '1', true),
+      large: await contractDataService.calculatePriceImpact(address, '10', true),
+    };
+    
+    // 5. Get Core price for USD calculations
+    const corePrice = await coreScanService.getCorePrice();
+    
+    // Build COMPLETE response with ALL data
+    const completeTokenData = {
+      // Basic token info
+      address: contractData.address,
+      name: contractData.name,
+      symbol: contractData.symbol,
+      decimals: contractData.decimals,
+      totalSupply: contractData.totalSupply,
+      
+      // CRITICAL METADATA - MUST BE INCLUDED
+      description: contractData.description,
+      image_url: contractData.image, // ACTUAL IMAGE URL
+      twitter: contractData.twitter,
+      telegram: contractData.telegram,
+      website: contractData.website,
+      
+      // Trading controls
+      maxWallet: contractData.maxWallet,
+      maxTransaction: contractData.maxTransaction,
+      tradingEnabled: contractData.tradingEnabled,
+      launchBlock: contractData.launchBlock,
+      owner: contractData.owner,
+      
+      // Sale info
+      creator: contractData.creator,
+      sold: contractData.sold,
+      raised: contractData.raised,
+      isOpen: contractData.isOpen,
+      isLaunched: contractData.isLaunched,
+      createdAt: contractData.createdAt,
+      launchedAt: contractData.launchedAt,
+      
+      // Bonding curve - COMPLETE DATA
+      bondingCurve: {
+        progress: contractData.bondingCurveProgress,
+        currentPrice: contractData.currentPrice,
+        currentPriceUSD: Number(contractData.currentPrice) * corePrice,
+        targetAmount: contractData.targetAmount,
+        raisedAmount: contractData.raisedAmount,
+        tokensRemaining: contractData.tokensRemaining,
+        priceImpacts: priceImpacts
+      },
+      
+      // Analytics from Core Scan
+      analytics: {
+        holders: analytics.holders,
+        transactions24h: analytics.transactions24h,
+        volume24h: analytics.volume24h,
+        uniqueTraders24h: analytics.uniqueTraders24h,
+        holderDistribution: analytics.holderDistribution,
+        topHolders: analytics.topHolders
+      },
+      
+      // Staking benefits for user
+      stakingBenefits: stakingBenefits,
+      
+      // Status flags
+      status: contractData.isLaunched ? 'GRADUATED' : contractData.isOpen ? 'CREATED' : 'CLOSED',
+      ownershipRenounced: contractData.owner === ethers.ZeroAddress,
+      
+      // Market data
+      marketCap: Number(ethers.formatEther(contractData.totalSupply)) * Number(contractData.currentPrice) * corePrice,
+      liquidity: Number(contractData.raisedAmount) * corePrice,
+      price: Number(contractData.currentPrice) * corePrice,
+      priceChange24h: 0, // Would calculate from price history
+      volume24h: Number(ethers.formatEther(analytics.volume24h)) * corePrice,
+    };
+    
+    logger.info(`Returning COMPLETE token data for ${address}:`, {
+      hasImage: !!completeTokenData.image_url,
+      hasDescription: !!completeTokenData.description,
+      hasSocials: !!(completeTokenData.twitter || completeTokenData.telegram || completeTokenData.website),
+      bondingProgress: completeTokenData.bondingCurve.progress
+    });
     
     res.json({
       success: true,
-      token: tokenInfo
+      token: completeTokenData
     });
   } catch (error: any) {
     logger.error('Error fetching token info:', error);

@@ -1,242 +1,224 @@
 # Blockchain Monitor Service
 
-Real-time blockchain monitoring service for Core blockchain, tracking MemeFactory tokens and DEX activity. This service provides comprehensive token analytics, honeypot detection, and liquidity monitoring across IcecreamSwap V2.
+Real-time blockchain event monitoring service for MemeFactory contract on Core blockchain.
 
-## 🚀 Features
+## 🚀 Overview
 
-- ✅ **MemeFactory Monitoring**
-  - Token creation events
-  - Bonding curve purchases  
-  - Token launches to DEX
-  - Real-time price tracking from bonding curves
-  - Platform fee tracking
+This service monitors the MemeFactory contract for important events and processes them in real-time:
+- Token creation events
+- Buy/sell trades through bonding curves
+- Token graduations to DEX
+- Price and volume tracking
 
-- ✅ **DEX Monitoring**
-  - IcecreamSwap V2 Integration
-  - Real-time pair creation events
-  - Swap transaction monitoring
-  - Liquidity tracking with USD values
-  - CoinGecko API for CORE/USD pricing
+## 🏗️ Architecture
 
-- ✅ **Token Analytics** (AnalyticsService.ts)
-  - Honeypot detection with contract analysis
-  - Rug pull risk scoring (0-100 scale)
-  - Ownership concentration analysis
-  - Trading restrictions detection (max wallet/tx)
-  - Liquidity lock verification
-  - Contract verification status
+```
+Core Blockchain → Monitor (3003) → Redis Pub/Sub → WebSocket (8081)
+                       ↓
+                   PostgreSQL
+```
 
-- ✅ **Alert System**
-  - Critical alerts for rug pulls
-  - Large trade notifications
-  - Liquidity removal warnings
-  - WebSocket broadcasting
+## 📊 Monitored Events
 
-## Quick Start
+### MemeFactory Events
+- `TokenCreated` - New token launched
+- `TokenPurchased` - Token bought through bonding curve
+- `TokenSold` - Token sold through bonding curve
+- `TokenLaunched` - Token graduated to DEX (250 CORE raised)
+- `PlatformFeeUpdated` - Fee changes
+- `TreasuryUpdated` - Treasury address changes
 
-### 1. Install Dependencies
+## 🔧 Configuration
+
+```env
+# Network
+NETWORK=testnet
+CORE_TESTNET_RPC=https://rpc.test2.btcs.network
+
+# Contracts
+MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
+
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/corememe
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Monitoring
+START_BLOCK=0  # Start from specific block (0 = latest)
+CONFIRMATIONS=3  # Blocks to wait for confirmation
+BATCH_SIZE=100  # Events per batch
+```
+
+## 📋 Services
+
+### MemeFactoryMonitor
+Main monitoring service that:
+- Subscribes to contract events
+- Processes events with confirmation delay
+- Handles reorgs and missed events
+- Retries on failure
+
+### TokenProcessor
+Processes token-related events:
+- Stores token metadata
+- Calculates analytics (rug score, honeypot detection)
+- Triggers alerts for suspicious activity
+- Updates token status
+
+### TradeProcessor  
+Processes trade events:
+- Records all trades
+- Calculates price impact
+- Updates volume metrics
+- Identifies whale activity
+- Tracks trader profiles
+
+### AnalyticsService
+Calculates token analytics:
+- Rug pull risk score (0-100)
+- Honeypot detection
+- Ownership concentration
+- Liquidity analysis
+- Price/volume tracking
+
+### AlertService
+Sends real-time alerts:
+- New token launches
+- Large trades ($100+ USD)
+- Whale activity ($500+ USD)
+- High price impact trades (>10%)
+- Rug pull warnings
+
+## 🚨 Alert Thresholds
+
+```javascript
+// Trade alerts
+LARGE_TRADE_USD = 100    // Large trade alert
+WHALE_TRADE_USD = 500    // Whale activity alert
+PRICE_IMPACT_THRESHOLD = 10  // High slippage alert (%)
+
+// Risk alerts
+RUG_SCORE_HIGH = 80      // High rug risk
+HONEYPOT_DETECTED = true  // Honeypot warning
+```
+
+## 📊 Data Processing
+
+### Event Processing Flow
+1. **Catch Event** → From blockchain
+2. **Wait Confirmations** → Default 3 blocks
+3. **Process Event** → Extract and validate data
+4. **Store in Database** → PostgreSQL
+5. **Calculate Analytics** → Risk scores, metrics
+6. **Check Alerts** → Trigger if thresholds met
+7. **Publish to Redis** → For WebSocket broadcast
+
+### Redis Channels
+- `websocket:new_token` - New token created
+- `websocket:trade` - Trade executed
+- `websocket:price_update` - Price changed
+- `websocket:alerts` - Alert triggered
+
+## 🚀 Quick Start
 
 ```bash
+# Install dependencies
 pnpm install
-```
 
-### 2. Configure Environment
-
-```bash
+# Setup environment
 cp .env.example .env
-# Edit .env with your settings
+# Edit .env with your configuration
+
+# Start development
+pnpm dev
+
+# Start production
+pnpm build && pnpm start
 ```
 
-### 3. Start Services
-
-```bash
-# Start Redis (required)
-docker-compose up -d redis
-
-# Start PostgreSQL (required)
-docker-compose up -d postgres
-
-# Run database migrations
-pnpm run migrate
-```
-
-### 4. Run the Monitor
-
-```bash
-# Development mode (testnet)
-pnpm run dev
-
-# Production mode (mainnet)
-pnpm run start:prod
-
-# Testnet mode
-pnpm run start:testnet
-```
-
-## Configuration
-
-### Platform Contracts
-
-```env
-# Core Testnet (Chain ID: 1114)
-MEME_FACTORY_ADDRESS=0x04242CfFdEC8F96A46857d4A50458F57eC662cE1
-PLATFORM_TOKEN=0x96611b71A4DE5B8616164B650720ADe10948193F
-STAKING_CONTRACT=0x95F1588ef2087f9E40082724F5Da7BAD946969CB
-
-# IcecreamSwap V2 Configuration
-ICECREAM_FACTORY=0x9E6d21E759A7A288b80eef94E4737D313D31c13f
-ICECREAM_ROUTER=0xBb5e1777A331ED93E07cF043363e48d320eb96c4
-INIT_CODE_HASH=0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3
-```
-
-### External APIs
-
-```env
-# CoinGecko API for CORE price
-COINGECKO_API_KEY=optional_for_higher_rate_limits
-
-# Core Scan API (optional)
-CORE_SCAN_API_KEY=your_api_key_here
-```
-
-### Network Selection
-
-```env
-NETWORK=testnet # or mainnet
-```
-
-### Monitoring Options
-
-```env
-START_BLOCK=0 # Start from specific block (0 = current - 1000)
-CONFIRMATIONS=3 # Block confirmations before processing
-BATCH_SIZE=100 # Blocks per batch for historical sync
-```
-
-## Architecture
-
-```
-blockchain-monitor/
-├── src/
-│   ├── config/
-│   │   ├── contracts.ts    # Platform contracts configuration
-│   │   └── dex.ts          # DEX configurations
-│   ├── monitors/
-│   │   ├── EventMonitor.ts # Base monitor class
-│   │   ├── MemeFactoryMonitor.ts # Our contracts monitor
-│   │   └── DexMonitor.ts   # DEX activity monitor
-│   ├── processors/
-│   │   ├── TokenProcessor.ts # Process new tokens
-│   │   ├── TradeProcessor.ts # Process trades
-│   │   └── LiquidityProcessor.ts # Process liquidity
-│   ├── services/
-│   │   ├── DatabaseService.ts # PostgreSQL interface
-│   │   ├── AnalyticsService.ts # Token analysis
-│   │   └── AlertService.ts # Alert management
-│   └── main.ts # Entry point
-```
-
-## Monitoring Flow
-
-1. **Without MemeFactory Address**:
-   - Monitors all DEX pairs on Core
-   - Tracks all token trades
-   - Analyzes new tokens from any source
-
-2. **With MemeFactory Address**:
-   - Everything above PLUS:
-   - Monitors your factory's token creations
-   - Tracks bonding curve purchases
-   - Special analytics for your tokens
-   - Platform metrics and fees
-
-## API Integration
-
-The monitor publishes events to Redis channels:
-
-- `token-events`: New tokens and updates
-- `trade-events`: Trade transactions
-- `liquidity-events`: Liquidity changes
-- `pair-events`: New pairs created
-- `alerts`: Critical alerts
-
-Subscribe to these channels in your backend services.
-
-## Database Schema
-
-Tables created automatically:
-- `tokens`: All tokens discovered
-- `pairs`: DEX pairs
-- `trades`: Trade transactions
-- `liquidity_events`: Add/remove liquidity
-- `token_analytics`: Calculated metrics
-- `alerts`: Generated alerts
-- `trader_profiles`: Wallet analytics
-
-## Deployment
-
-### Docker
-
-```bash
-# Build image
-docker build -t core-monitor .
-
-# Run with docker-compose
-docker-compose up -d
-```
-
-### PM2
-
-```bash
-# Build first
-pnpm run build
-
-# Start with PM2
-pm2 start dist/main.js --name "core-monitor"
-```
-
-## Troubleshooting
-
-### No MemeFactory Configured
-
-```
-⚠️ No platform contracts configured. Monitoring will proceed with DEX activity only.
-```
-
-This is normal if you haven't deployed contracts yet. The service will still monitor all DEX activity.
-
-### Database Connection Failed
-
-Ensure PostgreSQL is running:
-```bash
-docker-compose up -d postgres
-```
-
-### Redis Connection Failed
-
-Ensure Redis is running:
-```bash
-docker-compose up -d redis
-```
-
-## Development
-
-### Adding New Events
-
-1. Update event ABI in monitor
-2. Add handler method
-3. Update processor if needed
-
-### Testing
+## 🧪 Testing
 
 ```bash
 # Run tests
 pnpm test
 
-# With coverage
-pnpm test:coverage
+# Test event processing
+pnpm test:events
+
+# Test analytics
+pnpm test:analytics
 ```
 
-## License
+## 📈 Metrics Tracked
+
+### Token Metrics
+- Total supply and circulating supply
+- Holder count and distribution
+- 24h volume and transactions
+- Price and market cap
+- Liquidity amount
+
+### Trade Metrics
+- Trade volume (hourly/daily)
+- Number of trades
+- Unique traders
+- Average trade size
+- Buy/sell ratio
+
+### Risk Metrics
+- Rug score (0-100)
+- Honeypot status
+- Ownership concentration
+- Liquidity locked status
+- Contract verification
+
+## 🔍 Monitoring Dashboard
+
+Access monitoring stats:
+```bash
+# Check service health
+curl http://localhost:3003/health
+
+# Get monitoring stats
+curl http://localhost:3003/stats
+
+# Get recent events
+curl http://localhost:3003/events/recent
+```
+
+## 🛡️ Error Handling
+
+### Automatic Recovery
+- Reconnects on RPC failure
+- Retries failed transactions (3 attempts)
+- Handles block reorganizations
+- Catches up on missed blocks
+
+### Manual Recovery
+```bash
+# Reprocess from specific block
+REPROCESS_FROM_BLOCK=12345 pnpm start
+
+# Clear and rebuild analytics
+pnpm run rebuild:analytics
+```
+
+## 📝 Log Files
+
+- `blockchain-monitor.log` - Main service logs
+- `token-processor.log` - Token processing logs
+- `trade-processor.log` - Trade processing logs
+- `analytics.log` - Analytics calculations
+- `alerts.log` - Alert notifications
+
+## 🔗 Dependencies
+
+- **ethers.js** - Blockchain interaction
+- **@core-meme/shared** - Shared utilities
+- **redis** - Pub/sub messaging
+- **pg** - PostgreSQL client
+- **winston** - Logging
+
+## 📄 License
 
 MIT

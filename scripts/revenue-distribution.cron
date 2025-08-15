@@ -1,0 +1,33 @@
+# Revenue Distribution Cron Job Configuration
+# Add this to your system crontab or use a scheduler service
+
+# Daily revenue distribution at 2 AM UTC
+0 2 * * * cd /path/to/core-meme-platform && /usr/bin/node scripts/revenue-distribution.ts >> logs/revenue-distribution.log 2>&1
+
+# Weekly revenue distribution (Sundays at 3 AM UTC) - Alternative schedule
+# 0 3 * * 0 cd /path/to/core-meme-platform && /usr/bin/node scripts/revenue-distribution.ts >> logs/revenue-distribution.log 2>&1
+
+# For testing - run every hour
+# 0 * * * * cd /path/to/core-meme-platform && /usr/bin/node scripts/revenue-distribution.ts >> logs/revenue-distribution.log 2>&1
+
+# Environment variables required:
+# - CORE_RPC_URL: RPC endpoint for Core blockchain
+# - REVENUE_DISTRIBUTOR_PRIVATE_KEY: Private key of the revenue distributor wallet
+# - STAKING_ADDRESS: Address of the Staking contract
+# - MEME_FACTORY_ADDRESS: Address of the MemeFactory contract
+# - MIN_DISTRIBUTION_AMOUNT: Minimum amount in CORE to trigger distribution (default: 10)
+# - DRY_RUN: Set to 'true' for testing without executing transactions
+
+# To install this cron job:
+# 1. Edit crontab: crontab -e
+# 2. Add the appropriate line from above
+# 3. Update the path to your project directory
+# 4. Save and exit
+
+# To view logs:
+# tail -f logs/revenue-distribution.log
+
+# To run manually:
+# npm run distribute:revenue
+# or
+# node scripts/revenue-distribution.ts

@@ -1,74 +1,77 @@
-# Core Meme Platform 🚀
+# Core.fun - Meme Token Launcher Platform 🚀
 
-A professional meme token launcher platform on Core blockchain, combining token creation, trading, and analytics in one integrated ecosystem.
+A streamlined meme token launcher platform on Core blockchain with bonding curve mechanics, real-time trading, and Telegram integration.
 
-## 🎯 Features
+## 🎯 Overview
 
-### Token Launcher (Pump.fun Style)
-- Simple token creation with bonding curves
-- Fair launch mechanism
-- Social features (comments, likes)
-- Anti-rug protections
+Core.fun is a simplified, production-ready platform for launching and trading meme tokens on Core blockchain. Using bonding curves for fair launches, it provides a seamless experience for token creators and traders without the complexity of traditional DEX interactions.
 
-### Universal Token Explorer (DexScreener Style)
-- Track ALL tokens on Core (not just ours)
-- Real-time price charts
-- Volume and liquidity tracking
-- Honeypot detection
-- Rug score calculation
+## ✨ Key Features
 
-### Telegram Trading Bot
-- Buy/Sell/Snipe commands
-- Copy trading
-- Automated alerts for new tokens
-- Subscription-based premium features
+### 🪙 Token Creation & Trading
+- **Bonding Curve Launch**: Fair token launches with mathematical price discovery
+- **Automated Graduation**: Tokens automatically graduate to DEX at 250 CORE raised
+- **No Presales/Team Tokens**: 100% fair launch mechanism
+- **1% Platform Fee**: Minimal fees on all trades
 
-### Web Application
-- Modern Next.js interface
-- Connect wallet (MetaMask)
-- Create and launch tokens
-- Trade and track portfolio
+### 📊 Real-Time Monitoring
+- Live token price updates via WebSocket
+- Transaction tracking and history
+- Token analytics and holder information
+- Event-driven architecture for instant updates
 
-## 🏗️ Architecture
+### 🤖 Telegram Bot Integration
+- Create and trade tokens directly from Telegram
+- Wallet management without seed phrases
+- Real-time alerts and notifications
+- Mobile-first trading experience
+
+### 🌐 Web Application
+- Modern Next.js interface with Zustand state management
+- Real-time WebSocket updates
+- Portfolio tracking with P&L
+- Responsive design for all devices
+
+## 🏗️ Simplified Architecture
 
 ```
 core-meme-platform/
-├── contracts/              # Smart contracts (Solidity)
-│   ├── MemeFactory.sol    # Token factory with bonding curves
-│   ├── MemeToken.sol      # ERC20 token with anti-rug features
-│   └── Staking.sol        # Platform token staking
-├── backend/               # Microservices
-│   ├── api/              # REST API gateway (Port 3001)
-│   ├── blockchain-monitor/ # Real-time blockchain event monitoring
-│   ├── trading-engine/    # DEX integration & trade execution
-│   └── core-api-service/  # Core blockchain API wrapper
-├── telegram-bot/          # Full-featured Telegram trading bot
-├── web-app/              # Next.js frontend application
-├── websocket/            # Real-time data streaming (Port 8081)
-└── shared/               # Shared types, constants, utilities
+├── contracts/                 # Smart contracts
+│   ├── MemeFactory.sol       # Main factory with bonding curves
+│   └── MemeToken.sol         # ERC20 token implementation
+│
+├── backend/                  # Backend services (4 services only!)
+│   ├── api/                  # REST API (Port 3001)
+│   ├── blockchain-monitor/   # Event monitoring (Port 3003)
+│   └── websocket/            # Real-time updates (Port 8081)
+│
+├── telegram-bot/             # Telegram bot (Port 3004)
+├── frontend/                 # Next.js web app (Port 3000)
+└── shared/                   # Shared utilities and types
 ```
 
-## 🔗 Blockchain Integration
+## 🔄 How It Works
 
-### DEX Integration
-- **IcecreamSwap V2**: Primary DEX for trading
-  - Factory: `0x9E6d21E759A7A288b80eef94E4737D313D31c13f`
-  - Router: `0xBb5e1777A331ED93E07cF043363e48d320eb96c4`
+### Token Launch Flow
+1. **Create Token** → User submits token details + 0.01 CORE fee
+2. **Bonding Curve** → Price starts low, increases with each buy
+3. **Trading Phase** → Users buy/sell through bonding curve
+4. **Graduation** → At 250 CORE raised, adds liquidity to DEX
+5. **Free Trading** → Token trades freely on secondary markets
 
-### External APIs
-- **CoinGecko**: Real-time CORE/USD pricing
-- **Core Scan**: Token verification and holder data
+### Trading Flow
+```
+User → API → MemeFactory Contract → Blockchain
+         ↓
+    WebSocket → Real-time Updates → Frontend
+```
 
 ## 📋 Deployed Contracts (Core Testnet)
 
-| Contract | Address | Explorer Link |
-|----------|---------|---------------|
-| MemeFactory | `0x04242CfFdEC8F96A46857d4A50458F57eC662cE1` | [View on Scan](https://scan.test.btcs.network/address/0x04242CfFdEC8F96A46857d4A50458F57eC662cE1) |
-| Platform Token (CMP) | `0x96611b71A4DE5B8616164B650720ADe10948193F` | [View on Scan](https://scan.test.btcs.network/address/0x96611b71A4DE5B8616164B650720ADe10948193F) |
-| Staking Contract | `0x95F1588ef2087f9E40082724F5Da7BAD946969CB` | [View on Scan](https://scan.test.btcs.network/address/0x95F1588ef2087f9E40082724F5Da7BAD946969CB) |
-| Treasury Address | `0xe397a72377F43645Cd4DA02d709c378df6e9eE5a` | [View on Scan](https://scan.test.btcs.network/address/0xe397a72377F43645Cd4DA02d709c378df6e9eE5a) |
-
-> **Note**: These are testnet deployments for development and testing. Mainnet deployment will be announced separately.
+| Contract | Address | Description |
+|----------|---------|-------------|
+| MemeFactory | `0x0eeF9597a9B231b398c29717e2ee89eF6962b784` | Token factory and bonding curves |
+| Example Token | Various | Tokens created through the platform |
 
 ## 🚀 Quick Start
 
@@ -77,8 +80,6 @@ core-meme-platform/
 - pnpm 8+
 - PostgreSQL 14+
 - Redis 6+
-- MetaMask wallet
-- Telegram account
 
 ### Installation
 
@@ -94,242 +95,177 @@ pnpm install
 cp .env.example .env
 # Edit .env with your configuration
 
-# Deploy contracts to testnet
-pnpm deploy:contracts --network coreTestnet
-
-# Start services
-pnpm dev
+# Start all services
+pnpm dev:all
 ```
+
+This starts:
+- API Service (http://localhost:3001)
+- Blockchain Monitor
+- WebSocket Server (ws://localhost:8081)
+- Telegram Bot
+
+### Frontend Development
+
+```bash
+cd frontend
+pnpm dev
+# Visit http://localhost:3000
+```
+
+## 🔧 Configuration
 
 ### Environment Variables
 
 ```env
-# Network Configuration
-NETWORK=testnet # or mainnet
-CORE_TESTNET_RPC_URL=https://rpc.test2.btcs.network
-CORE_MAINNET_RPC_URL=https://rpc.coredao.org
+# Network
+NETWORK=testnet
+CORE_TESTNET_RPC=https://rpc.test2.btcs.network
 
-# Contract Addresses (Testnet)
-MEME_FACTORY_ADDRESS=0x04242CfFdEC8F96A46857d4A50458F57eC662cE1
-PLATFORM_TOKEN=0x96611b71A4DE5B8616164B650720ADe10948193F
-STAKING_CONTRACT=0x95F1588ef2087f9E40082724F5Da7BAD946969CB
-
-# API Keys
-CORESCAN_API_KEY=your_api_key
-TELEGRAM_BOT_TOKEN=your_bot_token
-COINGECKO_API_KEY=optional_for_higher_limits
+# Contracts
+MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
 
 # Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/core_meme
+DATABASE_URL=postgresql://user:pass@localhost:5432/corememe
 REDIS_URL=redis://localhost:6379
 
-# Wallet
-PRIVATE_KEY=your_private_key # For contract deployment
-TREASURY_ADDRESS=your_treasury_address
+# Telegram Bot
+TELEGRAM_BOT_TOKEN=your_bot_token
 
 # Security
 JWT_SECRET=your_jwt_secret
-ENCRYPTION_KEY=your_encryption_key
+ENCRYPTION_SECRET=your_encryption_secret
 ```
 
-## 🔧 Services Overview
+## 📊 Service Architecture
 
-### Backend Services
+### API Service (Port 3001)
+- User authentication (JWT)
+- Token creation and trading
+- Wallet management
+- Transaction execution
 
-#### 1. **Blockchain Monitor** (`backend/blockchain-monitor`)
-Real-time blockchain event monitoring and token analytics.
-- Monitors PairCreated, Swap, and Liquidity events
-- Calculates rug scores and honeypot detection
-- Tracks liquidity across IcecreamSwap V2
-- Integrates CoinGecko for CORE/USD pricing
-- [Full Documentation](./backend/blockchain-monitor/README.md)
+### Blockchain Monitor (Port 3003)
+- Monitors MemeFactory events
+- Processes token creations, trades, graduations
+- Sends updates to WebSocket
 
-#### 2. **API Gateway** (`backend/api`)
-RESTful API gateway for all platform services (Port 3001).
-- JWT authentication and authorization
-- Real-time wallet balance queries
-- Trading operations with slippage protection
-- Portfolio tracking and analytics
-- [Full Documentation](./backend/api/README.md)
+### WebSocket Server (Port 8081)
+- Real-time price updates
+- Trade notifications
+- New token alerts
+- Portfolio updates
 
-#### 3. **Trading Engine** (`backend/trading-engine`)
-Production-ready trading system with MEV protection.
-- Unified router for bonding curves and DEX
-- IcecreamSwap V2 integration
-- Gas optimization and route finding
-- Anti-sandwich attack protection
-- [Full Documentation](./backend/trading-engine/README.md)
+### Telegram Bot (Port 3004)
+- Full trading interface
+- Wallet creation and management
+- Real-time notifications
+- Copy trading features
 
-#### 4. **Core API Service** (`backend/core-api-service`)
-Wrapper for Core blockchain APIs with caching.
-- Token verification and holder data
-- Contract verification status
-- Historical data aggregation
-- Redis caching for performance
-- [Full Documentation](./backend/core-api-service/README.md)
+## 🛡️ Security Features
 
-### Frontend Services
+- **Custodial Wallets**: Private keys encrypted with AES-256
+- **JWT Authentication**: Secure API access
+- **Rate Limiting**: Protection against abuse
+- **Slippage Protection**: Configurable for all trades
+- **Anti-Rug Mechanisms**: Built into token contracts
 
-#### 5. **Telegram Bot** (`telegram-bot`)
-Feature-rich trading bot with visual card generation.
-- Buy/sell/snipe commands
-- Portfolio tracking with P&L
-- Copy trading system
-- Custom image generation for positions
-- [Full Documentation](./telegram-bot/README.md)
+## 📈 Bonding Curve Mechanics
 
-#### 6. **WebSocket Server** (`websocket`)
-Real-time data streaming service (Port 8081).
-- Live price updates from blockchain
-- Trade event broadcasting
-- Alert notifications
-- Supports 10,000+ concurrent connections
-- [Full Documentation](./websocket/README.md)
-
-#### 7. **Web Application** (`web-app`)
-Modern Next.js frontend application.
-- Token launcher interface
-- Trading dashboard
-- Portfolio management
-- Wallet integration (MetaMask)
-
-## 📊 Core API Integration
-
-The platform integrates with Core blockchain APIs:
-- **Mainnet**: `https://openapi.coredao.org/api`
-- **Testnet**: `https://openapi.test.btcs.network/api`
-
-Features:
-- Token verification
-- Contract verification
-- Transaction monitoring
-- Holder analytics
-- Historical data
-
-## 💰 Revenue Model
-
-1. **Token Creation Fees**: 0.1 CORE per token
-2. **Trading Fees**: 0.5% on platform trades
-3. **Subscriptions**: $10-50/month for premium features
-4. **API Access**: Tiered pricing for developers
-5. **Token Promotion**: Featured slots
-
-## 🔒 Security Features
-
-- Multi-sig treasury
-- Time locks on critical functions
-- Anti-rug mechanisms
-- Honeypot detection
-- Max wallet/transaction limits
-- Ownership renouncement tracking
-- Rate limiting
-- DDoS protection
-
-## 📈 Subscription Tiers
-
-### Free Tier
-- Basic trading bot
-- View token explorer
-- 1 token launch per month
-
-### Premium ($10/month)
-- All token launch alerts
-- Advanced analytics
-- Unlimited token launches
-- Copy trading
-- API access
-
-### Pro ($50/month)
-- Everything in Premium
-- Custom alerts
-- Whale wallet tracking
-- Private group access
-- Priority support
-
-## 🛠️ Technology Stack
-
-- **Smart Contracts**: Solidity, Hardhat, OpenZeppelin
-- **Backend**: Node.js, TypeScript, Express, PostgreSQL, Redis
-- **Frontend**: Next.js 14, TypeScript, TailwindCSS, Wagmi
-- **Bot**: Telegraf, BullMQ
-- **Infrastructure**: Docker, Kubernetes, GitHub Actions
-
-## 📝 Smart Contract Addresses
-
-### Testnet
-- MemeFactory: `0x...` (pending deployment)
-- Platform Token: `0x...` (pending deployment)
-
-### Mainnet
-- MemeFactory: `0x...` (pending deployment)
-- Platform Token: `0x...` (pending deployment)
+- **Initial Price**: ~0.0000005 CORE per token
+- **Max Supply**: 500,000 tokens during bonding
+- **Graduation Target**: 250 CORE raised
+- **Price Formula**: Exponential curve (price increases with supply)
+- **Platform Fee**: 1% on all trades
 
 ## 🧪 Testing
 
 ```bash
+# Run all tests
+pnpm test
+
 # Run contract tests
-pnpm test:contracts
+cd contracts && npx hardhat test
 
-# Run backend tests
-pnpm test:backend
-
-# Run integration tests
-pnpm test:integration
+# Run API tests
+cd backend/api && pnpm test
 ```
 
-## 📚 Documentation
+## 📝 API Documentation
 
-- [API Documentation](./docs/API.md)
-- [Smart Contract Documentation](./docs/CONTRACTS.md)
-- [Deployment Guide](./docs/DEPLOYMENT.md)
-- [Architecture Overview](./docs/ARCHITECTURE.md)
+### Authentication
+```http
+POST /api/auth/telegram
+Content-Type: application/json
+
+{
+  "initData": "telegram_init_data_string"
+}
+```
+
+### Create Token
+```http
+POST /api/tokens/create
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+{
+  "name": "My Token",
+  "symbol": "MTK",
+  "description": "Token description",
+  "imageUrl": "https://...",
+  "twitter": "https://twitter.com/...",
+  "telegram": "https://t.me/...",
+  "website": "https://..."
+}
+```
+
+### Buy Token
+```http
+POST /api/tokens/:address/buy
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+{
+  "coreAmount": "1.0"
+}
+```
+
+### Sell Token
+```http
+POST /api/tokens/:address/sell
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+{
+  "tokenAmount": "1000"
+}
+```
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-MIT License - see [LICENSE](./LICENSE) for details.
+MIT License - see LICENSE file for details
 
-## ⚠️ Disclaimer
+## 🙏 Acknowledgments
 
-This software is provided "as is" without warranty of any kind. The platform is currently in beta. Please conduct your own research before trading any tokens. Not financial advice.
+- Core blockchain team for the infrastructure
+- OpenZeppelin for secure contract libraries
+- The meme token community for inspiration
 
-## 🔗 Links
+## 📞 Support
 
-- Website: [corememe.io](#) (coming soon)
-- Telegram Bot: [@CoreMemeBot](#) (coming soon)
-- Twitter: [@CoreMemePlatform](#) (coming soon)
-- Discord: [Join our community](#) (coming soon)
-
-## 🎯 Roadmap
-
-### Phase 1: MVP ✅
-- [x] Smart contracts
-- [x] Core API integration
-- [x] Basic folder structure
-- [ ] Simple web interface
-- [ ] Basic Telegram bot
-
-### Phase 2: Explorer
-- [ ] Universal token monitoring
-- [ ] Analytics dashboard
-- [ ] Advanced alerts
-- [ ] Honeypot detection
-
-### Phase 3: Premium
-- [ ] Subscription system
-- [ ] Copy trading
-- [ ] API for developers
-- [ ] Advanced analytics
-
-### Phase 4: Production
-- [ ] Security audit
-- [ ] Performance optimization
-- [ ] Mainnet deployment
-- [ ] Marketing launch
+- Documentation: [docs.core.fun](https://docs.core.fun)
+- Telegram: [@corefun_support](https://t.me/corefun_support)
+- Discord: [discord.gg/corefun](https://discord.gg/corefun)
 
 ---
 
-Built with ❤️ for the Core ecosystem
+**⚠️ Disclaimer**: This is experimental software. Use at your own risk. Always DYOR before trading.

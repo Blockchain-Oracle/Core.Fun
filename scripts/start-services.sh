@@ -87,11 +87,6 @@ else
         echo -e "${GREEN}✅ API Gateway starting on port 3001${NC}"
     fi
     
-    echo -e "${YELLOW}Starting Core API Service...${NC}"
-    if ! check_service "Core API Service" 3001; then
-        cd backend/core-api-service && pnpm dev > ../../logs/core-api.log 2>&1 &
-        echo -e "${GREEN}✅ Core API Service starting${NC}"
-    fi
     
     echo -e "${YELLOW}Starting WebSocket Server...${NC}"
     if ! check_service "WebSocket" 8081; then
@@ -99,11 +94,6 @@ else
         echo -e "${GREEN}✅ WebSocket Server starting on port 8081${NC}"
     fi
     
-    echo -e "${YELLOW}Starting Trading Engine...${NC}"
-    if ! check_service "Trading Engine" 3003; then
-        cd backend/trading-engine && pnpm dev > ../../logs/trading-engine.log 2>&1 &
-        echo -e "${GREEN}✅ Trading Engine starting on port 3003${NC}"
-    fi
     
     echo -e "${YELLOW}Starting Blockchain Monitor...${NC}"
     cd backend/blockchain-monitor && pnpm dev > ../../logs/blockchain-monitor.log 2>&1 &
@@ -132,7 +122,7 @@ echo "========================================"
 echo -e "${YELLOW}Service URLs:${NC}"
 echo "• API Gateway: http://localhost:3001"
 echo "• WebSocket: ws://localhost:8081"
-echo "• Trading Engine: http://localhost:3003"
+echo "• Blockchain Monitor: http://localhost:3003"
 echo "• PostgreSQL: localhost:5432"
 echo "• Redis: localhost:6379"
 echo ""

@@ -27,6 +27,27 @@ interface TokenInfo {
   holders: number;
   isHoneypot: boolean;
   rugScore: number;
+  // Token metadata fields from MemeToken contract
+  description?: string;
+  image?: string;
+  image_url?: string; // Alternative field name used in some services
+  imageUrl?: string; // Alternative field name used in some services
+  twitter?: string;
+  telegram?: string;
+  website?: string;
+  // Trading control fields
+  maxWallet?: string;
+  maxTransaction?: string;
+  tradingEnabled?: boolean;
+  // Additional fields
+  status?: string;
+  graduationPercentage?: number;
+  bondingCurve?: {
+    progress: number;
+    raisedAmount: number;
+    targetAmount: number;
+  };
+  raised?: number;
 }
 
 interface PriceData {
@@ -66,6 +87,11 @@ const ROUTER_ABI = [
   'function factory() view returns (address)',
 ];
 
+// MemeToken ABI for metadata
+const MEME_TOKEN_ABI = [
+  'function getMetadata() external view returns (string, string, string, string, string, uint256, uint256, bool, address)'
+];
+
 export class PriceService {
   private provider: ethers.JsonRpcProvider;
   private priceCache: Map<string, { data: PriceData; timestamp: number }> = new Map();
@@ -84,14 +110,40 @@ export class PriceService {
   async getTokenInfo(tokenAddress: string): Promise<TokenInfo> {
     try {
       // Get basic token info
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+      const tokenContract = new ethers.Contract(tokenAddress, [...ERC20_ABI, ...MEME_TOKEN_ABI], this.provider);
       
+      // Get basic token data
       const [name, symbol, decimals, totalSupply] = await Promise.all([
         tokenContract.name().catch(() => 'Unknown'),
         tokenContract.symbol().catch(() => 'UNKNOWN'),
         tokenContract.decimals().catch(() => 18),
         tokenContract.totalSupply().catch(() => '0'),
       ]);
+
+      // Try to get metadata if this is a MemeToken
+      let description = '';
+      let image = '';
+      let twitter = '';
+      let telegram = '';
+      let website = '';
+      let maxWallet = '0';
+      let maxTransaction = '0';
+      let tradingEnabled = false;
+      
+      try {
+        const metadata = await tokenContract.getMetadata();
+        description = metadata[0] || '';
+        image = metadata[1] || '';
+        twitter = metadata[2] || '';
+        telegram = metadata[3] || '';
+        website = metadata[4] || '';
+        maxWallet = metadata[5]?.toString() || '0';
+        maxTransaction = metadata[6]?.toString() || '0';
+        tradingEnabled = metadata[7] || false;
+      } catch (error) {
+        // Not a MemeToken or getMetadata not available
+        this.logger.debug(`Token ${tokenAddress} doesn't have metadata function`);
+      }
 
       // Get price data
       const priceData = await this.getTokenPrice(tokenAddress);
@@ -119,6 +171,22 @@ export class PriceService {
         holders,
         isHoneypot,
         rugScore,
+        // Include metadata fields
+        description,
+        image,
+        image_url: image, // Set image_url to match image for compatibility
+        imageUrl: image,  // Set imageUrl to match image for compatibility
+        twitter,
+        telegram,
+        website,
+        // Include trading controls
+        maxWallet,
+        maxTransaction,
+        tradingEnabled,
+        // Calculate bonding curve progress if this is a new token
+        status: tradingEnabled ? 'LAUNCHED' : 'CREATED',
+        graduationPercentage: priceData.liquidity > 0 ? 
+          (priceData.liquidity / 3000) * 100 : 0, // Example calculation
       };
     } catch (error) {
       this.logger.error(`Failed to get token info for ${tokenAddress}:`, error);
@@ -441,5 +509,4 @@ export class PriceService {
     // Return unsubscribe function
     return () => clearInterval(interval);
   }
-
 }

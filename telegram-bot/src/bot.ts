@@ -6,6 +6,7 @@ import { WalletCommands } from './wallet/WalletCommands';
 import { TradingCommands } from './trading/TradingCommands';
 import { AlertCommands } from './alerts/AlertCommands';
 import { SubscriptionCommands } from './subscription/SubscriptionCommands';
+import { StakingCommands } from './staking/StakingCommands';
 import { SessionManager } from './auth/SessionManager';
 import { DatabaseService } from './services/DatabaseService';
 import { SocketIOClient } from './services/SocketIOClient';
@@ -39,6 +40,7 @@ class CoreMemeBot {
   private tradingCommands: TradingCommands;
   private alertCommands: AlertCommands;
   private subscriptionCommands: SubscriptionCommands;
+  private stakingCommands: StakingCommands;
   private sessionManager: SessionManager;
   private db: DatabaseService;
   private wsClient: SocketIOClient;
@@ -67,6 +69,7 @@ class CoreMemeBot {
     this.tradingCommands = new TradingCommands(this.db);
     this.alertCommands = new AlertCommands(this.db);
     this.subscriptionCommands = new SubscriptionCommands(this.db);
+    this.stakingCommands = new StakingCommands(this.db, this.walletCommands.walletService);
     
     // Initialize webhook handler for Web App authentication
     const webhookPort = parseInt(process.env.WEBHOOK_PORT || '3002');
@@ -166,17 +169,26 @@ class CoreMemeBot {
       await this.alertCommands.trackToken(ctx);
     });
 
-    // Subscription commands
-    this.bot.command('subscribe', authMiddleware, async (ctx) => {
-      await this.subscriptionCommands.showSubscriptionPlans(ctx);
-    });
-
+    // Subscription commands (now using staking)
     this.bot.command('subscription', authMiddleware, async (ctx) => {
-      await this.subscriptionCommands.showCurrentSubscription(ctx);
+      await this.stakingCommands.handleSubscription(ctx);
     });
 
-    this.bot.command('upgrade', authMiddleware, async (ctx) => {
-      await this.subscriptionCommands.upgradeSubscription(ctx);
+    // Staking commands
+    this.bot.command('stake', authMiddleware, async (ctx) => {
+      await this.stakingCommands.handleStake(ctx);
+    });
+
+    this.bot.command('unstake', authMiddleware, async (ctx) => {
+      await this.stakingCommands.handleUnstake(ctx);
+    });
+
+    this.bot.command('claim', authMiddleware, async (ctx) => {
+      await this.stakingCommands.handleClaim(ctx);
+    });
+
+    this.bot.command('tiers', authMiddleware, async (ctx) => {
+      await this.stakingCommands.handleTiers(ctx);
     });
 
     // Admin commands

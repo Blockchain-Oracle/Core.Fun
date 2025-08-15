@@ -1,15 +1,15 @@
+# Build stage
 FROM node:20-alpine AS builder
 
-# Set working directory
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 WORKDIR /app
 
-# Copy package files for dependency resolution
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy workspace files
+COPY package.json pnpm-workspace.yaml ./
 COPY shared/package.json ./shared/
 COPY backend/websocket/package.json ./backend/websocket/
-
-# Install pnpm
-RUN npm install -g pnpm
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -18,45 +18,30 @@ RUN pnpm install --frozen-lockfile
 COPY shared ./shared
 COPY backend/websocket ./backend/websocket
 
-# Build shared package first
-RUN cd shared && pnpm run build
+# Build shared and websocket
+WORKDIR /app/shared
+RUN pnpm build
 
-# Build websocket service  
-RUN cd backend/websocket && pnpm run build
+WORKDIR /app/backend/websocket
+RUN pnpm build
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:20-alpine
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Copy built application
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/backend/websocket ./backend/websocket
 
-# Copy package files
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY shared/package.json ./shared/
-COPY backend/websocket/package.json ./backend/websocket/
-
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy built artifacts
-COPY --from=builder /app/shared/dist ./shared/dist
-COPY --from=builder /app/shared/package.json ./shared/
-COPY --from=builder /app/backend/websocket/dist ./backend/websocket/dist
+WORKDIR /app/backend/websocket
 
 # Create logs directory
-RUN mkdir -p /app/backend/websocket/logs
+RUN mkdir -p logs
 
-# Set environment
-ENV NODE_ENV=production
-
-# Expose port
 EXPOSE 8081
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q --spider http://localhost:8081/health || exit 1
-
-# Start the websocket server
-CMD ["node", "backend/websocket/dist/server.js"]
+CMD ["node", "dist/server.js"]

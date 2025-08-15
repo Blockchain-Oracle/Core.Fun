@@ -66,9 +66,41 @@ const SendTransactionSchema = z.object({
 /**
  * Get wallet information
  */
-router.get('/wallet/info', authenticate, async (req: Request, res: Response) => {
+router.get('/wallet/info', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user.userId;
+    // Try to get authenticated user, but don't require it
+    let userId: string | null = null;
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || 'default_jwt_secret'
+        ) as any;
+        
+        const sessionStr = await redis.get(`session:${decoded.userId}`);
+        if (sessionStr) {
+          userId = decoded.userId;
+        }
+      } catch (error) {
+        // Token invalid, continue without auth
+      }
+    }
+    
+    // If not authenticated, return basic info
+    if (!userId) {
+      return res.json({
+        success: true,
+        authenticated: false,
+        network,
+        rpcUrl,
+        message: 'Not authenticated. Connect wallet to see balance.'
+      });
+    }
+    
+    // If authenticated, continue with full wallet info
     
     // Get user data
     const userDataStr = await redis.get(`user:id:${userId}`);

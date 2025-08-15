@@ -42,9 +42,8 @@ CORE_RPC_URL=https://rpc.coredao.org
 NETWORK=mainnet
 
 # Services
-API_GATEWAY_URL=http://localhost:3001
+API_URL=http://localhost:3001
 WEBSOCKET_URL=ws://localhost:8081
-TRADING_ENGINE_URL=http://localhost:3003
 
 # Security
 JWT_SECRET=your_jwt_secret_min_32_chars

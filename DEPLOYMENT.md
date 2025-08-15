@@ -88,7 +88,7 @@ The database will be automatically initialized with required tables on first run
 docker-compose build
 
 # Start core services
-docker-compose up -d redis postgres core-api
+docker-compose up -d redis postgres api
 
 # Start websocket service
 docker-compose up -d websocket
@@ -97,7 +97,7 @@ docker-compose up -d websocket
 docker-compose up -d telegram-bot
 
 # Start monitoring services
-docker-compose up -d blockchain-monitor trading-engine
+docker-compose up -d blockchain-monitor
 ```
 
 ### 4.2 Verify Services
@@ -106,7 +106,7 @@ docker-compose up -d blockchain-monitor trading-engine
 docker-compose ps
 
 # Check logs
-docker-compose logs -f core-api
+docker-compose logs -f api
 docker-compose logs -f websocket
 ```
 
@@ -232,7 +232,7 @@ Redis is configured with AOF (Append Only File) for persistence.
 
 ### 8.1 Horizontal Scaling
 - Use Docker Swarm or Kubernetes for orchestration
-- Scale core-api and websocket services horizontally
+- Scale api and websocket services horizontally
 - Use Redis Cluster for distributed caching
 - Consider PostgreSQL replication for read scaling
 
@@ -260,7 +260,7 @@ git pull origin main
 
 # Rebuild and restart services
 docker-compose build
-docker-compose up -d --no-deps core-api websocket
+docker-compose up -d --no-deps api websocket
 ```
 
 ### 9.2 Database Migrations

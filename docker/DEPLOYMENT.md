@@ -47,11 +47,10 @@ pnpm dev:all
 Services:
   ├── postgres (5432)       # Database
   ├── redis (6379)          # Cache & Pub/Sub
-  ├── core-api (3001)       # API Gateway
+  ├── api (3001)            # API Service
   ├── websocket (8081)      # Real-time updates
-  ├── trading-engine (3003) # Trade execution
-  ├── blockchain-monitor    # Event monitoring
-  └── telegram-bot         # Telegram interface
+  ├── blockchain-monitor (3003) # Event monitoring
+  └── telegram-bot (3004)   # Telegram interface
 ```
 
 ## Configuration

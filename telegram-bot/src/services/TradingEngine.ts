@@ -6,9 +6,9 @@ import { createLogger } from '@core-meme/shared';
 
 // Contract addresses from deployment
 const DEPLOYMENT = {
-  memeFactory: '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1',
-  staking: '0x95F1588ef2087f9E40082724F5Da7BAD946969CB',
-  platformToken: '0x96611b71A4DE5B8616164B650720ADe10948193F',
+  memeFactory: '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
+  staking: '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa',
+  platformToken: '0x26EfC13dF039c6B4E084CEf627a47c348197b655',
   treasury: '0xe397a72377F43645Cd4DA02d709c378df6e9eE5a'
 };
 
@@ -160,7 +160,7 @@ export class TradingEngine {
       const gasPrice = feeData.gasPrice! * BigInt(Math.floor(gasPriceMultiplier * 100)) / 100n;
 
       // Execute buy
-      const tx = await factoryWithSigner.buyToken(
+      const tx = await (factoryWithSigner as any).buyToken(
         tokenAddress,
         minTokensOut,
         {
@@ -205,12 +205,11 @@ export class TradingEngine {
         userId: user.id,
         tokenAddress,
         type: 'buy',
-        amountCore: ethers.formatEther(actualCost),
-        amountToken: ethers.formatEther(actualTokens),
+        amountCore: Number(ethers.formatEther(actualCost)),
+        amountToken: Number(ethers.formatEther(actualTokens)),
         price,
         txHash: tx.hash,
-        status: 'completed',
-        timestamp: Date.now()
+        status: 'completed'
       });
 
       return {
@@ -300,7 +299,7 @@ export class TradingEngine {
       const gasPrice = feeData.gasPrice! * BigInt(Math.floor(gasPriceMultiplier * 100)) / 100n;
 
       // Execute sell
-      const tx = await factoryWithSigner.sellToken(
+      const tx = await (factoryWithSigner as any).sellToken(
         tokenAddress,
         amountToSell,
         minEthOut,
@@ -345,12 +344,11 @@ export class TradingEngine {
         userId: user.id,
         tokenAddress,
         type: 'sell',
-        amountCore: ethers.formatEther(actualProceeds),
-        amountToken: ethers.formatEther(actualTokens),
+        amountCore: Number(ethers.formatEther(actualProceeds)),
+        amountToken: Number(ethers.formatEther(actualTokens)),
         price,
         txHash: tx.hash,
-        status: 'completed',
-        timestamp: Date.now()
+        status: 'completed'
       });
 
       return {

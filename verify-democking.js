@@ -117,7 +117,7 @@ try {
 // Check contract addresses
 console.log('\n📝 Verifying Smart Contract Configuration...');
 const contracts = {
-  'MemeFactory (testnet)': '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1',
+  'MemeFactory (testnet)': '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
   'IcecreamSwap Router': '0xBb5e1777A331ED93E07cF043363e48d320eb96c4',
   'IcecreamSwap Factory': '0x9E6d21E759A7A288b80eef94E4737D313D31c13f'
 };

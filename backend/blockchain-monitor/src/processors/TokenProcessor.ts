@@ -236,30 +236,92 @@ export class TokenProcessor {
 
   private async getTokenInfo(address: string): Promise<Partial<Token> | null> {
     try {
-      // ERC20 ABI for getting token info
+      // COMPLETE ABI - ALL FIELDS MUST BE FETCHED
       const abi = [
         'function name() view returns (string)',
         'function symbol() view returns (string)',
         'function decimals() view returns (uint8)',
         'function totalSupply() view returns (uint256)',
         'function owner() view returns (address)',
+        // CRITICAL METADATA FIELDS - MUST NOT BE SKIPPED
+        'function image() view returns (string)',
+        'function description() view returns (string)',
+        'function twitter() view returns (string)',
+        'function telegram() view returns (string)',
+        'function website() view returns (string)',
+        // TRADING CONTROL FIELDS
+        'function maxWallet() view returns (uint256)',
+        'function maxTransaction() view returns (uint256)',
+        'function tradingEnabled() view returns (bool)',
+        'function launchBlock() view returns (uint256)',
       ];
       
       const contract = new ethers.Contract(address, abi, this.provider);
       
-      const [name, symbol, decimals, totalSupply] = await Promise.all([
+      // FETCH ALL FIELDS - NO EXCEPTIONS
+      const [
+        name, 
+        symbol, 
+        decimals, 
+        totalSupply, 
+        owner,
+        image, 
+        description, 
+        twitter, 
+        telegram, 
+        website,
+        maxWallet,
+        maxTransaction,
+        tradingEnabled,
+        launchBlock
+      ] = await Promise.all([
         contract.name().catch(() => ''),
         contract.symbol().catch(() => ''),
         contract.decimals().catch(() => 18),
         contract.totalSupply().catch(() => '0'),
+        contract.owner().catch(() => ethers.ZeroAddress),
+        // METADATA - CRITICAL
+        contract.image().catch(() => ''),
+        contract.description().catch(() => ''),
+        contract.twitter().catch(() => ''),
+        contract.telegram().catch(() => ''),
+        contract.website().catch(() => ''),
+        // TRADING CONTROLS
+        contract.maxWallet().catch(() => '0'),
+        contract.maxTransaction().catch(() => '0'),
+        contract.tradingEnabled().catch(() => false),
+        contract.launchBlock().catch(() => 0),
       ]);
       
-      return {
+      const tokenInfo: any = {
         name,
         symbol,
         decimals,
         totalSupply: totalSupply.toString(),
+        ownershipRenounced: owner === ethers.ZeroAddress,
       };
+      
+      // ADD ALL METADATA FIELDS - MANDATORY
+      tokenInfo.image_url = image || '';
+      tokenInfo.description = description || '';
+      tokenInfo.twitter = twitter || '';
+      tokenInfo.telegram = telegram || '';
+      tokenInfo.website = website || '';
+      
+      // ADD TRADING CONTROL FIELDS
+      tokenInfo.max_wallet = maxWallet ? maxWallet.toString() : '0';
+      tokenInfo.max_transaction = maxTransaction ? maxTransaction.toString() : '0';
+      tokenInfo.trading_enabled = Boolean(tradingEnabled);
+      tokenInfo.launch_block = Number(launchBlock);
+      
+      this.logger.info(`Fetched COMPLETE token info for ${address}:`, {
+        hasImage: !!image,
+        hasDescription: !!description,
+        hasSocials: !!(twitter || telegram || website),
+        tradingEnabled: tokenInfo.trading_enabled
+      });
+      
+      return tokenInfo;
     } catch (error) {
       this.logger.error(`Error getting token info for ${address}:`, error);
       return null;

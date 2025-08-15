@@ -47,9 +47,9 @@ Each phase must be 100% complete before moving to the next. This includes:
 - [x] Configure Core Testnet RPC (Fixed Chain ID: 1114)
 - [x] Get testnet CORE from faucet (1.0 CORE acquired)
 - [x] Deploy all contracts to testnet
-  - [x] Platform Token: `0x96611b71A4DE5B8616164B650720ADe10948193F`
-  - [x] Staking Contract: `0x95F1588ef2087f9E40082724F5Da7BAD946969CB`
-  - [x] MemeFactory: `0x04242CfFdEC8F96A46857d4A50458F57eC662cE1`
+  - [x] Platform Token: `0x26EfC13dF039c6B4E084CEf627a47c348197b655`
+  - [x] Staking Contract: `0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa`
+  - [x] MemeFactory: `0x0eeF9597a9B231b398c29717e2ee89eF6962b784`
   - [x] Treasury: `0xe397a72377F43645Cd4DA02d709c378df6e9eE5a`
 - [x] Update environment files with addresses
 - [x] Update shared constants with deployment info

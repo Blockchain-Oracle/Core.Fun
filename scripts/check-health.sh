@@ -105,8 +105,8 @@ check_service "API Gateway" "http://localhost:3001/health"
 # Check WebSocket Server
 check_port "WebSocket Server" 8081
 
-# Check Trading Engine
-check_service "Trading Engine" "http://localhost:3003/health"
+# Check Blockchain Monitor
+check_service "Blockchain Monitor" "http://localhost:3003/health"
 
 # Check Telegram Bot webhook endpoint
 check_port "Telegram Bot Webhook" 3002
@@ -114,10 +114,9 @@ check_port "Telegram Bot Webhook" 3002
 # Check if services are in Docker
 echo -e "\n${YELLOW}Docker Services (if using Docker):${NC}"
 echo "-----------------------------------"
-check_container "Core API Service" "core-api-service" || true
+check_container "API Gateway" "core-api" || true
 check_container "Blockchain Monitor" "core-blockchain-monitor" || true
 check_container "WebSocket Server" "core-websocket" || true
-check_container "Trading Engine" "core-trading-engine" || true
 check_container "Telegram Bot" "core-telegram-bot" || true
 
 # Test database connection

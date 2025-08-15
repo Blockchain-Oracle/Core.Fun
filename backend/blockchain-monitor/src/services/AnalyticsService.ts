@@ -264,7 +264,7 @@ export class AnalyticsService {
           let corePrice = 0.50; // Default fallback price
           try {
             const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
-            const data = await response.json();
+            const data: any = await response.json();
             corePrice = data.coredaoorg?.usd || 0.50;
           } catch (error) {
             this.logger.warn('Failed to fetch CORE price from CoinGecko:', error);

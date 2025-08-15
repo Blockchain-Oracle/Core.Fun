@@ -15,8 +15,8 @@ export class TradeProcessor {
   private redis: RedisClientType;
   
   // Thresholds for alerts (adjusted for meme tokens)
-  private readonly LARGE_TRADE_CORE = 1; // 1+ CORE
-  private readonly WHALE_TRADE_CORE = 5; // 5+ CORE  
+  private readonly LARGE_TRADE_USD = 100; // $100+ USD
+  private readonly WHALE_TRADE_USD = 500; // $500+ USD
   private readonly PRICE_IMPACT_THRESHOLD = 10; // 10% for bonding curve
 
   constructor(

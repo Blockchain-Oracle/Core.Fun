@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { createLogger } from '../logger';
 import MemeFactoryABI from '../abis/MemeFactory.json';
 import MemeTokenABI from '../abis/MemeToken.json';
+import EventEmitter from 'events';
 
 interface TokenInfo {
   creator: string;
@@ -16,7 +17,7 @@ interface TokenInfo {
   creatorBalance: bigint;
 }
 
-interface TokenData {
+export interface TokenData {
   address: string;
   creator: string;
   name: string;
@@ -32,26 +33,79 @@ interface TokenData {
   volume24h?: string;
   holders?: number;
   transactions24h?: number;
+  status?: 'CREATED' | 'LAUNCHED' | 'GRADUATED';
+  // Token metadata fields from MemeToken contract
+  description?: string;
+  image?: string;
+  image_url?: string; // For backward compatibility
+  imageUrl?: string; // For backward compatibility
+  twitter?: string;
+  telegram?: string;
+  website?: string;
+  // Trading control fields
+  maxWallet?: string;
+  maxTransaction?: string;
+  tradingEnabled?: boolean;
+  // Additional fields
+  graduationPercentage?: number;
+  bondingCurve?: {
+    progress: number;
+    raisedAmount: number;
+    targetAmount: number;
+  };
+  raised?: number;
+  stakingBenefits?: any;
 }
 
-export class MemeFactoryService {
+export class MemeFactoryService extends EventEmitter {
   private provider: ethers.JsonRpcProvider;
+  private wsProvider?: ethers.WebSocketProvider;
   private factory: ethers.Contract;
   private logger = createLogger({ service: 'memefactory-service' });
   private factoryAddress: string;
   private tokenCache: Map<string, { data: TokenData; timestamp: number }> = new Map();
   private CACHE_TTL = 30000; // 30 seconds cache
+  private lastProcessedBlock: number = 0;
+  private pollingInterval?: NodeJS.Timeout;
 
   constructor() {
+    super();
+    
+    // Initialize HTTP provider
     const rpcUrl = process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    this.factoryAddress = process.env.MEME_FACTORY_ADDRESS || '0x04242CfFdEC8F96A46857d4A50458F57eC662cE1';
+    this.factoryAddress = process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784';
     
-    this.factory = new ethers.Contract(
-      this.factoryAddress,
-      MemeFactoryABI,
-      this.provider
-    );
+    // Try to initialize WebSocket provider if available
+    const wsUrl = process.env.CORE_WS_URL;
+    if (wsUrl) {
+      try {
+        this.wsProvider = new ethers.WebSocketProvider(wsUrl);
+        this.logger.info('WebSocket provider initialized for MemeFactory');
+        
+        // Initialize factory contract with WebSocket provider
+        this.factory = new ethers.Contract(
+          this.factoryAddress,
+          MemeFactoryABI,
+          this.wsProvider
+        );
+      } catch (error) {
+        this.logger.warn('WebSocket provider initialization failed, falling back to HTTP:', error);
+        // Fall back to HTTP provider
+        this.factory = new ethers.Contract(
+          this.factoryAddress,
+          MemeFactoryABI,
+          this.provider
+        );
+      }
+    } else {
+      // Use HTTP provider if no WebSocket URL provided
+      this.factory = new ethers.Contract(
+        this.factoryAddress,
+        MemeFactoryABI,
+        this.provider
+      );
+    }
 
     this.logger.info(`MemeFactory service initialized with contract at ${this.factoryAddress}`);
   }
@@ -61,11 +115,11 @@ export class MemeFactoryService {
    */
   async getAllTokens(): Promise<TokenData[]> {
     try {
-      const tokenCount = await this.factory.tokenCount();
+      // Use getAllTokens function from the contract directly
+      const tokenAddresses = await this.factory.getAllTokens();
       const tokens: TokenData[] = [];
 
-      for (let i = 0; i < tokenCount; i++) {
-        const tokenAddress = await this.factory.allTokens(i);
+      for (const tokenAddress of tokenAddresses) {
         const tokenData = await this.getTokenInfo(tokenAddress);
         if (tokenData) {
           tokens.push(tokenData);
@@ -106,11 +160,46 @@ export class MemeFactoryService {
         this.provider
       );
 
-      const [name, symbol, decimals] = await Promise.all([
+      // Get basic token info and metadata
+      const [name, symbol, decimals, metadata] = await Promise.all([
         tokenContract.name(),
         tokenContract.symbol(),
-        tokenContract.decimals()
+        tokenContract.decimals(),
+        tokenContract.getMetadata().catch(() => null)
       ]);
+      
+      // Extract metadata if available
+      let description = '';
+      let image = '';
+      let twitter = '';
+      let telegram = '';
+      let website = '';
+      let maxWallet = '0';
+      let maxTransaction = '0';
+      let tradingEnabled = false;
+      
+      if (metadata) {
+        description = metadata._description || '';
+        image = metadata._image || '';
+        twitter = metadata._twitter || '';
+        telegram = metadata._telegram || '';
+        website = metadata._website || '';
+        maxWallet = metadata._maxWallet?.toString() || '0';
+        maxTransaction = metadata._maxTransaction?.toString() || '0';
+        tradingEnabled = metadata._tradingEnabled || false;
+      }
+
+      // Determine token status based on bonding curve progress
+      let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = 'CREATED';
+      if (info.isLaunched) {
+        status = 'GRADUATED';
+      } else {
+        // Check if close to graduation (>= 250 CORE in reserves)
+        const reserveInCore = parseFloat(ethers.formatEther(info.reserveBalance));
+        if (reserveInCore >= 250) {
+          status = 'GRADUATED';
+        }
+      }
 
       const tokenData: TokenData = {
         address: tokenAddress,
@@ -125,6 +214,22 @@ export class MemeFactoryService {
         isLaunched: info.isLaunched,
         createdAt: Number(info.createdAt),
         launchedAt: Number(info.launchedAt),
+        status,
+        // Include metadata fields
+        description,
+        image,
+        image_url: image, // Set image_url to match image for compatibility
+        imageUrl: image,  // Set imageUrl to match image for compatibility
+        twitter,
+        telegram,
+        website,
+        // Include trading controls
+        maxWallet,
+        maxTransaction,
+        tradingEnabled,
+        // Calculate bonding curve progress
+        graduationPercentage: status === 'CREATED' ? 
+          (parseFloat(ethers.formatEther(info.reserveBalance)) / 3) * 100 : 100,
       };
 
       // Cache the result
@@ -142,10 +247,10 @@ export class MemeFactoryService {
    */
   async calculateCurrentPrice(tokenAddress: string): Promise<bigint> {
     try {
-      // Get the current price for buying 1 token
-      const oneEther = ethers.parseEther('1');
-      const price = await this.factory.calculateBuyReturn(tokenAddress, oneEther);
-      return price;
+      // Get the current price for buying 1 token (how much ETH needed for 1 token)
+      const oneToken = ethers.parseEther('1');
+      const ethNeeded = await this.factory.calculateETHOut(tokenAddress, oneToken);
+      return ethNeeded;
     } catch (error) {
       this.logger.error(`Error calculating price for ${tokenAddress}:`, error);
       return BigInt(0);
@@ -157,7 +262,7 @@ export class MemeFactoryService {
    */
   private calculateMarketCap(totalSupply: bigint, price: bigint): bigint {
     // MarketCap = totalSupply * price / 1e18 (to adjust for decimals)
-    return (totalSupply * price) / ethers.parseEther('1');
+    return (totalSupply * price) / BigInt(10 ** 18);
   }
 
   /**
@@ -246,7 +351,7 @@ export class MemeFactoryService {
   async calculateBuyReturn(tokenAddress: string, coreAmount: string): Promise<string> {
     try {
       const amountInWei = ethers.parseEther(coreAmount);
-      const tokenAmount = await this.factory.calculateBuyReturn(tokenAddress, amountInWei);
+      const tokenAmount = await this.factory.calculateTokensOut(tokenAddress, amountInWei);
       return ethers.formatEther(tokenAmount);
     } catch (error) {
       this.logger.error('Error calculating buy return:', error);
@@ -260,7 +365,7 @@ export class MemeFactoryService {
   async calculateSellReturn(tokenAddress: string, tokenAmount: string): Promise<string> {
     try {
       const amountInWei = ethers.parseEther(tokenAmount);
-      const coreAmount = await this.factory.calculateSellReturn(tokenAddress, amountInWei);
+      const coreAmount = await this.factory.calculateETHOut(tokenAddress, amountInWei);
       return ethers.formatEther(coreAmount);
     } catch (error) {
       this.logger.error('Error calculating sell return:', error);
@@ -348,35 +453,147 @@ export class MemeFactoryService {
     onTokenSold?: (event: any) => void;
     onTokenLaunched?: (event: any) => void;
   }) {
+    // Store callbacks
     if (callbacks.onTokenCreated) {
-      this.factory.on('TokenCreated', callbacks.onTokenCreated);
+      this.on('TokenCreated', callbacks.onTokenCreated);
     }
 
     if (callbacks.onTokenPurchased) {
-      this.factory.on('TokenPurchased', callbacks.onTokenPurchased);
+      this.on('TokenPurchased', callbacks.onTokenPurchased);
     }
 
     if (callbacks.onTokenSold) {
-      this.factory.on('TokenSold', callbacks.onTokenSold);
+      this.on('TokenSold', callbacks.onTokenSold);
     }
 
     if (callbacks.onTokenLaunched) {
-      this.factory.on('TokenLaunched', callbacks.onTokenLaunched);
+      this.on('TokenLaunched', callbacks.onTokenLaunched);
+    }
+    
+    // Use WebSocket provider if available
+    if (this.wsProvider) {
+      this.logger.info('Setting up WebSocket event listeners for MemeFactory');
+      
+      // Set up WebSocket event listeners
+      this.factory.on('TokenCreated', (event: any) => {
+        this.emit('TokenCreated', event);
+      });
+      
+      this.factory.on('TokenPurchased', (event: any) => {
+        this.emit('TokenPurchased', event);
+      });
+      
+      this.factory.on('TokenSold', (event: any) => {
+        this.emit('TokenSold', event);
+      });
+      
+      this.factory.on('TokenLaunched', (event: any) => {
+        this.emit('TokenLaunched', event);
+      });
+      
+      // Handle WebSocket errors and reconnection
+      const websocket = this.wsProvider.websocket as any;
+      if (websocket) {
+        websocket.on('error', (error: any) => {
+          this.logger.error('WebSocket error:', error);
+          this.setupPollingFallback();
+        });
+        
+        websocket.on('close', () => {
+          this.logger.warn('WebSocket connection closed, falling back to polling');
+          this.setupPollingFallback();
+        });
+      }
+    } else {
+      // Fall back to polling if WebSocket is not available
+      this.logger.info('WebSocket not available, using polling for events');
+      this.setupPollingFallback();
     }
 
     this.logger.info('Event listeners set up for MemeFactory');
+  }
+  
+  /**
+   * Set up polling fallback for events
+   */
+  private async setupPollingFallback() {
+    // Clear any existing polling interval
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+    }
+    
+    // Get current block number if we don't have one
+    if (this.lastProcessedBlock === 0) {
+      try {
+        this.lastProcessedBlock = await this.provider.getBlockNumber();
+        this.logger.info(`Starting event polling from block ${this.lastProcessedBlock}`);
+      } catch (error) {
+        this.logger.error('Failed to get current block number:', error);
+        this.lastProcessedBlock = 0;
+      }
+    }
+    
+    // Set up polling interval (every 15 seconds)
+    this.pollingInterval = setInterval(async () => {
+      try {
+        const currentBlock = await this.provider.getBlockNumber();
+        
+        if (currentBlock > this.lastProcessedBlock) {
+          this.logger.debug(`Polling for events from block ${this.lastProcessedBlock + 1} to ${currentBlock}`);
+          
+          // Query for each event type
+          await this.queryAndEmitEvents('TokenCreated', this.lastProcessedBlock + 1, currentBlock);
+          await this.queryAndEmitEvents('TokenPurchased', this.lastProcessedBlock + 1, currentBlock);
+          await this.queryAndEmitEvents('TokenSold', this.lastProcessedBlock + 1, currentBlock);
+          await this.queryAndEmitEvents('TokenLaunched', this.lastProcessedBlock + 1, currentBlock);
+          
+          // Update last processed block
+          this.lastProcessedBlock = currentBlock;
+        }
+      } catch (error) {
+        this.logger.error('Error polling for events:', error);
+      }
+    }, 15000); // Poll every 15 seconds
+  }
+  
+  /**
+   * Query and emit events of a specific type
+   */
+  private async queryAndEmitEvents(eventName: string, fromBlock: number, toBlock: number) {
+    try {
+      const filter = this.factory.filters[eventName]();
+      const events = await this.factory.queryFilter(filter, fromBlock, toBlock);
+      
+      for (const event of events) {
+        this.logger.info(`Emitting ${eventName} event from block ${event.blockNumber}`);
+        this.emit(eventName, event);
+      }
+    } catch (error) {
+      this.logger.error(`Error querying ${eventName} events:`, error);
+    }
   }
 
   /**
    * Clean up event listeners
    */
   removeAllListeners() {
-    this.factory.removeAllListeners();
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = undefined;
+    }
+    
+    if (this.wsProvider) {
+      try {
+        this.factory.removeAllListeners();
+      } catch (error) {
+        this.logger.warn('Error removing factory listeners:', error);
+      }
+    }
+    
+    // Call parent removeAllListeners
+    return super.removeAllListeners();
   }
 }
 
 // Export singleton instance
 export const memeFactoryService = new MemeFactoryService();
-
-// Export types
-export type { TokenData, TokenInfo };

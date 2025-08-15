@@ -588,11 +588,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support & Contact
 
-- **Documentation**: [https://docs.core.fun](https://docs.core.fun)
-- **Discord**: [https://discord.gg/corefun](https://discord.gg/corefun)
-- **Telegram**: [@corefun_support](https://t.me/corefun_support)
-- **Twitter**: [@corefun_official](https://twitter.com/corefun_official)
-- **Email**: support@core.fun
+- **Developer Contact**: [@BlockchainOracle_dev](https://t.me/BlockchainOracle_dev)
 
 ## 🗺️ Roadmap
 
@@ -618,7 +614,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⚠️ Risk Disclaimer**: Trading meme tokens involves significant risk. This platform is experimental software. Users should conduct their own research and never invest more than they can afford to lose. Past performance does not guarantee future results.
 
-**🔒 Security Notice**: If you discover a security vulnerability, please email security@core.fun with details. Do not create public issues for security vulnerabilities.
+**🔒 Security Notice**: If you discover a security vulnerability, please contact [@BlockchainOracle_dev](https://t.me/BlockchainOracle_dev) with details. Do not create public issues for security vulnerabilities.
 
 ---
 

@@ -43,18 +43,13 @@ Each phase must be 100% complete before moving to the next. This includes:
 - [x] Save local addresses
 - [x] Test with local accounts
 
-### 1.4 Testnet Deployment ✅
-- [x] Configure Core Testnet RPC (Fixed Chain ID: 1114)
-- [x] Get testnet CORE from faucet (1.0 CORE acquired)
-- [x] Deploy all contracts to testnet
-  - [x] Platform Token: `0x26EfC13dF039c6B4E084CEf627a47c348197b655`
-  - [x] Staking Contract: `0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa`
-  - [x] MemeFactory: `0x0eeF9597a9B231b398c29717e2ee89eF6962b784`
-  - [x] Treasury: `0xe397a72377F43645Cd4DA02d709c378df6e9eE5a`
-- [x] Update environment files with addresses
-- [x] Update shared constants with deployment info
-- [x] Test all functions on testnet
-- [x] Document testnet addresses in README.md and contracts/README.md
+### 1.4 Testnet Deployment 🔄
+- [x] Configure Core Testnet RPC
+- [ ] Get testnet CORE from faucet
+- [ ] Deploy all contracts to testnet
+- [ ] Verify contracts on Core Scan
+- [ ] Test all functions on testnet
+- [ ] Document testnet addresses
 
 ### 1.5 Contract Documentation 🔄
 - [x] Generate NatSpec documentation
@@ -190,7 +185,7 @@ API Endpoints:
 - [ ] Deploy with high availability
 - [ ] Setup monitoring
 - [ ] Configure alerts
-- [ ] Performance optimization
+- [ ] Performance optimizationfo
 
 **Deliverables**:
 - Production trading engine
@@ -374,11 +369,10 @@ API Endpoints:
 - Chain IDs: 1116 (mainnet), 1115 (testnet)
 - Explorer API endpoints available
 
-### DEX Addresses Used (IcecreamSwap V2):
-- IcecreamSwap V2 Router: 0xBb5e1777A331ED93E07cF043363e48d320eb96c4
-- IcecreamSwap V2 Factory: 0x9E6d21E759A7A288b80eef94E4737D313D31c13f
-- Init Code Hash: 0x58c1b429d0ffdb4407396ae8118c58fed54898473076d0394163ea2198f7c4a3
-- WCORE: 0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f (mainnet)
+### DEX Addresses Found:
+- ShadowSwap Router: 0xd15CeE1DEaFBad6C0B3Fd7489677Cc102B141464
+- LFGSwap Router: 0x52Ada6E8d553E5EaCA196c9D975DB7a76627dc61
+- IcecreamSwap Router: 0xC5B19E6a5e4806A107B01f246232e65E195D9ae8
 
 ---
 

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ethers } from 'ethers';
 import { createLogger, ContractDataService } from '@core-meme/shared';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { WalletService } from '../../services/WalletService';
 import { authenticate } from '../middleware/auth';
 

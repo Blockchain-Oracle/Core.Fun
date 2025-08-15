@@ -3,9 +3,9 @@ import { ethers } from 'ethers';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import type { BotContext } from '../bot';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { SessionManager } from './SessionManager';
-import { WalletService } from '../wallet/WalletService';
+import { WalletService } from '@core-meme/shared';
 import { createLogger } from '@core-meme/shared';
 
 export class AuthHandler {

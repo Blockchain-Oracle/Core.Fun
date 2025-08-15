@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { ethers } from 'ethers';
 import { authenticate } from '../middleware/auth';
 import { WalletManager } from '../services/WalletManager';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { createLogger } from '@core-meme/shared';
 
 const router: Router = Router();

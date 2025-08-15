@@ -1,28 +1,30 @@
 import { Markup } from 'telegraf';
 import { BotContext } from '../bot';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService, WalletService } from '@core-meme/shared';
 import { TradingExecutor } from './TradingExecutor';
 import { PositionManager } from './PositionManager';
 import { PnLCalculator } from './PnLCalculator';
-import { CopyTradeManager } from './CopyTradeManager';
+import { MemeFactoryCopyTrader } from './MemeFactoryCopyTrader';
 import { ImageGenerator } from '../services/ImageGenerator';
 import { createLogger } from '@core-meme/shared';
 
 export class TradingCommands {
   private logger = createLogger({ service: 'trading-commands' });
   private db: DatabaseService;
+  private walletService: WalletService;
   private tradingExecutor: TradingExecutor;
   private positionManager: PositionManager;
   private pnlCalculator: PnLCalculator;
-  private copyTradeManager: CopyTradeManager;
+  private copyTrader: MemeFactoryCopyTrader;
   private imageGenerator: ImageGenerator;
 
   constructor(db: DatabaseService) {
     this.db = db;
+    this.walletService = new WalletService(db);
     this.tradingExecutor = new TradingExecutor(db);
     this.positionManager = new PositionManager(db);
     this.pnlCalculator = new PnLCalculator(db);
-    this.copyTradeManager = new CopyTradeManager(db, this.tradingExecutor);
+    this.copyTrader = new MemeFactoryCopyTrader(db);
     this.imageGenerator = new ImageGenerator();
   }
 

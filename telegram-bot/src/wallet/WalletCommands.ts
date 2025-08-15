@@ -1,7 +1,6 @@
 import { Markup } from 'telegraf';
 import { BotContext } from '../bot';
-import { DatabaseService } from '../services/DatabaseService';
-import { WalletService } from './WalletService';
+import { DatabaseService, WalletService } from '@core-meme/shared';
 import { createLogger } from '@core-meme/shared';
 
 export class WalletCommands {

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { ethers } from 'ethers'
 import { createLogger } from '@core-meme/shared'
 import { ContractDataService } from '@core-meme/shared'
-import { DatabaseService } from '../services/DatabaseService'
+import { DatabaseService } from '@core-meme/shared'
 
 const router = Router()
 const logger = createLogger({ service: 'subscription-api' })

@@ -1,19 +1,8 @@
 import { ethers } from 'ethers';
 import crypto from 'crypto';
-import CryptoJS from 'crypto-js';
-import { DatabaseService } from '../services/DatabaseService';
-import { createLogger } from '@core-meme/shared';
-
-interface Wallet {
-  id: string;
-  userId: string;
-  name: string;
-  address: string;
-  type: 'primary' | 'trading' | 'withdraw';
-  encryptedPrivateKey?: string;
-  network: string;
-  createdAt: Date;
-}
+import { DatabaseService } from './DatabaseService';
+import { createLogger } from '../logger';
+import { Wallet } from '../database/types';
 
 interface Balance {
   core: string;
@@ -105,6 +94,49 @@ export class WalletService {
       this.logger.error('Failed to decrypt private key:', error);
       this.logger.error(`TelegramId used: ${telegramId}, EncryptedKey format: ${encryptedKey?.substring(0, 20)}...`);
       throw new Error(`Failed to decrypt wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create a new wallet for a user
+   */
+  async createUserWallet(telegramId: number, username?: string): Promise<{ user: any; wallet: Wallet }> {
+    try {
+      // Generate new wallet
+      const wallet = ethers.Wallet.createRandom();
+      
+      // Encrypt private key
+      const encryptedPrivateKey = await this.encryptPrivateKey(
+        wallet.privateKey,
+        telegramId
+      );
+      
+      // Create user with wallet
+      const user = await this.db.createUser({
+        telegramId,
+        username: username || `user_${telegramId}`,
+        walletAddress: wallet.address,
+        encryptedPrivateKey,
+      });
+      
+      this.logger.info(`Created wallet ${wallet.address} for user ${user.id}`);
+      
+      return {
+        user,
+        wallet: {
+          id: user.id,
+          userId: user.id,
+          name: 'Primary Wallet',
+          address: wallet.address,
+          type: 'primary',
+          encryptedPrivateKey,
+          network: 'CORE',
+          createdAt: user.createdAt,
+        },
+      };
+    } catch (error) {
+      this.logger.error('Failed to create user wallet:', error);
+      throw error;
     }
   }
 
@@ -257,6 +289,20 @@ export class WalletService {
   }
 
   /**
+   * Get wallet by address
+   */
+  async getWalletByAddress(address: string): Promise<Wallet | null> {
+    return this.db.getWalletByAddress(address);
+  }
+
+  /**
+   * Get user wallet (for compatibility)
+   */
+  async getUserWallet(userId: string): Promise<Wallet | null> {
+    return this.db.getUserWallet(userId);
+  }
+
+  /**
    * Get wallet balance
    */
   async getBalance(address: string): Promise<Balance> {
@@ -381,6 +427,19 @@ export class WalletService {
   }
 
   /**
+   * Get wallet with decrypted private key
+   */
+  async getWalletWithPrivateKey(userId: string, walletAddress: string): Promise<ethers.Wallet> {
+    const user = await this.db.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const privateKey = await this.exportPrivateKey(userId, walletAddress, user.telegramId);
+    return new ethers.Wallet(privateKey, this.provider);
+  }
+
+  /**
    * Transfer funds
    */
   async transfer(
@@ -434,6 +493,30 @@ export class WalletService {
     }
   }
 
+  /**
+   * Sign transaction
+   */
+  async signTransaction(userId: string, walletAddress: string, transaction: any): Promise<string> {
+    const user = await this.db.getUserById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const privateKey = await this.exportPrivateKey(userId, walletAddress, user.telegramId);
+    const wallet = new ethers.Wallet(privateKey, this.provider);
+    
+    const signedTx = await wallet.signTransaction(transaction);
+    return signedTx;
+  }
+
+  /**
+   * Send signed transaction
+   */
+  async sendSignedTransaction(signedTx: string): Promise<string> {
+    const tx = await this.provider.broadcastTransaction(signedTx);
+    const receipt = await tx.wait();
+    return receipt?.hash || tx.hash;
+  }
 
   /**
    * Get CORE price in USD from CoinGecko API
@@ -455,5 +538,12 @@ export class WalletService {
   async validateWalletOwnership(userId: string, walletAddress: string): Promise<boolean> {
     const wallet = await this.db.getWalletByAddress(walletAddress);
     return wallet?.userId === userId;
+  }
+
+  /**
+   * Get provider
+   */
+  getProvider(): ethers.JsonRpcProvider {
+    return this.provider;
   }
 }

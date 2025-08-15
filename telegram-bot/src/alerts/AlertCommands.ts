@@ -1,5 +1,5 @@
 import { BotContext } from '../bot';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { Markup } from 'telegraf';
 import { createLogger } from '@core-meme/shared';
 

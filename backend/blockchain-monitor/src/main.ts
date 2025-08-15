@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import dotenv from 'dotenv';
 import { createLogger } from '@core-meme/shared';
-import { DatabaseService } from './services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { AnalyticsService } from './services/AnalyticsService';
 import { AlertService } from './services/AlertService';
 import { TokenProcessor } from './processors/TokenProcessor';

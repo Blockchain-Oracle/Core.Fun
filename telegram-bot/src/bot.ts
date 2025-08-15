@@ -8,7 +8,7 @@ import { AlertCommands } from './alerts/AlertCommands';
 import { SubscriptionCommands } from './subscription/SubscriptionCommands';
 import { StakingCommands } from './staking/StakingCommands';
 import { SessionManager } from './auth/SessionManager';
-import { DatabaseService } from './services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { SocketIOClient } from './services/SocketIOClient';
 import { WebhookHandler } from './services/WebhookHandler';
 import { createLogger } from '@core-meme/shared';

@@ -3,7 +3,7 @@ import cors from 'cors';
 import { ethers } from 'ethers';
 import { createLogger } from '@core-meme/shared';
 import { AuthHandler } from '../auth/AuthHandler';
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { SessionManager } from '../auth/SessionManager';
 
 export class WebhookHandler {

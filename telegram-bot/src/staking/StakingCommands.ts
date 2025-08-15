@@ -1,6 +1,6 @@
 import { BotContext } from '../bot';
-import { DatabaseService } from '../services/DatabaseService';
-import { WalletService } from '../wallet/WalletService';
+import { DatabaseService } from '@core-meme/shared';
+import { WalletService } from '@core-meme/shared';
 import { Markup } from 'telegraf';
 import { createLogger } from '@core-meme/shared';
 import { ContractDataService } from '@core-meme/shared';

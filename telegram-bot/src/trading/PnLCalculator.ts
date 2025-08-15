@@ -1,4 +1,4 @@
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { PriceService } from '../services/PriceService';
 import { createLogger } from '@core-meme/shared';
 

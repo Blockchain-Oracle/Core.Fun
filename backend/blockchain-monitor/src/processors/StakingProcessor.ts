@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { EventEmitter } from 'events';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import Redis from 'ioredis';
 import winston from 'winston';
 

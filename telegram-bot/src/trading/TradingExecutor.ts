@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { PriceService } from '../services/PriceService';
 import { createLogger } from '@core-meme/shared';
 
@@ -83,7 +83,7 @@ export class TradingExecutor {
     this.db = db;
     this.priceService = new PriceService();
     this.provider = new ethers.JsonRpcProvider(
-      process.env.CORE_RPC_URL || 'https://rpc.coredao.org'
+      process.env.CORE_RPC_HTTP_URL || process.env.CORE_RPC_URL || 'https://rpc.coredao.org'
     );
     this.tradingEngineUrl = process.env.API_URL || 'http://localhost:3001';
   }
@@ -151,9 +151,9 @@ export class TradingExecutor {
         txHash: result.txHash,
         transactionHash: result.txHash,
         amountIn: params.amount,
-        amountOut: result.amountOut.toString(),
-        price: result.price.toString(),
-        gasUsed: result.gasUsed,
+        amountOut: result.amountOut?.toString?.() || String(result.amountOut || '0'),
+        price: String(result.price),
+        gasUsed: result.gasUsed ? String(result.gasUsed) : undefined,
       };
 
     } catch (error: any) {

@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import winston from 'winston';
 import { Token, TokenAnalytics, Alert } from '../types';
-import { DatabaseService } from '../services/DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { AlertService } from '../services/AlertService';
 import { createClient, RedisClientType } from 'redis';

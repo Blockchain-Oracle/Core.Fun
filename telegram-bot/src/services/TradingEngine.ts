@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { WalletManager } from './WalletManager';
 import { PriceService } from './PriceService';
 import { createLogger } from '@core-meme/shared';

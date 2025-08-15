@@ -64,8 +64,8 @@ const config: HardhatUserConfig = {
         network: "coreTestnet",
         chainId: 1114,
         urls: {
-          apiURL: "https://openapi.test.btcs.network/api",
-          browserURL: "https://scan.test.btcs.network",
+          apiURL: "https://openapi.test2.btcs.network/api",
+          browserURL: "https://scan.test2.btcs.network",
         },
       },
     ],

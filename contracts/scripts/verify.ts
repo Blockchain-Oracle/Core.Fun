@@ -84,8 +84,8 @@ async function main() {
   console.log("🎉 VERIFICATION COMPLETE!");
   console.log("=".repeat(50));
   
-  const scanUrl = network.chainId === 1115n 
-    ? "https://scan.test.btcs.network"
+  const scanUrl = network.chainId === 1114n 
+    ? "https://scan.test2.btcs.network"
     : "https://scan.coredao.org";
     
   console.log("\n🔗 View contracts on Core Scan:");

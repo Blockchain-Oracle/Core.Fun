@@ -59,43 +59,160 @@ Core.fun is a comprehensive DeFi ecosystem built on Core blockchain, revolutioni
 
 ## 🏗️ System Architecture
 
+```mermaid
+graph TB
+    subgraph "🖥️ Frontend Layer"
+        A[Next.js WebApp<br/>:3000]
+        B[Mobile App<br/>React Native]
+        C[Telegram Bot<br/>Telegraf.js]
+        D[Admin Dashboard]
+    end
+    
+    subgraph "🌐 API Gateway"
+        E[Load Balancer]
+        F[Rate Limiter]
+        G[Authentication]
+    end
+    
+    subgraph "⚙️ Backend Services"
+        H[API Service<br/>:3001]
+        I[WebSocket Server<br/>:8081]
+        J[Blockchain Monitor<br/>:3003]
+    end
+    
+    subgraph "💾 Data Layer"
+        K[(PostgreSQL<br/>Database)]
+        L[(Redis<br/>Cache)]
+        M[Message Queue]
+        N[Logger]
+    end
+    
+    subgraph "⛓️ Blockchain Layer"
+        O[MemeFactory<br/>Smart Contract]
+        P[MemeToken<br/>ERC-20]
+        Q[Staking<br/>Contract]
+        R[DEX Integration<br/>Uniswap V2/V3]
+    end
+    
+    A --> E
+    B --> E
+    C --> E
+    D --> E
+    
+    E --> H
+    E --> I
+    E --> J
+    
+    H --> K
+    H --> L
+    I --> K
+    I --> L
+    J --> K
+    J --> L
+    
+    H --> M
+    I --> M
+    J --> M
+    
+    H --> N
+    I --> N
+    J --> N
+    
+    J --> O
+    J --> P
+    J --> Q
+    J --> R
+    
+    style A fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style B fill:#4ecdc4,stroke:#333,stroke-width:2px
+    style C fill:#45b7d1,stroke:#333,stroke-width:2px
+    style D fill:#96ceb4,stroke:#333,stroke-width:2px
+    style O fill:#feca57,stroke:#333,stroke-width:2px
+    style P fill:#ff9ff3,stroke:#333,stroke-width:2px
+    style Q fill:#54a0ff,stroke:#333,stroke-width:2px
+    style R fill:#5f27cd,stroke:#333,stroke-width:2px
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Frontend Applications                       │
-├─────────────────────────────────────────────────────────────────┤
-│  Next.js WebApp │  Mobile App    │  Telegram Bot   │   Admin   │
-│  (Port 3000)    │  (React Native)│  (Telegraf.js)  │  Dashboard│
-└────────┬────────┴────────┬────────┴────────┬───────┴─────┬─────┘
-         │                 │                  │             │
-         └─────────────────┼──────────────────┼─────────────┘
-                           │                  │
-┌──────────────────────────▼──────────────────▼──────────────────┐
-│                         API Gateway                             │
-├─────────────────────────────────────────────────────────────────┤
-│          Load Balancer  │  Rate Limiter  │  Auth              │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                     Backend Services                            │
-├──────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
-│  │   API        │  │  Blockchain  │  │  WebSocket   │         │
-│  │   Service    │  │   Monitor    │  │   Server     │         │
-│  │  (Port 3001) │  │  (Port 3003) │  │  (Port 8081) │         │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘         │
-│         │                 │                  │                  │
-│  ┌──────▼─────────────────▼──────────────────▼───────┐         │
-│  │            Shared Services Layer                   │         │
-│  ├────────────────────────────────────────────────────┤         │
-│  │  Database  │  Redis  │  Message Queue  │  Logger  │         │
-│  └────────────────────────────────────────────────────┘         │
-└──────────────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    Blockchain Layer                             │
-├──────────────────────────────────────────────────────────────────┤
-│   MemeFactory  │  MemeToken  │  Staking  │  DEX Integration    │
-└──────────────────────────────────────────────────────────────────┘
+
+## 🎨 Frontend Architecture
+
+```mermaid
+graph LR
+    subgraph "📱 Core.Fun Frontend"
+        subgraph "🏠 Pages"
+            A[Landing Page]
+            B[Dashboard]
+            C[Token Explorer]
+            D[Portfolio]
+            E[Staking]
+            F[Wallet]
+            G[Analytics]
+        end
+        
+        subgraph "🧩 Components"
+            H[Layout Components]
+            I[Trading Panel]
+            J[Staking Dashboard]
+            K[Token Cards]
+            L[Charts & Graphs]
+            M[Auth Components]
+        end
+        
+        subgraph "🔄 State Management"
+            N[Auth Store]
+            O[Trading Store]
+            P[Staking Store]
+            Q[Portfolio Store]
+            R[WebSocket Store]
+        end
+        
+        subgraph "🔗 Services"
+            S[API Client]
+            T[WebSocket Client]
+            U[Contract Service]
+            V[Wallet Service]
+        end
+    end
+    
+    subgraph "🌐 External"
+        W[Backend API]
+        X[WebSocket Server]
+        Y[Core Blockchain]
+        Z[MetaMask/Wallets]
+    end
+    
+    A --> H
+    B --> I
+    C --> K
+    D --> L
+    E --> J
+    F --> M
+    G --> L
+    
+    I --> O
+    J --> P
+    K --> Q
+    L --> R
+    M --> N
+    
+    N --> S
+    O --> S
+    P --> S
+    Q --> S
+    R --> T
+    
+    S --> W
+    T --> X
+    U --> Y
+    V --> Z
+    
+    style A fill:#ff9f43,stroke:#333,stroke-width:2px
+    style B fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style C fill:#4834d4,stroke:#333,stroke-width:2px
+    style D fill:#00d2d3,stroke:#333,stroke-width:2px
+    style E fill:#ff9ff3,stroke:#333,stroke-width:2px
+    style F fill:#54a0ff,stroke:#333,stroke-width:2px
+    style G fill:#5f27cd,stroke:#333,stroke-width:2px
+    style Y fill:#feca57,stroke:#333,stroke-width:3px
 ```
 
 ## 📦 Project Structure
@@ -331,6 +448,90 @@ MORALIS_API_KEY=your_api_key
 ENABLE_COPY_TRADING=true
 ENABLE_STAKING=true
 ENABLE_ANALYTICS=true
+```
+
+## 🤝 Copy Trading Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant T as Telegram Bot
+    participant S as Staking Contract
+    participant C as Copy Trading System
+    participant B as Blockchain
+    participant P as Pro Trader
+    
+    Note over U,P: Copy Trading Setup
+    U->>T: /copytrade 0x...ProTrader
+    T->>S: Check Staking Tier
+    S-->>T: Bronze/Silver/Gold/Platinum
+    
+    alt Sufficient Staking Tier
+        T->>C: Validate Copy Slots Available
+        C-->>T: Slots: 1/3/5/10 based on tier
+        
+        alt Slots Available
+            T->>C: Start Copy Trading
+            C->>B: Monitor ProTrader Wallet
+            T-->>U: ✅ Copy Trading Started
+            
+            Note over B,P: Trading Activity
+            P->>B: Execute Trade (Buy/Sell)
+            B->>C: Transaction Event
+            C->>C: Analyze Trade
+            C->>B: Execute Copy Trade for User
+            B-->>U: Trade Executed
+            T->>U: 📊 Copy Trade Notification
+        else No Slots Available
+            T-->>U: ❌ No Copy Slots Available
+        end
+    else Insufficient Staking
+        T-->>U: ❌ Upgrade Staking Tier Required
+    end
+```
+
+## 🥩 Staking Tiers & Benefits
+
+```mermaid
+graph TD
+    subgraph "💎 Staking Tiers"
+        A[🥉 Bronze Tier<br/>1,000+ CMP<br/>5% APY]
+        B[🥈 Silver Tier<br/>10,000+ CMP<br/>8% APY]
+        C[🏆 Gold Tier<br/>50,000+ CMP<br/>12% APY]
+        D[💎 Platinum Tier<br/>100,000+ CMP<br/>15% APY]
+    end
+    
+    subgraph "🤝 Copy Trading Slots"
+        E[1 Copy Slot]
+        F[3 Copy Slots]
+        G[5 Copy Slots]
+        H[10 Copy Slots]
+    end
+    
+    subgraph "💸 Fee Discounts"
+        I[5% Discount]
+        J[10% Discount]
+        K[15% Discount]
+        L[20% Discount]
+    end
+    
+    A --> E
+    A --> I
+    B --> F
+    B --> J
+    C --> G
+    C --> K
+    D --> H
+    D --> L
+    
+    style A fill:#cd7f32,stroke:#333,stroke-width:2px
+    style B fill:#c0c0c0,stroke:#333,stroke-width:2px
+    style C fill:#ffd700,stroke:#333,stroke-width:2px
+    style D fill:#e5e4e2,stroke:#333,stroke-width:3px
+    style E fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style F fill:#4ecdc4,stroke:#333,stroke-width:2px
+    style G fill:#45b7d1,stroke:#333,stroke-width:2px
+    style H fill:#96ceb4,stroke:#333,stroke-width:2px
 ```
 
 ## 📊 API Documentation

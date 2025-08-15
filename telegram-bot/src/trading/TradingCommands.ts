@@ -826,6 +826,10 @@ export class TradingCommands {
         { text: '📊 Portfolio', callback_data: 'portfolio_view' },
       ],
       [
+        { text: '🤝 Copy Trading', callback_data: 'copy_trading_menu' },
+        { text: '🏆 Top Traders', callback_data: 'view_top_traders' },
+      ],
+      [
         { text: '📜 Trade History', callback_data: 'trade_history' },
         { text: '📈 P&L Chart', callback_data: 'view_pnl_chart' },
       ],

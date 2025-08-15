@@ -3,58 +3,119 @@ import { DatabaseService } from '@core-meme/shared';
 import { WalletService } from '@core-meme/shared';
 import { Markup } from 'telegraf';
 import { createLogger } from '@core-meme/shared';
-import { ContractDataService } from '@core-meme/shared';
-import { ethers } from 'ethers';
+import { ApiService } from '../services/ApiService';
 
-// TIER CONFIGURATION - MUST MATCH STAKING CONTRACT
-const STAKING_TIERS = [
-  {
-    name: 'Bronze',
-    minStake: 1000,
-    feeDiscount: 1,
-    color: '🥉'
-  },
-  {
-    name: 'Silver',
-    minStake: 5000,
-    feeDiscount: 2,
-    color: '🥈'
-  },
-  {
-    name: 'Gold',
-    minStake: 10000,
-    feeDiscount: 3,
-    color: '🥇'
-  },
-  {
-    name: 'Platinum',
-    minStake: 50000,
-    feeDiscount: 5,
-    color: '💎'
-  }
-];
+// TIER CONFIGURATION - FETCHED FROM BACKEND
+interface StakingTier {
+  name: string;
+  minStake: number;
+  feeDiscount: number;
+  color: string;
+  maxAlerts: number;
+  copyTradeSlots: number;
+  apiAccess: boolean;
+  apy: number;
+}
 
 export class StakingCommands {
   private logger = createLogger({ service: 'staking-commands' });
   private db: DatabaseService;
   private walletService: WalletService;
-  private contractService: ContractDataService;
+  private apiService: ApiService;
+  private tiersCache: StakingTier[] | null = null;
+  private tiersCacheTime: number = 0;
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   
-  // Contract addresses from deployment
-  private readonly STAKING_ADDRESS = process.env.STAKING_ADDRESS || '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa';
-  private readonly PLATFORM_TOKEN_ADDRESS = process.env.PLATFORM_TOKEN_ADDRESS || '0x26EfC13dF039c6B4E084CEf627a47c348197b655';
+  // Token symbol from env
   private readonly TOKEN_SYMBOL = process.env.STAKING_TOKEN_SYMBOL || 'CMP';
   
   constructor(db: DatabaseService, walletService: WalletService) {
     this.db = db;
     this.walletService = walletService;
-    
-    // Initialize contract service
-    this.contractService = new ContractDataService(
-      process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network',
-      process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
-      this.STAKING_ADDRESS
-    );
+    this.apiService = new ApiService();
+  }
+
+  /**
+   * Get tiers from backend with caching
+   */
+  private async getTiers(): Promise<StakingTier[]> {
+    const now = Date.now();
+    if (this.tiersCache && (now - this.tiersCacheTime) < this.CACHE_DURATION) {
+      return this.tiersCache;
+    }
+
+    try {
+      const response = await this.apiService.getStakingTiers();
+      if (response.success && response.data) {
+        // Add color emojis to tiers
+        const tiersWithColors = response.data.map((tier: any) => ({
+          ...tier,
+          color: this.getTierEmoji(tier.name),
+          minStake: parseFloat(tier.requiredAmount),
+        }));
+        
+        this.tiersCache = tiersWithColors;
+        this.tiersCacheTime = now;
+        return tiersWithColors;
+      }
+    } catch (error) {
+      this.logger.error('Failed to fetch tiers from backend:', error);
+    }
+
+    // Fallback to default tiers if backend fails
+    return [
+      {
+        name: 'Bronze',
+        minStake: 1000,
+        feeDiscount: 1,
+        color: '🥉',
+        maxAlerts: 10,
+        copyTradeSlots: 1,
+        apiAccess: false,
+        apy: 10,
+      },
+      {
+        name: 'Silver',
+        minStake: 5000,
+        feeDiscount: 2,
+        color: '🥈',
+        maxAlerts: 25,
+        copyTradeSlots: 3,
+        apiAccess: false,
+        apy: 15,
+      },
+      {
+        name: 'Gold',
+        minStake: 10000,
+        feeDiscount: 3,
+        color: '🥇',
+        maxAlerts: 50,
+        copyTradeSlots: 5,
+        apiAccess: true,
+        apy: 20,
+      },
+      {
+        name: 'Platinum',
+        minStake: 50000,
+        feeDiscount: 5,
+        color: '💎',
+        maxAlerts: -1, // Unlimited
+        copyTradeSlots: 10,
+        apiAccess: true,
+        apy: 25,
+      },
+    ];
+  }
+
+  private getTierEmoji(tierName: string): string {
+    const emojis: Record<string, string> = {
+      'Free': '🆓',
+      'Bronze': '🥉',
+      'Silver': '🥈',
+      'Gold': '🥇',
+      'Platinum': '💎',
+    };
+    return emojis[tierName] || '🎖️';
   }
 
   /**
@@ -80,8 +141,15 @@ export class StakingCommands {
         return;
       }
 
-      // Get COMPLETE staking data from contract
-      const stakingData = await this.contractService.getUserStakingBenefits(userWallet.address);
+      // Get staking status from backend API
+      const response = await this.apiService.getStakingStatus(userWallet.address);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to fetch staking status');
+      }
+
+      const stakingData = response.data;
+      const tiers = await this.getTiers();
       
       // Format comprehensive status message
       let message = `🏆 *Your Staking Status*\n`;
@@ -89,36 +157,54 @@ export class StakingCommands {
       
       // STAKING AMOUNT
       message += `💰 *Staked Amount:*\n`;
-      message += `${ethers.formatEther(stakingData.userStake || '0')} ${this.TOKEN_SYMBOL}\n\n`;
+      message += `${parseFloat(stakingData.stakedAmount).toLocaleString()} ${this.TOKEN_SYMBOL}\n\n`;
       
       // CURRENT TIER
-      const currentTier = this.getTierFromStake(Number(ethers.formatEther(stakingData.userStake || '0')));
+      const currentTier = tiers.find(t => t.name === stakingData.tier) || tiers[0];
       message += `🎖️ *Current Tier:*\n`;
       message += `${currentTier.color} ${currentTier.name}\n`;
-      message += `├ Fee Discount: ${currentTier.feeDiscount}%\n`;
-      message += `└ Status: ${stakingData.tier > 0 ? '✅ Active' : '❌ Inactive'}\n\n`;
+      message += `├ Fee Discount: ${stakingData.feeDiscount}%\n`;
+      message += `├ APY: ${stakingData.apy}%\n`;
+      message += `└ Status: ${parseFloat(stakingData.stakedAmount) > 0 ? '✅ Active' : '❌ Inactive'}\n\n`;
       
       // PENDING REWARDS
       message += `🎁 *Pending Rewards:*\n`;
-      message += `${ethers.formatEther(stakingData.pendingRewards || '0')} ${this.TOKEN_SYMBOL}\n\n`;
+      message += `${parseFloat(stakingData.rewards).toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+      
+      if (stakingData.lastClaimTime > 0) {
+        const lastClaim = new Date(stakingData.lastClaimTime * 1000);
+        message += `└ Last Claim: ${lastClaim.toLocaleDateString()}\n`;
+      }
+      message += '\n';
+      
+      // LOCK STATUS
+      if (stakingData.lockEndTime > Date.now() / 1000) {
+        const unlockDate = new Date(stakingData.lockEndTime * 1000);
+        message += `🔒 *Lock Status:*\n`;
+        message += `Locked until: ${unlockDate.toLocaleDateString()}\n`;
+        message += `${stakingData.canUnstake ? '✅ Can unstake' : '⏰ Wait for unlock'}\n\n`;
+      }
       
       // PROGRESS TO NEXT TIER
-      const nextTier = this.getNextTier(Number(ethers.formatEther(stakingData.userStake || '0')));
+      const nextTierIndex = tiers.findIndex(t => t.name === stakingData.tier) + 1;
+      const nextTier = nextTierIndex < tiers.length ? tiers[nextTierIndex] : null;
+      
       if (nextTier) {
-        const currentStake = Number(ethers.formatEther(stakingData.userStake || '0'));
+        const currentStake = parseFloat(stakingData.stakedAmount);
         const progress = (currentStake / nextTier.minStake) * 100;
         message += `📈 *Progress to ${nextTier.name}:*\n`;
         message += this.createProgressBar(progress);
-        message += `\n${currentStake.toFixed(2)} / ${nextTier.minStake} ${this.TOKEN_SYMBOL}`;
+        message += `\n${currentStake.toLocaleString()} / ${nextTier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}`;
         message += ` (${progress.toFixed(1)}%)\n\n`;
       }
       
       // TIER BENEFITS
       message += `🎯 *Your Benefits:*\n`;
-      message += `├ Trading Fee: ${stakingData.feeDiscount || 0}% OFF\n`;
-      message += `├ Copy Trade Slots: ${this.getCopyTradeSlots(stakingData.tier)}\n`;
-      message += `├ Alert Limits: ${this.getAlertLimit(stakingData.tier)}\n`;
-      message += `└ Priority Support: ${stakingData.tier >= 2 ? '✅' : '❌'}\n\n`;
+      message += `├ Trading Fee: ${stakingData.feeDiscount}% OFF\n`;
+      message += `├ Copy Trade Slots: ${stakingData.copyTradeSlots}\n`;
+      message += `├ Alert Limits: ${stakingData.maxAlerts === -1 ? 'Unlimited' : stakingData.maxAlerts}\n`;
+      message += `├ API Access: ${stakingData.hasApiAccess ? '✅' : '❌'}\n`;
+      message += `└ Priority Support: ${currentTier.name === 'Gold' || currentTier.name === 'Platinum' ? '✅' : '❌'}\n\n`;
       
       message += `💡 *Tip:* Stake more ${this.TOKEN_SYMBOL} to unlock higher tiers!`;
 
@@ -153,20 +239,41 @@ export class StakingCommands {
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        '❌ Failed to load staking status'
+        '❌ Failed to load staking status. Please try again later.'
       );
     }
   }
 
   /**
-   * Handle /stake command - Interactive staking with approval
+   * Handle /stake command
    */
   async handleStake(ctx: BotContext): Promise<void> {
+    if (!ctx.session?.userId) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
     const args = text.split(' ').slice(1);
 
     if (args.length === 0) {
-      return this.showStakePanel(ctx);
+      const tiers = await this.getTiers();
+      let message = `💎 *Stake ${this.TOKEN_SYMBOL} Tokens*\n\n`;
+      message += `Choose your staking amount to unlock tier benefits:\n\n`;
+      
+      for (const tier of tiers) {
+        message += `${tier.color} *${tier.name} Tier*\n`;
+        message += `├ Min Stake: ${tier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+        message += `├ Fee Discount: ${tier.feeDiscount}%\n`;
+        message += `├ APY: ${tier.apy}%\n`;
+        message += `└ Copy Trades: ${tier.copyTradeSlots} slots\n\n`;
+      }
+      
+      message += `📝 *Usage:* /stake [amount]\n`;
+      message += `Example: /stake 5000`;
+      
+      await ctx.reply(message, { parse_mode: 'Markdown' });
+      return;
     }
 
     const amount = parseFloat(args[0]);
@@ -175,74 +282,7 @@ export class StakingCommands {
       return;
     }
 
-    await this.executeStake(ctx, amount);
-  }
-
-  /**
-   * Show staking panel with amount options
-   */
-  private async showStakePanel(ctx: BotContext) {
-    if (!ctx.session?.userId) {
-      await ctx.reply('Please /start the bot first');
-      return;
-    }
-
-    // Get user's token balance
-    const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
-    if (!userWallet) {
-      await ctx.reply('❌ No wallet found. Please use /wallet to create one.');
-      return;
-    }
-
-    // Get token balance
-    const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL);
-    const tokenContract = new ethers.Contract(
-      this.PLATFORM_TOKEN_ADDRESS,
-      ['function balanceOf(address) view returns (uint256)'],
-      provider
-    );
-    const balance = await tokenContract.balanceOf(userWallet.address);
-    const balanceFormatted = ethers.formatEther(balance);
-
-    let message = `💎 *Stake ${this.TOKEN_SYMBOL} Tokens*\n`;
-    message += `━━━━━━━━━━━━━━━━━━\n\n`;
-    message += `📊 *Your Balance:* ${balanceFormatted} ${this.TOKEN_SYMBOL}\n\n`;
-    message += `Select amount to stake or enter custom amount:\n`;
-
-    const keyboard = [
-      [
-        Markup.button.callback('1,000 CMP', 'stake_amount_1000'),
-        Markup.button.callback('5,000 CMP', 'stake_amount_5000'),
-      ],
-      [
-        Markup.button.callback('10,000 CMP', 'stake_amount_10000'),
-        Markup.button.callback('50,000 CMP', 'stake_amount_50000'),
-      ],
-      [
-        Markup.button.callback('💰 Custom Amount', 'stake_custom'),
-        Markup.button.callback('🔄 Max', `stake_amount_${balanceFormatted}`),
-      ],
-      [
-        Markup.button.callback('❌ Cancel', 'cancel'),
-      ]
-    ];
-
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: keyboard },
-    });
-  }
-
-  /**
-   * Execute stake transaction
-   */
-  private async executeStake(ctx: BotContext, amount: number) {
-    if (!ctx.session?.userId) {
-      await ctx.reply('Please /start the bot first');
-      return;
-    }
-
-    const loadingMsg = await ctx.reply('⏳ Processing stake transaction...');
+    const loadingMsg = await ctx.reply(`🔄 Staking ${amount} ${this.TOKEN_SYMBOL}...`);
 
     try {
       const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
@@ -250,167 +290,70 @@ export class StakingCommands {
         throw new Error('No wallet found');
       }
 
-      // Create provider and signer
-      const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL);
-      
-      // Get user's telegram ID for decryption
-      const user = await this.db.getUserById(ctx.session.userId);
-      if (!user || !user.telegramId) {
-        throw new Error('Could not find user telegram ID');
-      }
-      
-      // Decrypt the private key
-      const privateKey = await this.walletService.decryptPrivateKey(userWallet.encryptedPrivateKey || '', user.telegramId);
-      const wallet = new ethers.Wallet(privateKey, provider);
-      
-      // Token contract for approval
-      const tokenContract = new ethers.Contract(
-        this.PLATFORM_TOKEN_ADDRESS,
-        [
-          'function approve(address spender, uint256 amount) returns (bool)',
-          'function allowance(address owner, address spender) view returns (uint256)'
-        ],
-        wallet
-      );
-      
-      // Staking contract
-      const stakingContract = new ethers.Contract(
-        this.STAKING_ADDRESS,
-        ['function stake(uint256 amount) external'],
-        wallet
-      );
+      // Set auth token for the API service
+      const authToken = ctx.session.authToken || ''; // You'll need to implement auth token management
+      this.apiService.setAuthToken(authToken);
 
-      const amountWei = ethers.parseEther(amount.toString());
-
-      // Check allowance
-      const allowance = await tokenContract.allowance(userWallet.address, this.STAKING_ADDRESS);
+      // Execute stake through backend API
+      const response = await this.apiService.stake(amount.toString());
       
-      // Approve if needed
-      if (allowance < amountWei) {
-        await ctx.telegram.editMessageText(
-          ctx.chat!.id,
-          loadingMsg.message_id,
-          undefined,
-          '✅ Approving tokens for staking...'
-        );
-        
-        const approveTx = await tokenContract.approve(this.STAKING_ADDRESS, amountWei);
-        await approveTx.wait();
+      if (!response.success) {
+        throw new Error(response.error || 'Staking failed');
       }
 
-      // Execute stake
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        '⏳ Staking tokens...'
-      );
+      const tiers = await this.getTiers();
+      const newTier = tiers.find(t => amount >= t.minStake) || tiers[0];
       
-      const stakeTx = await stakingContract.stake(amountWei);
-      const receipt = await stakeTx.wait();
-
-      // Update database
-      await this.db.updateUserSubscription(ctx.session.userId, this.getTierFromStake(amount).name.toLowerCase());
-
-      // Success message
-      let successMsg = `✅ *Successfully Staked!*\n\n`;
-      successMsg += `Amount: ${amount} ${this.TOKEN_SYMBOL}\n`;
-      successMsg += `TX: \`${receipt.hash}\`\n\n`;
-      successMsg += `Your new tier benefits are now active!`;
+      let successMessage = `✅ *Staking Successful!*\n\n`;
+      successMessage += `Amount: ${amount.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+      successMessage += `Transaction: \`${response.data?.txHash}\`\n\n`;
+      successMessage += `🎖️ Your tier: ${newTier.color} ${newTier.name}\n`;
+      successMessage += `Benefits unlocked:\n`;
+      successMessage += `• ${newTier.feeDiscount}% trading fee discount\n`;
+      successMessage += `• ${newTier.copyTradeSlots} copy trade slots\n`;
+      successMessage += `• ${newTier.maxAlerts === -1 ? 'Unlimited' : newTier.maxAlerts} price alerts\n`;
+      successMessage += `• ${newTier.apy}% APY rewards`;
 
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        successMsg,
+        successMessage,
         { parse_mode: 'Markdown' }
       );
+
     } catch (error: any) {
-      this.logger.error('Stake transaction failed:', error);
+      this.logger.error('Stake failed:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        `❌ Stake failed: ${error.message}`
+        `❌ Staking failed: ${error.message || 'Unknown error'}`
       );
     }
   }
 
   /**
-   * Handle /unstake command - Unstake with confirmation
+   * Handle /unstake command
    */
   async handleUnstake(ctx: BotContext): Promise<void> {
+    if (!ctx.session?.userId) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
     const args = text.split(' ').slice(1);
 
     if (args.length === 0) {
-      return this.showUnstakePanel(ctx);
-    }
-
-    const amount = parseFloat(args[0]);
-    if (isNaN(amount) || amount <= 0) {
-      await ctx.reply('❌ Invalid amount. Please enter a positive number.');
+      await ctx.reply(
+        `📝 *Usage:* /unstake [amount]\n\nExample: /unstake 1000\n\nUse /unstake all to unstake everything`,
+        { parse_mode: 'Markdown' }
+      );
       return;
     }
 
-    await this.executeUnstake(ctx, amount);
-  }
-
-  /**
-   * Show unstake panel
-   */
-  private async showUnstakePanel(ctx: BotContext) {
-    if (!ctx.session?.userId) {
-      await ctx.reply('Please /start the bot first');
-      return;
-    }
-
-    const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
-    if (!userWallet) {
-      await ctx.reply('❌ No wallet found.');
-      return;
-    }
-
-    const stakingData = await this.contractService.getUserStakingBenefits(userWallet.address);
-    const stakedAmount = ethers.formatEther(stakingData.userStake || '0');
-
-    let message = `💸 *Unstake ${this.TOKEN_SYMBOL} Tokens*\n`;
-    message += `━━━━━━━━━━━━━━━━━━\n\n`;
-    message += `📊 *Currently Staked:* ${stakedAmount} ${this.TOKEN_SYMBOL}\n\n`;
-    message += `⚠️ *Warning:* Unstaking will reduce your tier benefits!\n\n`;
-    message += `Select amount to unstake:`;
-
-    const keyboard = [
-      [
-        Markup.button.callback('25%', `unstake_percent_25`),
-        Markup.button.callback('50%', `unstake_percent_50`),
-        Markup.button.callback('75%', `unstake_percent_75`),
-      ],
-      [
-        Markup.button.callback('100% (All)', `unstake_percent_100`),
-        Markup.button.callback('Custom', 'unstake_custom'),
-      ],
-      [
-        Markup.button.callback('❌ Cancel', 'cancel'),
-      ]
-    ];
-
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: keyboard },
-    });
-  }
-
-  /**
-   * Execute unstake transaction
-   */
-  private async executeUnstake(ctx: BotContext, amount: number) {
-    if (!ctx.session?.userId) {
-      await ctx.reply('Please /start the bot first');
-      return;
-    }
-
-    const loadingMsg = await ctx.reply('⏳ Processing unstake transaction...');
+    const loadingMsg = await ctx.reply('🔄 Processing unstake request...');
 
     try {
       const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
@@ -418,62 +361,70 @@ export class StakingCommands {
         throw new Error('No wallet found');
       }
 
-      const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL);
-      
-      // Get user's telegram ID for decryption
-      const user = await this.db.getUserById(ctx.session.userId);
-      if (!user || !user.telegramId) {
-        throw new Error('Could not find user telegram ID');
+      // Get current staking status
+      const statusResponse = await this.apiService.getStakingStatus(userWallet.address);
+      if (!statusResponse.success || !statusResponse.data) {
+        throw new Error('Failed to get staking status');
       }
+
+      const currentStake = parseFloat(statusResponse.data.stakedAmount);
+      let unstakeAmount: number;
+
+      if (args[0].toLowerCase() === 'all') {
+        unstakeAmount = currentStake;
+      } else {
+        unstakeAmount = parseFloat(args[0]);
+        if (isNaN(unstakeAmount) || unstakeAmount <= 0) {
+          throw new Error('Invalid amount');
+        }
+        if (unstakeAmount > currentStake) {
+          throw new Error(`You only have ${currentStake} ${this.TOKEN_SYMBOL} staked`);
+        }
+      }
+
+      // Check if user can unstake (lock period)
+      if (!statusResponse.data.canUnstake) {
+        const unlockDate = new Date(statusResponse.data.lockEndTime * 1000);
+        throw new Error(`Your tokens are locked until ${unlockDate.toLocaleDateString()}`);
+      }
+
+      // Set auth token
+      const authToken = ctx.session.authToken || '';
+      this.apiService.setAuthToken(authToken);
+
+      // Execute unstake through backend API
+      const response = await this.apiService.unstake(unstakeAmount.toString());
       
-      // Decrypt the private key
-      const privateKey = await this.walletService.decryptPrivateKey(userWallet.encryptedPrivateKey || '', user.telegramId);
-      const wallet = new ethers.Wallet(privateKey, provider);
-      
-      const stakingContract = new ethers.Contract(
-        this.STAKING_ADDRESS,
-        ['function unstake(uint256 amount) external'],
-        wallet
-      );
+      if (!response.success) {
+        throw new Error(response.error || 'Unstaking failed');
+      }
 
-      const amountWei = ethers.parseEther(amount.toString());
-      const unstakeTx = await stakingContract.unstake(amountWei);
-      const receipt = await unstakeTx.wait();
-
-      // Check new tier
-      const newStakingData = await this.contractService.getUserStakingBenefits(userWallet.address);
-      const newStake = Number(ethers.formatEther(newStakingData.userStake || '0'));
-      const newTier = this.getTierFromStake(newStake);
-
-      // Update database
-      await this.db.updateUserSubscription(ctx.session.userId, newTier.name.toLowerCase());
-
-      let successMsg = `✅ *Successfully Unstaked!*\n\n`;
-      successMsg += `Amount: ${amount} ${this.TOKEN_SYMBOL}\n`;
-      successMsg += `Remaining Stake: ${newStake} ${this.TOKEN_SYMBOL}\n`;
-      successMsg += `New Tier: ${newTier.color} ${newTier.name}\n`;
-      successMsg += `TX: \`${receipt.hash}\``;
+      let successMessage = `✅ *Unstaking Successful!*\n\n`;
+      successMessage += `Amount: ${unstakeAmount.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+      successMessage += `Transaction: \`${response.data?.txHash}\`\n\n`;
+      successMessage += `Remaining Staked: ${(currentStake - unstakeAmount).toLocaleString()} ${this.TOKEN_SYMBOL}`;
 
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        successMsg,
+        successMessage,
         { parse_mode: 'Markdown' }
       );
+
     } catch (error: any) {
-      this.logger.error('Unstake transaction failed:', error);
+      this.logger.error('Unstake failed:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        `❌ Unstake failed: ${error.message}`
+        `❌ Unstaking failed: ${error.message || 'Unknown error'}`
       );
     }
   }
 
   /**
-   * Handle /claim command - Claim ALL pending rewards
+   * Handle /claim command
    */
   async handleClaim(ctx: BotContext): Promise<void> {
     if (!ctx.session?.userId) {
@@ -481,7 +432,7 @@ export class StakingCommands {
       return;
     }
 
-    const loadingMsg = await ctx.reply('⏳ Claiming rewards...');
+    const loadingMsg = await ctx.reply('🔄 Claiming rewards...');
 
     try {
       const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
@@ -489,131 +440,104 @@ export class StakingCommands {
         throw new Error('No wallet found');
       }
 
-      // Check pending rewards first
-      const stakingData = await this.contractService.getUserStakingBenefits(userWallet.address);
-      const pendingRewards = ethers.formatEther(stakingData.pendingRewards || '0');
-      
-      if (parseFloat(pendingRewards) === 0) {
+      // Get current rewards
+      const statusResponse = await this.apiService.getStakingStatus(userWallet.address);
+      if (!statusResponse.success || !statusResponse.data) {
+        throw new Error('Failed to get staking status');
+      }
+
+      const pendingRewards = parseFloat(statusResponse.data.rewards);
+      if (pendingRewards <= 0) {
         await ctx.telegram.editMessageText(
           ctx.chat!.id,
           loadingMsg.message_id,
           undefined,
-          '❌ No rewards to claim'
+          '❌ No rewards to claim yet. Keep staking to earn rewards!'
         );
         return;
       }
 
-      const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL);
+      // Set auth token
+      const authToken = ctx.session.authToken || '';
+      this.apiService.setAuthToken(authToken);
+
+      // Execute claim through backend API
+      const response = await this.apiService.claimRewards();
       
-      // Get user's telegram ID for decryption
-      const user = await this.db.getUserById(ctx.session.userId);
-      if (!user || !user.telegramId) {
-        throw new Error('Could not find user telegram ID');
+      if (!response.success) {
+        throw new Error(response.error || 'Claim failed');
       }
-      
-      // Decrypt the private key
-      const privateKey = await this.walletService.decryptPrivateKey(userWallet.encryptedPrivateKey || '', user.telegramId);
-      const wallet = new ethers.Wallet(privateKey, provider);
-      
-      const stakingContract = new ethers.Contract(
-        this.STAKING_ADDRESS,
-        ['function claimRewards() external'],
-        wallet
-      );
 
-      const claimTx = await stakingContract.claimRewards();
-      const receipt = await claimTx.wait();
-
-      let successMsg = `✅ *Rewards Claimed!*\n\n`;
-      successMsg += `Amount: ${pendingRewards} ${this.TOKEN_SYMBOL}\n`;
-      successMsg += `TX: \`${receipt.hash}\`\n\n`;
-      successMsg += `Rewards have been sent to your wallet!`;
+      let successMessage = `✅ *Rewards Claimed!*\n\n`;
+      successMessage += `Amount: ${pendingRewards.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+      successMessage += `Transaction: \`${response.data?.txHash}\`\n\n`;
+      successMessage += `🎯 Keep staking to earn more rewards!`;
 
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        successMsg,
+        successMessage,
         { parse_mode: 'Markdown' }
       );
+
     } catch (error: any) {
-      this.logger.error('Claim rewards failed:', error);
+      this.logger.error('Claim failed:', error);
       await ctx.telegram.editMessageText(
         ctx.chat!.id,
         loadingMsg.message_id,
         undefined,
-        `❌ Claim failed: ${error.message}`
+        `❌ Claim failed: ${error.message || 'Unknown error'}`
       );
     }
   }
 
   /**
-   * Handle /tiers command - Show ALL tier benefits
+   * Handle /tiers command - Show all tiers
    */
   async handleTiers(ctx: BotContext): Promise<void> {
+    const tiers = await this.getTiers();
+    
     let message = `🏆 *Staking Tiers & Benefits*\n`;
     message += `━━━━━━━━━━━━━━━━━━\n\n`;
     
-    for (const tier of STAKING_TIERS) {
+    for (const tier of tiers) {
       message += `${tier.color} *${tier.name} Tier*\n`;
       message += `├ Min Stake: ${tier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
-      message += `├ Fee Discount: ${tier.feeDiscount}%\n`;
-      message += `├ Copy Trades: ${this.getCopyTradeSlots(STAKING_TIERS.indexOf(tier))}\n`;
-      message += `├ Alert Limit: ${this.getAlertLimit(STAKING_TIERS.indexOf(tier))}\n`;
-      message += `└ Priority Support: ${STAKING_TIERS.indexOf(tier) >= 2 ? '✅' : '❌'}\n\n`;
+      message += `├ Trading Fee: ${tier.feeDiscount}% OFF\n`;
+      message += `├ APY: ${tier.apy}%\n`;
+      message += `├ Copy Trades: ${tier.copyTradeSlots} slots\n`;
+      message += `├ Price Alerts: ${tier.maxAlerts === -1 ? 'Unlimited' : tier.maxAlerts}\n`;
+      message += `├ API Access: ${tier.apiAccess ? '✅' : '❌'}\n`;
+      message += `└ Priority Support: ${tier.name === 'Gold' || tier.name === 'Platinum' ? '✅' : '❌'}\n\n`;
     }
     
-    message += `💡 *Additional Benefits:*\n`;
-    message += `• Earn staking rewards\n`;
-    message += `• Revenue sharing from platform fees\n`;
-    message += `• Governance voting rights\n`;
-    message += `• Early access to new features\n\n`;
+    message += `💡 *How it works:*\n`;
+    message += `• Stake ${this.TOKEN_SYMBOL} tokens to unlock benefits\n`;
+    message += `• Higher tiers = Better rewards\n`;
+    message += `• Earn APY on your staked tokens\n`;
+    message += `• Unstake anytime (after lock period)\n\n`;
+    message += `Use /stake to start earning!`;
     
-    message += `Start staking with /stake command!`;
-
-    const keyboard = [
-      [Markup.button.callback('💎 Start Staking', 'start_staking')],
-      [Markup.button.callback('📊 My Status', 'my_subscription')]
-    ];
-
-    await ctx.reply(message, {
+    await ctx.reply(message, { 
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: keyboard },
+      reply_markup: {
+        inline_keyboard: [
+          [
+            Markup.button.callback('💎 Start Staking', 'stake_more'),
+            Markup.button.callback('📊 My Status', 'refresh_staking'),
+          ]
+        ]
+      }
     });
   }
 
-  // Helper functions
-  private getTierFromStake(stakeAmount: number): typeof STAKING_TIERS[0] {
-    for (let i = STAKING_TIERS.length - 1; i >= 0; i--) {
-      if (stakeAmount >= STAKING_TIERS[i].minStake) {
-        return STAKING_TIERS[i];
-      }
-    }
-    return { name: 'Free', minStake: 0, feeDiscount: 0, color: '🆓' };
-  }
-
-  private getNextTier(stakeAmount: number): typeof STAKING_TIERS[0] | null {
-    for (const tier of STAKING_TIERS) {
-      if (stakeAmount < tier.minStake) {
-        return tier;
-      }
-    }
-    return null;
-  }
-
-  private getCopyTradeSlots(tierIndex: number): number {
-    const slots = [0, 3, 5, 10, 20];
-    return slots[Math.min(tierIndex + 1, slots.length - 1)];
-  }
-
-  private getAlertLimit(tierIndex: number): number {
-    const limits = [5, 10, 25, 50, 100];
-    return limits[Math.min(tierIndex + 1, limits.length - 1)];
-  }
-
+  /**
+   * Helper function to create progress bar
+   */
   private createProgressBar(percentage: number): string {
     const filled = Math.floor(percentage / 10);
     const empty = 10 - filled;
-    return '▓'.repeat(filled) + '░'.repeat(empty);
+    return '▰'.repeat(Math.min(filled, 10)) + '▱'.repeat(Math.max(empty, 0));
   }
 }

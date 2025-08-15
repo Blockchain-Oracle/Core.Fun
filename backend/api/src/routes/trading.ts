@@ -155,12 +155,11 @@ router.post('/buy', authenticate, async (req: Request, res: Response) => {
       userId,
       tokenAddress,
       type: 'buy',
-      amountCore: ethers.formatEther(actualCost),
-      amountToken: ethers.formatEther(actualTokens),
+      amountCore: Number(ethers.formatEther(actualCost)),
+      amountToken: Number(ethers.formatEther(actualTokens)),
       price: Number(ethers.formatEther(actualCost)) / Number(ethers.formatEther(actualTokens)),
       txHash: receipt.hash,
-      status: 'completed',
-      timestamp: Date.now()
+      status: 'completed'
     });
 
     res.json({
@@ -303,12 +302,11 @@ router.post('/sell', authenticate, async (req: Request, res: Response) => {
       userId,
       tokenAddress,
       type: 'sell',
-      amountCore: ethers.formatEther(actualProceeds),
-      amountToken: ethers.formatEther(actualTokens),
+      amountCore: Number(ethers.formatEther(actualProceeds)),
+      amountToken: Number(ethers.formatEther(actualTokens)),
       price: Number(ethers.formatEther(actualProceeds)) / Number(ethers.formatEther(actualTokens)),
       txHash: receipt.hash,
-      status: 'completed',
-      timestamp: Date.now()
+      status: 'completed'
     });
 
     res.json({
@@ -421,10 +419,7 @@ router.post('/create-token', authenticate, async (req: Request, res: Response) =
       name,
       symbol,
       description,
-      creatorId: userId,
-      creatorAddress: wallet.address,
-      txHash: receipt.hash,
-      timestamp: Date.now()
+      creator: wallet.address
     });
 
     res.json({

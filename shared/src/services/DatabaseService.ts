@@ -58,7 +58,7 @@ export interface CopiedTrade {
   copiedAmount: number;
   originalTxHash: string;
   copiedTxHash?: string;
-  status: 'pending' | 'completed' | 'failed';
+  status: 'pending' | 'executing' | 'completed' | 'failed';
   reason?: string;
   createdAt: Date;
 }
@@ -105,6 +105,11 @@ export interface StakingPosition {
 export class DatabaseService {
   private pool: Pool;
   private logger = createLogger({ service: 'database' });
+
+  // Expose pool for raw queries
+  get db(): Pool {
+    return this.pool;
+  }
 
   constructor() {
     this.pool = new Pool({
@@ -731,13 +736,35 @@ export class DatabaseService {
 
   // Trade history methods
   async getUserTrades(userId: string, days: number = 30, limit?: number, offset?: number): Promise<Trade[]> {
+    // First get the wallet address for this user
+    const userQuery = `SELECT wallet_address FROM users WHERE telegram_id = $1`;
+    const userResult = await this.pool.query(userQuery, [userId]);
+    
+    if (userResult.rows.length === 0) {
+      return []; // No user found
+    }
+    
+    const walletAddress = userResult.rows[0].wallet_address;
+    
+    // Use transactions table instead of trades table
     let query = `
-      SELECT * FROM trades 
-      WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '${days} days'
-      ORDER BY created_at DESC
+      SELECT 
+        t.*,
+        t.from_address as wallet_address,
+        t.type as trade_type,
+        t.amount_core,
+        t.amount as amount_token,
+        tok.symbol as token_symbol,
+        tok.address as token_address
+      FROM transactions t
+      LEFT JOIN tokens tok ON t.token_id = tok.id
+      WHERE t.from_address = $1 
+        AND t.timestamp >= NOW() - INTERVAL '${days} days'
+        AND t.type IN ('buy', 'sell')
+      ORDER BY t.timestamp DESC
     `;
     
-    const params: any[] = [userId];
+    const params: any[] = [walletAddress];
     
     if (limit !== undefined && offset !== undefined) {
       query += ` LIMIT $2 OFFSET $3`;
@@ -869,6 +896,44 @@ export class DatabaseService {
     return result.rows.map(row => this.mapToCopyTradeSettings(row));
   }
 
+  // Convenience variants used by telegram-bot
+  async updateCopyTradeSettingsPartial(params: { userId: string; targetWallet: string } & Partial<CopyTradeSettings>): Promise<void> {
+    const { userId, targetWallet, ...updates } = params;
+    return this.updateCopyTradeSettings(userId, targetWallet, updates);
+  }
+
+  async getUserActiveCopyTrades(userId: string): Promise<CopyTradeSettings[]> {
+    const query = `
+      SELECT * FROM copy_trades 
+      WHERE user_id = $1 AND enabled = true
+      ORDER BY created_at DESC
+    `;
+    const result = await this.pool.query(query, [userId]);
+    return result.rows.map(row => this.mapToCopyTradeSettings(row));
+  }
+
+  async getUserCopiedTrades(userId: string, limit: number = 50): Promise<CopiedTrade[]> {
+    const query = `
+      SELECT * FROM copied_trades
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `;
+    const result = await this.pool.query(query, [userId, limit]);
+    return result.rows.map(row => this.mapToCopiedTrade(row));
+  }
+
+  async getTopTradingWallets(limit: number = 10): Promise<Array<{ address: string }>> {
+    const query = `
+      SELECT address FROM trader_profiles
+      ORDER BY profit_loss DESC NULLS LAST
+      LIMIT $1
+    `;
+    const result = await this.pool.query(query, [limit]);
+    return result.rows.map(r => ({ address: r.address }));
+  }
+
+
   async getCopiedTrades(userId: string, limit: number = 50): Promise<CopiedTrade[]> {
     const query = `
       SELECT * FROM copied_trades 
@@ -899,6 +964,38 @@ export class DatabaseService {
     const result = await this.pool.query(query, [walletAddress]);
     
     return parseInt(result.rows[0].count, 10);
+  }
+
+  async getWalletTrades(address: string, days: number): Promise<Array<Trade & { profit: number; timestamp: Date }>> {
+    const query = `
+      SELECT 
+        t.*,
+        CASE 
+          WHEN t.type = 'sell' THEN t.amount_core
+          WHEN t.type = 'buy' THEN -t.amount_core
+          ELSE 0
+        END as profit
+      FROM trades t
+      WHERE t.wallet_address = $1
+        AND t.created_at >= NOW() - INTERVAL '${days} days'
+      ORDER BY t.created_at DESC
+    `;
+    const result = await this.pool.query(query, [address.toLowerCase()]);
+    return result.rows.map(row => ({
+      id: row.id,
+      userId: row.user_id,
+      walletAddress: row.wallet_address,
+      tokenAddress: row.token_address,
+      type: row.type,
+      amountCore: row.amount_core,
+      amountToken: row.amount_token,
+      price: row.price,
+      txHash: row.tx_hash,
+      status: row.status,
+      profit: row.profit || 0,
+      createdAt: row.created_at,
+      timestamp: row.created_at
+    }));
   }
 
   async saveCopiedTrade(trade: CopiedTrade): Promise<void> {
@@ -1906,6 +2003,104 @@ export class DatabaseService {
       isActive: row.is_active,
       lastClaimTime: row.last_claim_time,
     };
+  }
+
+  // ==================== TRADING ENGINE SUPPORT ====================
+
+  async logTrade(trade: Partial<Trade>): Promise<void> {
+    await this.saveTrade(trade);
+  }
+
+  async addSnipeOrder(order: {
+    userId: string;
+    tokenAddress: string;
+    tokenSymbol: string;
+    amount: number;
+    maxPrice?: number;
+    minLiquidity?: number;
+    status: string;
+    createdAt: Date;
+  }): Promise<void> {
+    const query = `
+      INSERT INTO snipe_orders (
+        user_id, token_address, token_symbol, amount,
+        max_price, min_liquidity, status, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `;
+    await this.pool.query(query, [
+      order.userId,
+      order.tokenAddress,
+      order.tokenSymbol,
+      order.amount,
+      order.maxPrice || null,
+      order.minLiquidity || null,
+      order.status,
+      order.createdAt
+    ]);
+  }
+
+  async updateSnipeOrder(tokenAddress: string, updates: {
+    status?: string;
+    executedAt?: Date;
+    executedPrice?: number;
+    txHash?: string;
+  }): Promise<void> {
+    const updateParts = [];
+    const values = [];
+    let valueIndex = 1;
+
+    if (updates.status !== undefined) {
+      updateParts.push(`status = $${valueIndex++}`);
+      values.push(updates.status);
+    }
+    if (updates.executedAt !== undefined) {
+      updateParts.push(`executed_at = $${valueIndex++}`);
+      values.push(updates.executedAt);
+    }
+    if (updates.executedPrice !== undefined) {
+      updateParts.push(`executed_price = $${valueIndex++}`);
+      values.push(updates.executedPrice);
+    }
+    if (updates.txHash !== undefined) {
+      updateParts.push(`tx_hash = $${valueIndex++}`);
+      values.push(updates.txHash);
+    }
+
+    if (updateParts.length > 0) {
+      values.push(tokenAddress);
+      const query = `
+        UPDATE snipe_orders
+        SET ${updateParts.join(', ')}
+        WHERE token_address = $${valueIndex}
+      `;
+      await this.pool.query(query, values);
+    }
+  }
+
+  async addPriceAlert(alert: {
+    userId: string;
+    tokenAddress: string;
+    tokenSymbol: string;
+    targetPrice: number;
+    condition: 'above' | 'below';
+    enabled: boolean;
+    createdAt: Date;
+  }): Promise<void> {
+    const query = `
+      INSERT INTO price_alerts (
+        user_id, token_address, token_symbol,
+        target_price, condition, enabled, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `;
+    await this.pool.query(query, [
+      alert.userId,
+      alert.tokenAddress,
+      alert.tokenSymbol,
+      alert.targetPrice,
+      alert.condition,
+      alert.enabled,
+      alert.createdAt
+    ]);
   }
 
   // Cleanup

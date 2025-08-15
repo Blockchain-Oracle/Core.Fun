@@ -1,0 +1,406 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import { Slider } from '@/components/ui/slider'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { 
+  ArrowDownUp, 
+  TrendingUp, 
+  TrendingDown,
+  AlertTriangle,
+  Loader2,
+  Info,
+  Zap
+} from 'lucide-react'
+import { useAuthStore, useStakingStore, useTreasuryStore } from '@/lib/stores'
+import { apiClient } from '@/lib/api'
+import { formatNumber } from '@/lib/data-transform'
+import { Separator } from '@/components/ui/separator'
+
+interface TradingPanelProps {
+  tokenAddress: string
+  tokenSymbol: string
+  currentSold: number
+  currentRaised: number
+  isLaunched: boolean
+}
+
+export function TradingPanel({
+  tokenAddress,
+  tokenSymbol,
+  currentSold,
+  currentRaised,
+  isLaunched
+}: TradingPanelProps) {
+  const { session, isAuthenticated, user } = useAuthStore()
+  const { status: stakingStatus } = useStakingStore()
+  const { calculateFee } = useTreasuryStore()
+  
+  const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy')
+  const [amount, setAmount] = useState('')
+  const [slippage, setSlippage] = useState(5)
+  const [quote, setQuote] = useState<{
+    expectedAmount: string
+    priceImpact: number
+    rate: number
+  } | null>(null)
+  const [gasEstimate, setGasEstimate] = useState<{
+    gasEstimate: string
+    gasPriceGwei: string
+    totalCostCORE: string
+  } | null>(null)
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false)
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  // Fetch quote and gas estimate when amount changes
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (!amount || parseFloat(amount) <= 0) {
+        setQuote(null)
+        setGasEstimate(null)
+        return
+      }
+
+      setIsLoadingQuote(true)
+      setError(null)
+
+      try {
+        // Fetch quote
+        let result
+        if (tradeType === 'buy') {
+          result = await apiClient.calculateBuyReturn(tokenAddress, amount)
+        } else {
+          result = await apiClient.calculateSellReturn(tokenAddress, amount)
+        }
+        
+        if (result.success && result.data) {
+          // Calculate price impact based on bonding curve
+          const inputAmount = parseFloat(amount)
+          const outputAmount = parseFloat(tradeType === 'buy' ? result.data.tokenAmount : result.data.coreAmount)
+          const spotPrice = currentRaised > 0 ? currentSold / currentRaised : 1
+          const executionPrice = tradeType === 'buy' ? inputAmount / outputAmount : outputAmount / inputAmount
+          const priceImpact = Math.abs((executionPrice - spotPrice) / spotPrice) * 100
+          
+          setQuote({
+            expectedAmount: tradeType === 'buy' ? result.data.tokenAmount : result.data.coreAmount,
+            priceImpact: isNaN(priceImpact) ? 0 : priceImpact,
+            rate: result.data.rate
+          })
+        } else {
+          setError(result.error || 'Failed to get quote')
+        }
+        
+        // Fetch gas estimate
+        const gasResult = await apiClient.getGasEstimate(
+          tradeType === 'buy' ? 'buyToken' : 'sellToken',
+          { tokenAddress, amount }
+        )
+        
+        if (gasResult.success && gasResult.data) {
+          setGasEstimate(gasResult.data)
+        }
+      } catch (err) {
+        setError('Failed to fetch quote')
+      } finally {
+        setIsLoadingQuote(false)
+      }
+    }
+
+    const timer = setTimeout(fetchQuote, 500)
+    return () => clearTimeout(timer)
+  }, [amount, tradeType, tokenAddress, currentSold, currentRaised])
+
+  const handleTrade = async () => {
+    if (!isAuthenticated) {
+      setError('Please connect your wallet first')
+      return
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Please enter a valid amount')
+      return
+    }
+
+    setIsExecuting(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      if (!session?.token) {
+        setError('Please login first')
+        return
+      }
+
+      let result
+      if (tradeType === 'buy') {
+        result = await apiClient.buyToken(tokenAddress, amount, session.token)
+      } else {
+        result = await apiClient.sellToken(tokenAddress, amount, session.token)
+      }
+
+      if (result.success) {
+        setSuccess(`${tradeType === 'buy' ? 'Buy' : 'Sell'} order executed successfully!`)
+        setAmount('')
+        setQuote(null)
+      } else {
+        setError(result.error || 'Transaction failed')
+      }
+    } catch (err) {
+      setError('Transaction failed')
+    } finally {
+      setIsExecuting(false)
+    }
+  }
+
+  const handlePercentageClick = (percentage: number) => {
+    // TODO: Implement percentage calculation based on user balance
+    // For now, just set some example amounts
+    if (tradeType === 'buy') {
+      const exampleAmounts = { 25: '0.25', 50: '0.5', 75: '0.75', 100: '1' }
+      setAmount(exampleAmounts[percentage as keyof typeof exampleAmounts] || '0.1')
+    } else {
+      const exampleAmounts = { 25: '250', 50: '500', 75: '750', 100: '1000' }
+      setAmount(exampleAmounts[percentage as keyof typeof exampleAmounts] || '100')
+    }
+  }
+
+  const progress = (currentSold / 500000) * 100 // 500K token graduation limit
+
+  if (isLaunched) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Alert>
+            <Zap className="h-4 w-4" />
+            <AlertDescription>
+              This token has graduated! Trade it on DEX instead.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Trade {tokenSymbol}</CardTitle>
+          <Badge variant="outline" className="text-xs">
+            Bonding Curve
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Tabs value={tradeType} onValueChange={(v) => setTradeType(v as 'buy' | 'sell')}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="buy" className="data-[state=active]:bg-orange-500/20">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Buy
+            </TabsTrigger>
+            <TabsTrigger value="sell" className="data-[state=active]:bg-red-500/20">
+              <TrendingDown className="h-4 w-4 mr-2" />
+              Sell
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value={tradeType} className="space-y-4">
+            {/* Amount Input */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">
+                {tradeType === 'buy' ? 'CORE Amount' : 'Token Amount'}
+              </Label>
+              <div className="relative">
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  disabled={isExecuting}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-white/60">
+                  {tradeType === 'buy' ? 'CORE' : tokenSymbol}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Amount Buttons */}
+            <div className="flex gap-2">
+              {[25, 50, 75, 100].map((pct) => (
+                <Button
+                  key={pct}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePercentageClick(pct)}
+                  disabled={isExecuting}
+                  className="flex-1"
+                >
+                  {pct}%
+                </Button>
+              ))}
+            </div>
+
+            {/* Quote Display */}
+            {quote && !isLoadingQuote && (
+              <div className="bg-white/5 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">You will receive</span>
+                  <span className="font-medium">
+                    {tradeType === 'buy' 
+                      ? `${formatNumber(parseFloat(quote.expectedAmount || '0'))} ${tokenSymbol}`
+                      : `${formatNumber(parseFloat(quote.expectedAmount || '0'))} CORE`
+                    }
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">Rate</span>
+                  <span>{quote.rate.toFixed(6)} {tradeType === 'buy' ? `${tokenSymbol}/CORE` : `CORE/${tokenSymbol}`}</span>
+                </div>
+                {quote.priceImpact > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-white/60">Price impact</span>
+                    <span className={quote.priceImpact > 5 ? 'text-orange-400' : ''}>
+                      {quote.priceImpact.toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/60">
+                    Platform fee 
+                    {stakingStatus?.feeDiscount ? (
+                      <span className="text-orange-400 ml-1">({stakingStatus.feeDiscount}% off)</span>
+                    ) : (
+                      ' (1%)'
+                    )}
+                  </span>
+                  <span>
+                    {stakingStatus?.feeDiscount ? (
+                      <>
+                        <span className="line-through text-white/40 mr-2">
+                          {(parseFloat(amount || '0') * 0.01).toFixed(6)}
+                        </span>
+                        {calculateFee('trading', parseFloat(amount || '0'), stakingStatus.tier).toFixed(6)} CORE
+                      </>
+                    ) : (
+                      `${(parseFloat(amount || '0') * 0.01).toFixed(6)} CORE`
+                    )}
+                  </span>
+                </div>
+                {gasEstimate && (
+                  <>
+                    <Separator className="my-2" />
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/60">Estimated gas</span>
+                      <span>{formatNumber(parseFloat(gasEstimate.totalCostCORE))} CORE</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-medium">
+                      <span className="text-white/80">Total cost</span>
+                      <span>
+                        {formatNumber(
+                          parseFloat(amount || '0') + 
+                          calculateFee('trading', parseFloat(amount || '0'), stakingStatus?.tier) +
+                          parseFloat(gasEstimate.totalCostCORE)
+                        )} CORE
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {isLoadingQuote && (
+              <div className="bg-white/5 rounded-lg p-4 flex items-center justify-center">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <span className="text-sm text-white/60">Fetching quote...</span>
+              </div>
+            )}
+
+            {/* Slippage Settings */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Slippage Tolerance</Label>
+                <span className="text-sm text-white/60">{slippage}%</span>
+              </div>
+              <Slider
+                value={[slippage]}
+                onValueChange={([v]) => setSlippage(v)}
+                min={0.1}
+                max={20}
+                step={0.1}
+                disabled={isExecuting}
+              />
+            </div>
+
+            {/* Warnings */}
+            {quote && quote.priceImpact > 10 && (
+              <Alert className="bg-orange-500/10 border-orange-500/30">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  High price impact! Consider reducing your trade size.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Error/Success Messages */}
+            {error && (
+              <Alert className="bg-red-500/10 border-red-500/30">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {success && (
+              <Alert className="bg-orange-500/10 border-orange-500/30">
+                <Info className="h-4 w-4" />
+                <AlertDescription>{success}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Trade Button */}
+            <Button
+              onClick={handleTrade}
+              disabled={!isAuthenticated || isExecuting || !quote || !amount}
+              className="w-full"
+              size="lg"
+            >
+              {isExecuting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : !isAuthenticated ? (
+                'Connect Wallet'
+              ) : (
+                <>
+                  {tradeType === 'buy' ? (
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 mr-2" />
+                  )}
+                  {tradeType === 'buy' ? 'Buy' : 'Sell'} {tokenSymbol}
+                </>
+              )}
+            </Button>
+
+            {/* Info */}
+            <div className="text-xs text-white/40 text-center">
+              Progress: {progress.toFixed(1)}% to graduation
+            </div>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  )
+}
+
+export default TradingPanel

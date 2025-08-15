@@ -5,8 +5,8 @@ import { AuthHandler } from './auth/AuthHandler';
 import { WalletCommands } from './wallet/WalletCommands';
 import { TradingCommands } from './trading/TradingCommands';
 import { AlertCommands } from './alerts/AlertCommands';
-import { SubscriptionCommands } from './subscription/SubscriptionCommands';
 import { StakingCommands } from './staking/StakingCommands';
+import { CopyTradingCommands } from './commands/CopyTradingCommands';
 import { SessionManager } from './auth/SessionManager';
 import { DatabaseService } from '@core-meme/shared';
 import { SocketIOClient } from './services/SocketIOClient';
@@ -24,6 +24,7 @@ export interface BotContext extends Context {
     telegramId?: number;
     username?: string;
     walletAddress?: string;
+    authToken?: string;
     isAuthenticated?: boolean;
     isPremium?: boolean;
     isPro?: boolean;
@@ -39,8 +40,8 @@ class CoreMemeBot {
   private walletCommands: WalletCommands;
   private tradingCommands: TradingCommands;
   private alertCommands: AlertCommands;
-  private subscriptionCommands: SubscriptionCommands;
   private stakingCommands: StakingCommands;
+  private copyTradingCommands: CopyTradingCommands;
   private sessionManager: SessionManager;
   private db: DatabaseService;
   private wsClient: SocketIOClient;
@@ -68,8 +69,8 @@ class CoreMemeBot {
     this.walletCommands = new WalletCommands(this.db);
     this.tradingCommands = new TradingCommands(this.db);
     this.alertCommands = new AlertCommands(this.db);
-    this.subscriptionCommands = new SubscriptionCommands(this.db);
     this.stakingCommands = new StakingCommands(this.db, this.walletCommands.walletService);
+    this.copyTradingCommands = new CopyTradingCommands();
     
     // Initialize webhook handler for Web App authentication
     const webhookPort = parseInt(process.env.WEBHOOK_PORT || '3002');
@@ -173,6 +174,11 @@ class CoreMemeBot {
     this.bot.command('subscription', authMiddleware, async (ctx) => {
       await this.stakingCommands.handleSubscription(ctx);
     });
+    
+    // Add /subscribe alias for convenience
+    this.bot.command('subscribe', authMiddleware, async (ctx) => {
+      await this.stakingCommands.handleSubscription(ctx);
+    });
 
     // Staking commands
     this.bot.command('stake', authMiddleware, async (ctx) => {
@@ -189,6 +195,40 @@ class CoreMemeBot {
 
     this.bot.command('tiers', authMiddleware, async (ctx) => {
       await this.stakingCommands.handleTiers(ctx);
+    });
+
+    // Copy Trading commands - FULLY EXPOSED!
+    this.bot.command('copytrade', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleStartCopyTrading(ctx);
+    });
+
+    this.bot.command('copystop', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleStopCopyTrading(ctx);
+    });
+
+    this.bot.command('copylist', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleListCopyTrades(ctx);
+    });
+
+    this.bot.command('toptraders', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleTopTraders(ctx);
+    });
+
+    this.bot.command('analyze', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleAnalyzeWallet(ctx);
+    });
+
+    // Legacy aliases for compatibility
+    this.bot.command('follow', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleStartCopyTrading(ctx);
+    });
+
+    this.bot.command('unfollow', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleStopCopyTrading(ctx);
+    });
+
+    this.bot.command('following', authMiddleware, async (ctx) => {
+      await this.copyTradingCommands.handleListCopyTrades(ctx);
     });
 
     // Admin commands
@@ -245,6 +285,43 @@ class CoreMemeBot {
       await this.tradingCommands.showTradingMenu(ctx);
     });
 
+    // Copy Trading callbacks
+    this.bot.action('copy_trading_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '🤝 *Copy Trading*\n\n' +
+        'Copy successful traders automatically!\n\n' +
+        '• Start copying: `/copytrade <wallet>`\n' +
+        '• Stop copying: `/copystop <wallet>`\n' +
+        '• View active: `/copylist`\n' +
+        '• Top traders: `/toptraders`\n' +
+        '• Analyze wallet: `/analyze <wallet>`\n\n' +
+        '⚡ Copy slots based on staking tier:\n' +
+        '• Bronze: 1 slot\n' +
+        '• Silver: 3 slots\n' +
+        '• Gold: 5 slots\n' +
+        '• Platinum: 10 slots',
+        { 
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🏆 View Top Traders', 'view_top_traders')],
+            [Markup.button.callback('📋 My Copy Trades', 'view_copy_list')],
+            [Markup.button.callback('🔙 Back', 'trade_menu')]
+          ])
+        }
+      );
+    });
+
+    this.bot.action('view_top_traders', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.copyTradingCommands.handleTopTraders(ctx);
+    });
+
+    this.bot.action('view_copy_list', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.copyTradingCommands.handleListCopyTrades(ctx);
+    });
+
     this.bot.action('alerts_menu', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.alertCommands.manageAlerts(ctx);
@@ -252,7 +329,7 @@ class CoreMemeBot {
 
     this.bot.action('subscribe_menu', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
-      await this.subscriptionCommands.showSubscriptionPlans(ctx);
+      await this.stakingCommands.handleSubscription(ctx); // Use staking-based subscription system
     });
 
     this.bot.action('settings_menu', authMiddleware, async (ctx) => {
@@ -346,6 +423,63 @@ class CoreMemeBot {
     this.bot.action('refresh_balance', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery('Refreshing...');
       await this.walletCommands.showBalance(ctx);
+    });
+
+    // Copy Trading callbacks
+    this.bot.action('copytrade_menu', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.handleCopyTradeMenu(ctx);
+    });
+
+    this.bot.action('view_following', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.showFollowing(ctx);
+    });
+
+    this.bot.action('view_toptraders', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.showTopTraders(ctx);
+    });
+
+    this.bot.action('start_copy', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '📋 *Start Copy Trading*\n\n' +
+        'Enter the wallet address you want to copy:\n\n' +
+        'Example: `0x123...abc`',
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🔙 Cancel', 'copytrade_menu')]
+          ])
+        }
+      );
+      if (ctx.session) {
+        ctx.session.awaitingInput = 'copy_wallet_address';
+      }
+    });
+
+    this.bot.action(/^follow_(.+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const wallet = ctx.match[1];
+      await this.tradingCommands.followWallet(ctx, wallet);
+    });
+
+    this.bot.action(/^unfollow_(.+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const wallet = ctx.match[1];
+      await this.tradingCommands.unfollowWallet(ctx, wallet);
+    });
+
+    this.bot.action(/^copysettings_(.+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const wallet = ctx.match[1];
+      await this.tradingCommands.showCopySettings(ctx, wallet);
+    });
+
+    this.bot.action('view_copyhistory', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.tradingCommands.showCopyHistory(ctx);
     });
 
     // Trading callbacks
@@ -495,11 +629,30 @@ class CoreMemeBot {
       await this.alertCommands.manageAlerts(ctx);
     });
 
-    // Subscription callbacks
-    this.bot.action(/^subscribe_(.+)$/, authMiddleware, async (ctx) => {
+    // Staking callbacks (replacing old subscription system)
+    this.bot.action('stake_more', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
-      const plan = ctx.match[1];
-      await this.subscriptionCommands.processSubscription(ctx, plan);
+      await this.stakingCommands.handleStake(ctx);
+    });
+
+    this.bot.action('unstake_tokens', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.stakingCommands.handleUnstake(ctx);
+    });
+
+    this.bot.action('claim_rewards', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.stakingCommands.handleClaim(ctx);
+    });
+
+    this.bot.action('view_tiers', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.stakingCommands.handleTiers(ctx);
+    });
+
+    this.bot.action('refresh_staking', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.stakingCommands.handleSubscription(ctx);
     });
 
     // General callbacks
@@ -556,6 +709,15 @@ class CoreMemeBot {
 /snipe [token] [amount] - Auto-buy on launch
 /portfolio - View your holdings
 /trades - Trade history
+
+*Copy Trading:*
+/copytrade [wallet] - Start copying a trader
+/copystop [wallet] - Stop copying a trader
+/copylist - View active copy trades
+/toptraders - See top traders to copy
+/analyze [wallet] - Analyze trader performance
+/follow [wallet] - Follow a trader (alias)
+/unfollow [wallet] - Stop following (alias)
 
 *Alert Commands:*
 /alerts - Manage alerts
@@ -834,6 +996,8 @@ Manage your account settings and preferences:
         { command: 'buy', description: 'Buy tokens' },
         { command: 'sell', description: 'Sell tokens' },
         { command: 'portfolio', description: 'View portfolio' },
+        { command: 'copytrade', description: '🔥 Copy top traders' },
+        { command: 'toptraders', description: 'View top traders' },
         { command: 'alerts', description: 'Manage alerts' },
         { command: 'subscribe', description: 'Premium features' },
         { command: 'help', description: 'Help and commands' },

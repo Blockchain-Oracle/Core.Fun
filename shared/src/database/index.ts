@@ -1,6 +1,8 @@
 import { Pool, PoolConfig } from 'pg';
 import knex, { Knex } from 'knex';
 
+export * from './types';
+
 export interface DatabaseConfig {
   host?: string;
   port?: number;

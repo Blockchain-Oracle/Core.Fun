@@ -1,10 +1,10 @@
 import { ethers } from 'ethers';
-import { DatabaseService, StakingPosition } from '@core-meme/shared';
+import { DatabaseService, StakingPosition, WalletService, CopiedTrade } from '@core-meme/shared';
 import { createLogger } from '@core-meme/shared';
 import { ContractDataService } from '@core-meme/shared';
 
 // Staking tier-based copy trade slot limits
-const TIER_LIMITS = {
+const TIER_LIMITS: Record<number, { slots: number; name: string }> = {
   0: { slots: 0, name: 'None' },      // No staking = no copy trading
   1: { slots: 1, name: 'Bronze' },    // 1,000+ CMP tokens
   2: { slots: 3, name: 'Silver' },    // 5,000+ CMP tokens
@@ -61,25 +61,7 @@ export interface WalletStats {
   }>;
 }
 
-export interface CopiedTrade {
-  id: string;
-  userId: string;
-  targetWallet: string;
-  tokenAddress: string;
-  tokenName?: string;
-  tokenSymbol?: string;
-  type: 'buy' | 'sell';
-  originalAmount: number;     // Original trade amount in CORE/tokens
-  copiedAmount: number;       // Our copy amount in CORE/tokens
-  originalTxHash: string;
-  copiedTxHash?: string;
-  status: 'pending' | 'executing' | 'completed' | 'failed';
-  reason?: string;
-  gasUsed?: string;
-  estimatedProfit?: number;
-  createdAt: Date;
-  completedAt?: Date;
-}
+// Using CopiedTrade type from shared services
 
 interface MonitoredWallet {
   address: string;
@@ -94,16 +76,25 @@ export class MemeFactoryCopyTrader {
   private provider: ethers.JsonRpcProvider;
   private wsProvider?: ethers.WebSocketProvider;
   private contractService: ContractDataService;
-  private memeFactory: ethers.Contract;
+  private memeFactory: ethers.Contract & {
+    buyToken(token: string, minTokens: bigint, overrides?: any): Promise<any>;
+    sellToken(token: string, amount: bigint, minETH: bigint, overrides?: any): Promise<any>;
+    calculateTokensOut(currentSold: bigint, ethIn: bigint): Promise<bigint>;
+    calculateETHOut(currentSold: bigint, tokensIn: bigint): Promise<bigint>;
+    tokenToSale(token: string): Promise<any>;
+    getTokenInfo(token: string): Promise<any>;
+  };
   private monitoredWallets: Map<string, MonitoredWallet> = new Map();
   private userWallets: Map<string, ethers.Wallet> = new Map();
   private isMonitoring: boolean = false;
   private pollInterval?: NodeJS.Timeout;
+  private walletService: WalletService;
 
   constructor(db: DatabaseService) {
     this.db = db;
+    this.walletService = new WalletService(db);
     
-    const rpcUrl = process.env.CORE_RPC_URL || 'https://rpc.coredao.org';
+    const rpcUrl = process.env.CORE_RPC_HTTP_URL || process.env.CORE_RPC_URL || 'https://rpc.coredao.org';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     
     // Try to establish WebSocket connection for real-time monitoring
@@ -123,7 +114,7 @@ export class MemeFactoryCopyTrader {
       factoryAddress,
       MEME_FACTORY_ABI,
       this.provider
-    );
+    ) as any;
     
     // Initialize contract service for additional data
     this.contractService = new ContractDataService(
@@ -214,12 +205,7 @@ export class MemeFactoryCopyTrader {
       const wallet = targetWallet.toLowerCase();
       
       // Disable in database
-      await this.db.updateCopyTradeSettings({
-        userId,
-        targetWallet: wallet,
-        enabled: false,
-        updatedAt: new Date()
-      });
+      await this.db.updateCopyTradeSettings(userId, wallet, { enabled: false });
 
       // Remove from monitoring if no other users are following
       await this.removeWalletFromMonitor(wallet, userId);
@@ -517,14 +503,14 @@ export class MemeFactoryCopyTrader {
 
       // Get user's wallet
       const user = await this.db.getUserById(userId);
-      if (!user || !user.privateKey) {
+      if (!user || !user.encryptedPrivateKey) {
         this.logger.error(`User ${userId} wallet not found`);
         return;
       }
 
       // Decrypt private key and create wallet
-        const decryptedKey = await this.db.decryptPrivateKey(user.privateKey, user.telegramId);
-        const userWallet = new ethers.Wallet(decryptedKey, this.provider);
+      const decryptedKey = await this.walletService.decryptPrivateKey(user.encryptedPrivateKey, user.telegramId);
+      const userWallet = new ethers.Wallet(decryptedKey, this.provider);
 
       // Calculate copy amount based on settings
       const copyAmount = await this.calculateCopyAmount(
@@ -556,7 +542,6 @@ export class MemeFactoryCopyTrader {
       await this.db.saveCopiedTrade(copyTrade);
 
       // Execute the trade
-      copyTrade.status = 'executing';
       
       if (trade.type === 'buy') {
         await this.executeBuyTrade(userWallet, trade.token, copyAmount, settings.maxSlippage, copyTrade);
@@ -583,15 +568,15 @@ export class MemeFactoryCopyTrader {
       // Get expected tokens out
       const tokenInfo = await this.memeFactory.getTokenInfo(token);
       const expectedTokens = await this.memeFactory.calculateTokensOut(
-        tokenInfo.sold,
+        tokenInfo.sold || BigInt(0),
         ethers.parseEther(amountCore.toString())
       );
       
       // Apply slippage
       const minTokens = (expectedTokens * BigInt(100 - maxSlippage)) / BigInt(100);
       
-      // Connect wallet to contract
-      const connectedFactory = this.memeFactory.connect(wallet);
+      // Connect wallet to contract  
+      const connectedFactory = this.memeFactory.connect(wallet) as typeof this.memeFactory;
       
       // Execute buy
       const tx = await connectedFactory.buyToken(
@@ -611,8 +596,6 @@ export class MemeFactoryCopyTrader {
       // Update copy trade record
       copyTrade.status = 'completed';
       copyTrade.copiedTxHash = receipt.hash;
-      copyTrade.gasUsed = receipt.gasUsed.toString();
-      copyTrade.completedAt = new Date();
       
       await this.db.updateCopiedTrade(copyTrade);
       
@@ -631,12 +614,11 @@ export class MemeFactoryCopyTrader {
       
       this.logger.info(`Copy buy completed for user ${copyTrade.userId}: ${receipt.hash}`);
       
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Buy execution failed:', error);
       
       copyTrade.status = 'failed';
       copyTrade.reason = error.message;
-      copyTrade.completedAt = new Date();
       
       await this.db.updateCopiedTrade(copyTrade);
       throw error;
@@ -658,15 +640,15 @@ export class MemeFactoryCopyTrader {
       const tokenInfo = await this.memeFactory.getTokenInfo(token);
       const tokensToSell = ethers.parseEther(amountTokens.toString());
       const expectedCore = await this.memeFactory.calculateETHOut(
-        tokenInfo.sold,
+        tokenInfo.sold || BigInt(0),
         tokensToSell
       );
       
       // Apply slippage
       const minCore = (expectedCore * BigInt(100 - maxSlippage)) / BigInt(100);
       
-      // Connect wallet to contract
-      const connectedFactory = this.memeFactory.connect(wallet);
+      // Connect wallet to contract  
+      const connectedFactory = this.memeFactory.connect(wallet) as typeof this.memeFactory;
       
       // Check token balance
       const tokenContract = new ethers.Contract(
@@ -698,8 +680,6 @@ export class MemeFactoryCopyTrader {
       // Update copy trade record
       copyTrade.status = 'completed';
       copyTrade.copiedTxHash = receipt.hash;
-      copyTrade.gasUsed = receipt.gasUsed.toString();
-      copyTrade.completedAt = new Date();
       
       await this.db.updateCopiedTrade(copyTrade);
       
@@ -718,12 +698,11 @@ export class MemeFactoryCopyTrader {
       
       this.logger.info(`Copy sell completed for user ${copyTrade.userId}: ${receipt.hash}`);
       
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Sell execution failed:', error);
       
       copyTrade.status = 'failed';
       copyTrade.reason = error.message;
-      copyTrade.completedAt = new Date();
       
       await this.db.updateCopiedTrade(copyTrade);
       throw error;
@@ -799,8 +778,8 @@ export class MemeFactoryCopyTrader {
       const trades30d = trades;
       
       // Calculate PnL
-      const calculatePnL = (trades: any[]) => {
-        return trades.reduce((sum, t) => {
+      const calculatePnL = (tradesToCalc: typeof trades) => {
+        return tradesToCalc.reduce((sum, t) => {
           if (t.type === 'sell') {
             return sum + (t.amountCore || 0);
           } else {
@@ -814,7 +793,7 @@ export class MemeFactoryCopyTrader {
       const pnl30d = calculatePnL(trades30d);
       
       // Calculate win rate
-      const profitableTrades = trades.filter(t => t.profit > 0).length;
+      const profitableTrades = trades.filter(t => (t.profit || 0) > 0).length;
       const winRate = trades.length > 0 ? (profitableTrades / trades.length) * 100 : 0;
       
       // Calculate average profit
@@ -899,17 +878,15 @@ export class MemeFactoryCopyTrader {
     usedSlots: number;
   }> {
     try {
-      // Get user's staking position
-      const stakingPosition = await this.db.getUserStakingPosition(userId);
-      
+      // Get user's staking positions and compute tier
+      const positions: StakingPosition[] = await this.db.getUserStakingPositions(userId);
       let tierLevel = 0;
-      if (stakingPosition && parseFloat(stakingPosition.amountStaked) > 0) {
-        const staked = parseFloat(stakingPosition.amountStaked);
-        
-        if (staked >= 50000) tierLevel = 4;      // Platinum
-        else if (staked >= 10000) tierLevel = 3; // Gold  
-        else if (staked >= 5000) tierLevel = 2;  // Silver
-        else if (staked >= 1000) tierLevel = 1;  // Bronze
+      if (positions && positions.length > 0) {
+        const totalStaked = positions.reduce((sum, p) => sum + (p.stakedAmount || 0), 0);
+        if (totalStaked >= 50000) tierLevel = 4;      // Platinum
+        else if (totalStaked >= 10000) tierLevel = 3; // Gold  
+        else if (totalStaked >= 5000) tierLevel = 2;  // Silver
+        else if (totalStaked >= 1000) tierLevel = 1;  // Bronze
       }
       
       // Get current copy trade settings

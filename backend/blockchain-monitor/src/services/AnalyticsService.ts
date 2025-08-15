@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import winston from 'winston';
 import { TokenAnalytics } from '../types';
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 
 export class AnalyticsService {
   private provider: ethers.JsonRpcProvider;
@@ -464,7 +464,7 @@ export class AnalyticsService {
       const trades = await this.db.getRecentTrades(tokenAddress, 1000);
       const oneDayAgo = Date.now() - 86400000;
       
-      return trades.filter(t => t.timestamp > oneDayAgo).length;
+      return trades.filter((t: any) => t.timestamp > oneDayAgo).length;
     } catch (error) {
       return 0;
     }
@@ -497,8 +497,8 @@ export class AnalyticsService {
       const trades = await this.db.getRecentTrades(tokenAddress, 1000);
       const oneDayAgo = Date.now() - 86400000;
       
-      const dayTrades = trades.filter(t => t.timestamp > oneDayAgo);
-      const volume = dayTrades.reduce((sum, trade) => {
+      const dayTrades = trades.filter((t: any) => t.timestamp > oneDayAgo);
+      const volume = dayTrades.reduce((sum: number, trade: any) => {
         const amount = parseFloat(ethers.formatEther(trade.amountIn || '0'));
         return sum + amount;
       }, 0);

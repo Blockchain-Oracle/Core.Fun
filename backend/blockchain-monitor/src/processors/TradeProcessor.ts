@@ -74,8 +74,23 @@ export class TradeProcessor {
         trade.priceImpact = await this.calculatePriceImpact(trade);
       }
       
+      // Convert blockchain trade to database trade format
+      const dbTrade = {
+        userId: trade.trader, // Use trader address as userId for blockchain trades
+        walletAddress: trade.trader,
+        tokenAddress: trade.tokenOut === 'CORE' ? trade.tokenIn : trade.tokenOut,
+        type: trade.tokenOut === 'CORE' ? 'sell' as const : 'buy' as const,
+        amountCore: parseFloat(trade.tokenOut === 'CORE' ? trade.amountOut : trade.amountIn),
+        amountToken: parseFloat(trade.tokenOut === 'CORE' ? trade.amountIn : trade.amountOut),
+        price: parseFloat(trade.amountIn) / parseFloat(trade.amountOut),
+        txHash: trade.transactionHash,
+        status: 'completed',
+        createdAt: new Date(trade.timestamp * 1000),
+        updatedAt: new Date(trade.timestamp * 1000)
+      };
+      
       // Save trade to database
-      await this.db.saveTrade(trade);
+      await this.db.saveTrade(dbTrade);
       
       // Update token analytics
       await this.updateTokenAnalytics(trade);
@@ -321,16 +336,16 @@ export class TradeProcessor {
       const day = Math.floor(trade.timestamp / 86400000);
       
       // Update hourly volume
-      await this.db.updateHourlyVolume(trade.pair, hour, trade);
+      await this.db.updateHourlyVolume(trade.pair, hour, parseFloat(trade.amountIn));
       
       // Update daily volume
-      await this.db.updateDailyVolume(trade.pair, day, trade);
+      await this.db.updateDailyVolume(trade.pair, day, parseFloat(trade.amountIn));
       
       // Update token volumes
       for (const token of [trade.tokenIn, trade.tokenOut]) {
         if (!await this.isCoreToken(token)) {
-          await this.db.updateTokenHourlyVolume(token, hour, trade);
-          await this.db.updateTokenDailyVolume(token, day, trade);
+          await this.db.updateTokenHourlyVolume(token, hour, parseFloat(trade.amountIn));
+          await this.db.updateTokenDailyVolume(token, day, parseFloat(trade.amountIn));
         }
       }
     } catch (error) {

@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import CryptoJS from 'crypto-js';
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService } from '@core-meme/shared';
 import { createLogger } from '@core-meme/shared';
 
 interface WalletData {
@@ -58,7 +58,7 @@ export class WalletManager {
       }
 
       // Decrypt private key
-      const privateKey = this.decryptPrivateKey(wallet.encryptedPrivateKey);
+      const privateKey = this.decryptPrivateKey(wallet.encryptedPrivateKey || '');
       
       return {
         address: wallet.address,

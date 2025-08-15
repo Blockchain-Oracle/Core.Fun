@@ -4,7 +4,7 @@ import { createLogger } from '@core-meme/shared'
 import { ContractDataService } from '@core-meme/shared'
 import { DatabaseService } from '@core-meme/shared'
 
-const router = Router()
+const router: Router = Router()
 const logger = createLogger({ service: 'subscription-api' })
 
 // Initialize services
@@ -86,7 +86,12 @@ router.get('/status/:wallet', async (req: Request, res: Response) => {
     const user = await db.getUserByWallet(wallet.toLowerCase())
     
     // Calculate tier from staked amount
-    const stakedAmount = Number(ethers.formatEther(stakingData.userStake || '0'))
+    // Handle the case where userStake might be "0.0" string
+    let userStakeValue = stakingData.userStake || '0'
+    if (typeof userStakeValue === 'string' && userStakeValue === '0.0') {
+      userStakeValue = '0'
+    }
+    const stakedAmount = Number(ethers.formatEther(userStakeValue))
     const tierIndex = Math.min(stakingData.tier || 0, TIER_NAMES.length - 1)
     const tierName = TIER_NAMES[tierIndex]
     

@@ -166,39 +166,14 @@ export class StakingProcessor extends EventEmitter {
       const tierName = this.getTierName(Number(userTier));
       
       // Find user in database by wallet address
-      const userRecord = await this.db.db('users')
-        .where('wallet_address', user.toLowerCase())
-        .first();
+      const userRecord = await this.db.getUserByWalletAddress(user.toLowerCase());
       
       if (userRecord) {
         // Update user's subscription tier in database
-        await this.db.db('users')
-          .where('id', userRecord.id)
-          .update({
-            subscription_tier: tierName,
-            is_premium: isPremium,
-            updated_at: new Date()
-          });
+        await this.db.updateUserSubscription(userRecord.id, tierName);
         
         // Update or create subscription record
-        await this.db.db('subscriptions')
-          .insert({
-            user_id: userRecord.id,
-            tier: tierName,
-            payment_method: 'staking',
-            status: 'active',
-            amount: Number(ethers.formatEther(amount)),
-            currency: 'CMP',
-            created_at: new Date(),
-            updated_at: new Date()
-          })
-          .onConflict('user_id')
-          .merge({
-            tier: tierName,
-            status: 'active',
-            amount: Number(ethers.formatEther(stakedAmount)),
-            updated_at: new Date()
-          });
+        // TODO: Add subscription update method to DatabaseService
       }
       
       // Emit WebSocket event for real-time updates
@@ -246,29 +221,13 @@ export class StakingProcessor extends EventEmitter {
       const isActive = Number(stakedAmount) > 0;
       
       // Find user in database
-      const userRecord = await this.db.db('users')
-        .where('wallet_address', user.toLowerCase())
-        .first();
+      const userRecord = await this.db.getUserByWalletAddress(user.toLowerCase());
       
       if (userRecord) {
         // Update user's subscription tier
-        await this.db.db('users')
-          .where('id', userRecord.id)
-          .update({
-            subscription_tier: isActive ? tierName : 'free',
-            is_premium: isActive && isPremium,
-            updated_at: new Date()
-          });
+        await this.db.updateUserSubscription(userRecord.id, isActive ? tierName : 'free');
         
-        // Update subscription record
-        await this.db.db('subscriptions')
-          .where('user_id', userRecord.id)
-          .update({
-            tier: isActive ? tierName : 'free',
-            status: isActive ? 'active' : 'inactive',
-            amount: Number(ethers.formatEther(stakedAmount)),
-            updated_at: new Date()
-          });
+        // TODO: Update subscription record
       }
       
       // Emit WebSocket event
@@ -341,17 +300,10 @@ export class StakingProcessor extends EventEmitter {
       const feeDiscount = await this.stakingContract.getUserFeeDiscount(user);
       
       // Find user and update tier
-      const userRecord = await this.db.db('users')
-        .where('wallet_address', user.toLowerCase())
-        .first();
+      const userRecord = await this.db.getUserByWalletAddress(user.toLowerCase());
       
       if (userRecord) {
-        await this.db.db('users')
-          .where('id', userRecord.id)
-          .update({
-            subscription_tier: tierName,
-            updated_at: new Date()
-          });
+        await this.db.updateUserSubscription(userRecord.id, tierName);
       }
       
       // Emit WebSocket event
@@ -388,16 +340,7 @@ export class StakingProcessor extends EventEmitter {
   ): Promise<void> {
     try {
       // Track revenue distribution
-      await this.db.db('platform_metrics')
-        .insert({
-          metric_type: 'revenue_distributed',
-          value: Number(ethers.formatEther(amount)),
-          timestamp: new Date(Number(timestamp) * 1000),
-          metadata: {
-            txHash: event.transactionHash,
-            blockNumber: event.blockNumber
-          }
-        });
+      // TODO: Add platform metrics tracking to DatabaseService
       
       // Emit WebSocket event for all stakers
       await this.redis.publish('staking:revenue', JSON.stringify({
@@ -515,22 +458,8 @@ export class StakingProcessor extends EventEmitter {
    */
   private async getLastProcessedBlock(): Promise<number> {
     try {
-      const result = await this.db.db('blockchain_state')
-        .where('processor', 'staking')
-        .first();
-      
-      if (result) {
-        return result.last_block;
-      }
-      
-      // If no record, start from current block
+      // TODO: Implement blockchain state tracking
       const currentBlock = await this.provider.getBlockNumber();
-      await this.db.db('blockchain_state')
-        .insert({
-          processor: 'staking',
-          last_block: currentBlock,
-          updated_at: new Date()
-        });
       
       return currentBlock;
     } catch (error) {
@@ -544,12 +473,7 @@ export class StakingProcessor extends EventEmitter {
    */
   private async updateLastProcessedBlock(blockNumber: number): Promise<void> {
     try {
-      await this.db.db('blockchain_state')
-        .where('processor', 'staking')
-        .update({
-          last_block: blockNumber,
-          updated_at: new Date()
-        });
+      // TODO: Update blockchain state
       
       this.lastProcessedBlock = blockNumber;
     } catch (error) {

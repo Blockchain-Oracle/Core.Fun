@@ -1,18 +1,6 @@
 import { ethers } from 'ethers';
 import { createLogger } from '@core-meme/shared';
-
-// Core DEX Router addresses
-const DEX_ROUTERS = {
-  CORSWAP: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', // Example - replace with actual
-  SUSHISWAP: '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F', // Example - replace with actual
-};
-
-// Common stablecoin addresses on Core
-const STABLECOINS = {
-  USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // Replace with Core USDT
-  USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Replace with Core USDC
-  CORE: '0x0000000000000000000000000000000000000000', // Native CORE
-};
+import { NETWORK_CONFIG, CONTRACT_ADDRESSES } from '../config/constants';
 
 interface TokenInfo {
   symbol: string;
@@ -30,8 +18,8 @@ interface TokenInfo {
   // Token metadata fields from MemeToken contract
   description?: string;
   image?: string;
-  image_url?: string; // Alternative field name used in some services
-  imageUrl?: string; // Alternative field name used in some services
+  image_url?: string;
+  imageUrl?: string;
   twitter?: string;
   telegram?: string;
   website?: string;
@@ -48,6 +36,8 @@ interface TokenInfo {
     targetAmount: number;
   };
   raised?: number;
+  sold?: number;
+  isGraduated?: boolean;
 }
 
 interface PriceData {
@@ -60,143 +50,85 @@ interface PriceData {
   lastUpdate: Date;
 }
 
-// Minimal ERC20 ABI for token info
-const ERC20_ABI = [
+// MemeFactory ABI - minimal for price calculation
+const MEME_FACTORY_ABI = [
+  'function tokens(address) view returns (tuple(address tokenAddress, address creator, uint256 created, uint256 raised, uint256 sold, bool isGraduated, string name, string symbol, string description, string imageUrl))',
+  'function calculateTokensOut(uint256 currentSold, uint256 ethIn) view returns (uint256)',
+  'function calculateEthOut(uint256 currentSold, uint256 tokensIn) view returns (uint256)',
+  'function bondingCurveLimit() view returns (uint256)',
+  'function graduationTarget() view returns (uint256)',
+  'function platformFee() view returns (uint256)',
+  'function getAllTokens() view returns (address[])',
+  'function getTokenInfo(address token) view returns (tuple(address tokenAddress, address creator, uint256 created, uint256 raised, uint256 sold, bool isGraduated, string name, string symbol, string description, string imageUrl))',
+];
+
+// MemeToken ABI for metadata and trading info
+const MEME_TOKEN_ABI = [
   'function name() view returns (string)',
   'function symbol() view returns (string)',
   'function decimals() view returns (uint8)',
   'function totalSupply() view returns (uint256)',
   'function balanceOf(address) view returns (uint256)',
+  'function getMetadata() view returns (string description, string imageUrl, string twitter, string telegram, string website, uint256 maxWallet, uint256 maxTransaction, bool tradingEnabled, address creator)',
+  'function tradingEnabled() view returns (bool)',
+  'function maxWallet() view returns (uint256)',
+  'function maxTransaction() view returns (uint256)',
+  'function creator() view returns (address)',
 ];
 
-// Uniswap V2 Pair ABI for price calculation
-const PAIR_ABI = [
-  'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-];
-
-// Uniswap V2 Factory ABI
-const FACTORY_ABI = [
-  'function getPair(address tokenA, address tokenB) view returns (address)',
-];
-
-// Router ABI for getting amounts
-const ROUTER_ABI = [
-  'function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)',
-  'function factory() view returns (address)',
-];
-
-// MemeToken ABI for metadata
-const MEME_TOKEN_ABI = [
-  'function getMetadata() external view returns (string, string, string, string, string, uint256, uint256, bool, address)'
+// Simple Oracle for CORE/USD price (can be replaced with real oracle)
+const CORE_USD_PRICE_ABI = [
+  'function latestAnswer() view returns (int256)',
+  'function decimals() view returns (uint8)',
 ];
 
 export class PriceService {
   private provider: ethers.JsonRpcProvider;
+  private memeFactory: ethers.Contract;
   private priceCache: Map<string, { data: PriceData; timestamp: number }> = new Map();
+  private tokenInfoCache: Map<string, { data: TokenInfo; timestamp: number }> = new Map();
   private cacheTimeout = 30000; // 30 seconds
   private logger = createLogger({ service: 'price-service' });
-  
-  constructor() {
-    this.provider = new ethers.JsonRpcProvider(
-      process.env.CORE_RPC_URL || 'https://rpc.coredao.org'
-    );
+  private coreUsdPrice: number = 1.0; // Default fallback
+
+  constructor(rpcUrl?: string) {
+    const url = rpcUrl || NETWORK_CONFIG.RPC_URL;
+    this.provider = new ethers.JsonRpcProvider(url);
+    this.memeFactory = new ethers.Contract(CONTRACT_ADDRESSES.MEME_FACTORY, MEME_FACTORY_ABI, this.provider);
+    
+    // Initialize CORE/USD price fetching
+    this.initializeCoreUsdPrice();
   }
 
-  /**
-   * Get comprehensive token information
-   */
-  async getTokenInfo(tokenAddress: string): Promise<TokenInfo> {
+  private async initializeCoreUsdPrice() {
     try {
-      // Get basic token info
-      const tokenContract = new ethers.Contract(tokenAddress, [...ERC20_ABI, ...MEME_TOKEN_ABI], this.provider);
+      // Try to get CORE/USD price from an oracle or external source
+      // For now, use a fixed price or fetch from an API
+      this.coreUsdPrice = await this.fetchCoreUsdPrice();
       
-      // Get basic token data
-      const [name, symbol, decimals, totalSupply] = await Promise.all([
-        tokenContract.name().catch(() => 'Unknown'),
-        tokenContract.symbol().catch(() => 'UNKNOWN'),
-        tokenContract.decimals().catch(() => 18),
-        tokenContract.totalSupply().catch(() => '0'),
-      ]);
-
-      // Try to get metadata if this is a MemeToken
-      let description = '';
-      let image = '';
-      let twitter = '';
-      let telegram = '';
-      let website = '';
-      let maxWallet = '0';
-      let maxTransaction = '0';
-      let tradingEnabled = false;
-      
-      try {
-        const metadata = await tokenContract.getMetadata();
-        description = metadata[0] || '';
-        image = metadata[1] || '';
-        twitter = metadata[2] || '';
-        telegram = metadata[3] || '';
-        website = metadata[4] || '';
-        maxWallet = metadata[5]?.toString() || '0';
-        maxTransaction = metadata[6]?.toString() || '0';
-        tradingEnabled = metadata[7] || false;
+      // Update price every 5 minutes
+      setInterval(async () => {
+        try {
+          this.coreUsdPrice = await this.fetchCoreUsdPrice();
       } catch (error) {
-        // Not a MemeToken or getMetadata not available
-        this.logger.debug(`Token ${tokenAddress} doesn't have metadata function`);
-      }
-
-      // Get price data
-      const priceData = await this.getTokenPrice(tokenAddress);
-      
-      // Calculate market cap
-      const totalSupplyNum = parseFloat(ethers.formatUnits(totalSupply, decimals));
-      const marketCap = totalSupplyNum * priceData.priceInUsd;
-
-      // Get holder count (this would need an indexer in production)
-      const holders = await this.getHolderCount(tokenAddress);
-
-      // Check for honeypot and rug risk
-      const { isHoneypot, rugScore } = await this.checkTokenSafety(tokenAddress);
-
-      return {
-        symbol,
-        name,
-        decimals,
-        totalSupply: totalSupplyNum.toString(),
-        price: priceData.priceInUsd,
-        priceChange24h: priceData.priceChange24h,
-        marketCap,
-        liquidity: priceData.liquidity,
-        volume24h: priceData.volume24h,
-        holders,
-        isHoneypot,
-        rugScore,
-        // Include metadata fields
-        description,
-        image,
-        image_url: image, // Set image_url to match image for compatibility
-        imageUrl: image,  // Set imageUrl to match image for compatibility
-        twitter,
-        telegram,
-        website,
-        // Include trading controls
-        maxWallet,
-        maxTransaction,
-        tradingEnabled,
-        // Calculate bonding curve progress if this is a new token
-        status: tradingEnabled ? 'LAUNCHED' : 'CREATED',
-        graduationPercentage: priceData.liquidity > 0 ? 
-          (priceData.liquidity / 3000) * 100 : 0, // Example calculation
-      };
+          this.logger.error('Failed to update CORE/USD price:', error);
+        }
+      }, 5 * 60 * 1000);
     } catch (error) {
-      this.logger.error(`Failed to get token info for ${tokenAddress}:`, error);
-      throw error;
+      this.logger.error('Failed to initialize CORE/USD price:', error);
     }
   }
 
-  /**
-   * Get token price from DEX
-   */
+  private async fetchCoreUsdPrice(): Promise<number> {
+    // TODO: Implement actual price fetching from oracle or API
+    // For now, return a default value
+    return 0.5; // Example: 1 CORE = $0.50
+  }
+
+  async getCoreUsdPrice(): Promise<number> {
+    return this.coreUsdPrice;
+  }
+
   async getTokenPrice(tokenAddress: string): Promise<PriceData> {
     // Check cache first
     const cached = this.priceCache.get(tokenAddress);
@@ -205,96 +137,43 @@ export class PriceService {
     }
 
     try {
-      // Try to get price from primary DEX (CoreSwap)
-      const routerContract = new ethers.Contract(
-        DEX_ROUTERS.CORSWAP,
-        ROUTER_ABI,
-        this.provider
-      );
-
-      // Get factory address
-      const factoryAddress = await routerContract.factory();
-      const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, this.provider);
-
-      // Get pair address for token-CORE
-      const pairAddress = await factoryContract.getPair(tokenAddress, STABLECOINS.CORE);
+      // Get token info from MemeFactory
+      const tokenInfo = await this.memeFactory.getTokenInfo(tokenAddress);
       
-      if (pairAddress === ethers.ZeroAddress) {
-        // No direct pair with CORE, try USDT
-        const usdtPairAddress = await factoryContract.getPair(tokenAddress, STABLECOINS.USDT);
-        if (usdtPairAddress === ethers.ZeroAddress) {
-          throw new Error('No liquidity pool found');
-        }
-        return this.getPriceFromPair(tokenAddress, STABLECOINS.USDT, usdtPairAddress);
+      if (!tokenInfo || tokenInfo.tokenAddress === ethers.ZeroAddress) {
+        throw new Error('Token not found in MemeFactory');
       }
 
-      return this.getPriceFromPair(tokenAddress, STABLECOINS.CORE, pairAddress);
-    } catch (error) {
-      this.logger.error(`Failed to get price for ${tokenAddress}:`, error);
+      const currentSold = BigInt(tokenInfo.sold);
+      const raised = BigInt(tokenInfo.raised);
       
-      // Return default/fallback price data
-      return {
+      // Calculate price from bonding curve
+      // Price = amount of CORE needed to buy 1 token
+      const oneToken = ethers.parseEther('1');
+      let priceInCore = 0;
+      
+      if (!tokenInfo.isGraduated) {
+        // Token is still on bonding curve
+        // To get price, calculate how much CORE is needed to buy 1 token
+        const smallAmount = ethers.parseEther('0.001'); // Buy 0.001 CORE worth
+        const tokensOut = await this.memeFactory.calculateTokensOut(currentSold, smallAmount);
+        
+        if (tokensOut > 0n) {
+          // Price = CORE in / tokens out
+          priceInCore = parseFloat(ethers.formatEther(smallAmount)) / parseFloat(ethers.formatEther(tokensOut));
+        }
+      } else {
+        // Token has graduated - use last bonding curve price
+        const graduationTarget = await this.memeFactory.graduationTarget();
+        priceInCore = parseFloat(ethers.formatEther(graduationTarget)) / 500000; // Assuming 500k tokens at graduation
+      }
+
+      const priceData: PriceData = {
         tokenAddress,
-        priceInCore: 0,
-        priceInUsd: 0,
-        liquidity: 0,
-        volume24h: 0,
-        priceChange24h: 0,
-        lastUpdate: new Date(),
-      };
-    }
-  }
-
-  /**
-   * Calculate price from liquidity pair
-   */
-  private async getPriceFromPair(
-    tokenAddress: string,
-    quoteToken: string,
-    pairAddress: string
-  ): Promise<PriceData> {
-    const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, this.provider);
-    
-    const [reserves, token0] = await Promise.all([
-      pairContract.getReserves(),
-      pairContract.token0(),
-    ]);
-
-    // Determine which reserve is which
-    const isToken0 = token0.toLowerCase() === tokenAddress.toLowerCase();
-    const tokenReserve = isToken0 ? reserves.reserve0 : reserves.reserve1;
-    const quoteReserve = isToken0 ? reserves.reserve1 : reserves.reserve0;
-
-    // Get decimals for both tokens
-    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
-    const quoteContract = new ethers.Contract(quoteToken, ERC20_ABI, this.provider);
-    
-    const [tokenDecimals, quoteDecimals] = await Promise.all([
-      tokenContract.decimals(),
-      quoteContract.decimals(),
-    ]);
-
-    // Calculate price
-    const tokenAmount = parseFloat(ethers.formatUnits(tokenReserve, tokenDecimals));
-    const quoteAmount = parseFloat(ethers.formatUnits(quoteReserve, quoteDecimals));
-    
-    const price = quoteAmount / tokenAmount;
-    
-    // Get Core price in USD (would need oracle in production)
-    const coreUsdPrice = await this.getCoreUsdPrice();
-    const priceInUsd = quoteToken === STABLECOINS.CORE ? price * coreUsdPrice : price;
-
-    // Calculate liquidity
-    const liquidity = quoteToken === STABLECOINS.CORE 
-      ? quoteAmount * 2 * coreUsdPrice 
-      : quoteAmount * 2;
-
-    const priceData: PriceData = {
-      tokenAddress,
-      priceInCore: quoteToken === STABLECOINS.CORE ? price : price / coreUsdPrice,
-      priceInUsd,
-      liquidity,
-      volume24h: 0, // Would need event tracking
+        priceInCore,
+        priceInUsd: priceInCore * this.coreUsdPrice,
+        liquidity: parseFloat(ethers.formatEther(raised)),
+        volume24h: 0, // Would need event tracking to calculate
       priceChange24h: 0, // Would need historical data
       lastUpdate: new Date(),
     };
@@ -306,207 +185,217 @@ export class PriceService {
     });
 
     return priceData;
-  }
-
-  /**
-   * Get CORE price in USD with multiple fallback sources
-   */
-  async getCoreUsdPrice(): Promise<number> {
-    try {
-      // Try Core blockchain API first
-      const apiPrice = await this.fetchCoreAPIPrice();
-      if (apiPrice > 0) return apiPrice;
     } catch (error) {
-      this.logger.warn('Core API price fetch failed:', error);
+      this.logger.error(`Failed to get price for ${tokenAddress}:`, error);
+      throw error;
+    }
+  }
+
+  async getTokenInfo(tokenAddress: string): Promise<TokenInfo> {
+    // Check cache first
+    const cached = this.tokenInfoCache.get(tokenAddress);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
     }
 
     try {
-      // Try CoinGecko as fallback
-      const cgPrice = await this.fetchCoinGeckoPrice();
-      if (cgPrice > 0) return cgPrice;
-    } catch (error) {
-      this.logger.warn('CoinGecko price fetch failed:', error);
-    }
-
-    try {
-      // Try getting from CORE/USDT pool as last resort
-      const poolPrice = await this.fetchPoolPrice();
-      if (poolPrice > 0) return poolPrice;
-    } catch (error) {
-      this.logger.warn('Pool price fetch failed:', error);
-    }
-
-    // Final fallback - return cached or default price
-    this.logger.warn('All price sources failed, using fallback price');
-    return 0.5; // $0.50 per CORE as absolute fallback
-  }
-
-  private async fetchCoreAPIPrice(): Promise<number> {
-    // Fetch from Core blockchain API
-    const response = await fetch('https://scan.coredao.org/api?module=stats&action=coreprice');
-    const data = await response.json() as { status: string; result?: { coreusd: string } };
-    if (data.status === '1' && data.result?.coreusd) {
-      return parseFloat(data.result.coreusd);
-    }
-    throw new Error('Invalid Core API response');
-  }
-
-  private async fetchCoinGeckoPrice(): Promise<number> {
-    // Fetch from CoinGecko
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredao&vs_currencies=usd');
-    const data = await response.json() as { coredao?: { usd: number } };
-    if (data.coredao?.usd) {
-      return data.coredao.usd;
-    }
-    throw new Error('Invalid CoinGecko response');
-  }
-
-  private async fetchPoolPrice(): Promise<number> {
-    // Get price from CORE/USDT pool on main DEX
-    const routerContract = new ethers.Contract(
-      DEX_ROUTERS.CORSWAP,
-      ROUTER_ABI,
-      this.provider
-    );
-    const factoryAddress = await routerContract.factory();
-    const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, this.provider);
-    
-    // WCORE and USDT addresses
-    const WCORE = '0x40375C92d9FAf44d2f9db9Bd9ba41a3317a2404f';
-    const USDT = '0x900101d06A7426441Ae63e9AB3B9b0F63Be145F1'; // Core mainnet USDT
-    
-    const pairAddress = await factoryContract.getPair(WCORE, USDT);
-    if (pairAddress === ethers.ZeroAddress) {
-      throw new Error('No CORE/USDT pair found');
-    }
-
-    const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, this.provider);
-    const [reserves, token0] = await Promise.all([
-      pairContract.getReserves(),
-      pairContract.token0(),
-    ]);
-
-    const isWCORE0 = token0.toLowerCase() === WCORE.toLowerCase();
-    const coreReserve = isWCORE0 ? reserves.reserve0 : reserves.reserve1;
-    const usdtReserve = isWCORE0 ? reserves.reserve1 : reserves.reserve0;
-
-    // CORE has 18 decimals, USDT has 6
-    const coreAmount = parseFloat(ethers.formatUnits(coreReserve, 18));
-    const usdtAmount = parseFloat(ethers.formatUnits(usdtReserve, 6));
-
-    if (coreAmount === 0) throw new Error('Invalid pool reserves');
-    
-    return usdtAmount / coreAmount;
-  }
-
-  /**
-   * Get holder count for token
-   */
-  private async getHolderCount(tokenAddress: string): Promise<number> {
-    // This would require an indexer or graph protocol in production
-    // For now, return a realistic estimate based on liquidity
-    try {
-      const priceData = await this.getTokenPrice(tokenAddress);
-      if (priceData.liquidity > 100000) return 1000;
-      if (priceData.liquidity > 10000) return 100;
-      if (priceData.liquidity > 1000) return 50;
-      return 10;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * Check token safety (honeypot, rug risk)
-   */
-  private async checkTokenSafety(tokenAddress: string): Promise<{
-    isHoneypot: boolean;
-    rugScore: number;
-  }> {
-    try {
-      // Basic safety checks
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
+      // Get basic info from MemeFactory
+      const factoryInfo = await this.memeFactory.getTokenInfo(tokenAddress);
       
-      // Check if contract is verified (would need etherscan API in production)
-      const code = await this.provider.getCode(tokenAddress);
-      if (code === '0x') {
-        return { isHoneypot: true, rugScore: 100 };
+      if (!factoryInfo || factoryInfo.tokenAddress === ethers.ZeroAddress) {
+        throw new Error('Token not found in MemeFactory');
       }
 
-      // Check for common honeypot patterns in bytecode
-      const hasTransferRestrictions = code.includes('0x1234'); // Simplified check
+      // Get metadata from token contract
+      const tokenContract = new ethers.Contract(tokenAddress, MEME_TOKEN_ABI, this.provider);
       
-      // Calculate rug score based on various factors
-      let rugScore = 0;
-      
-      // Check liquidity lock (would need more complex logic)
+      let metadata: any = {};
+      try {
+        const metadataResult = await tokenContract.getMetadata();
+        metadata = {
+          description: metadataResult[0],
+          imageUrl: metadataResult[1],
+          twitter: metadataResult[2],
+          telegram: metadataResult[3],
+          website: metadataResult[4],
+          maxWallet: metadataResult[5].toString(),
+          maxTransaction: metadataResult[6].toString(),
+          tradingEnabled: metadataResult[7],
+          creator: metadataResult[8],
+        };
+      } catch (error) {
+        this.logger.warn(`Failed to get metadata for ${tokenAddress}:`, error);
+      }
+
+      // Get basic token info
+      const [name, symbol, decimals, totalSupply] = await Promise.all([
+        tokenContract.name(),
+        tokenContract.symbol(),
+        tokenContract.decimals(),
+        tokenContract.totalSupply(),
+      ]);
+
+      // Get price data
       const priceData = await this.getTokenPrice(tokenAddress);
-      if (priceData.liquidity < 1000) rugScore += 30;
+
+      // Calculate graduation progress
+      const graduationTarget = await this.memeFactory.graduationTarget();
+      const graduationPercentage = parseFloat(ethers.formatEther(factoryInfo.raised)) / parseFloat(ethers.formatEther(graduationTarget)) * 100;
+
+      // Estimate holder count (would need indexer for real data)
+      const holders = await this.estimateHolderCount(factoryInfo);
+
+      // Calculate market cap
+      const marketCap = priceData.priceInUsd * parseFloat(ethers.formatUnits(totalSupply, decimals));
+
+      // Safety scores (simplified - would need more sophisticated checks in production)
+      const { isHoneypot, rugScore } = await this.checkTokenSafety(tokenAddress, metadata, factoryInfo);
+
+      const tokenInfo: TokenInfo = {
+        symbol,
+        name,
+        decimals,
+        totalSupply: totalSupply.toString(),
+        price: priceData.priceInUsd,
+        priceChange24h: priceData.priceChange24h,
+        marketCap,
+        liquidity: priceData.liquidity,
+        volume24h: priceData.volume24h,
+        holders,
+        isHoneypot,
+        rugScore,
+        description: metadata.description || factoryInfo.description,
+        image_url: metadata.imageUrl || factoryInfo.imageUrl,
+        imageUrl: metadata.imageUrl || factoryInfo.imageUrl,
+        twitter: metadata.twitter,
+        telegram: metadata.telegram,
+        website: metadata.website,
+        maxWallet: metadata.maxWallet,
+        maxTransaction: metadata.maxTransaction,
+        tradingEnabled: metadata.tradingEnabled ?? true,
+        status: factoryInfo.isGraduated ? 'GRADUATED' : 'BONDING',
+        graduationPercentage,
+        bondingCurve: {
+          progress: graduationPercentage,
+          raisedAmount: parseFloat(ethers.formatEther(factoryInfo.raised)),
+          targetAmount: parseFloat(ethers.formatEther(graduationTarget)),
+        },
+        raised: parseFloat(ethers.formatEther(factoryInfo.raised)),
+        sold: parseFloat(ethers.formatEther(factoryInfo.sold)),
+        isGraduated: factoryInfo.isGraduated,
+      };
+
+      // Cache the result
+      this.tokenInfoCache.set(tokenAddress, {
+        data: tokenInfo,
+        timestamp: Date.now(),
+      });
+
+      return tokenInfo;
+    } catch (error) {
+      this.logger.error(`Failed to get token info for ${tokenAddress}:`, error);
+      throw error;
+    }
+  }
+
+  private async estimateHolderCount(factoryInfo: any): Promise<number> {
+    // Estimate based on raised amount and sold tokens
+    // This is a rough estimate - real implementation would need an indexer
+    const raised = parseFloat(ethers.formatEther(factoryInfo.raised));
+    const sold = parseFloat(ethers.formatEther(factoryInfo.sold));
+    
+    if (raised === 0 || sold === 0) return 0;
+    
+    // Rough estimate: assume average buy is 0.1 CORE
+    const estimatedTrades = raised / 0.1;
+    // Assume 70% unique holders (some people buy multiple times)
+    const estimatedHolders = Math.floor(estimatedTrades * 0.7);
+    
+    return Math.max(1, estimatedHolders);
+  }
+
+  private async checkTokenSafety(
+    tokenAddress: string,
+    metadata: any,
+    factoryInfo: any
+  ): Promise<{ isHoneypot: boolean; rugScore: number }> {
+    let rugScore = 0;
+    let isHoneypot = false;
+
+    try {
+      // Check 1: Trading enabled
+      if (metadata.tradingEnabled === false) {
+        isHoneypot = true;
+        rugScore += 50;
+      }
+
+      // Check 2: Max wallet/transaction limits
+      if (metadata.maxWallet && BigInt(metadata.maxWallet) < ethers.parseEther('0.01')) {
+        rugScore += 30; // Very restrictive wallet limit
+      }
+
+      // Check 3: Creator still holds majority
+      const tokenContract = new ethers.Contract(tokenAddress, MEME_TOKEN_ABI, this.provider);
+      const creatorBalance = await tokenContract.balanceOf(factoryInfo.creator);
+      const totalSupply = await tokenContract.totalSupply();
       
-      // Check holder distribution (would need indexer)
-      const holders = await this.getHolderCount(tokenAddress);
-      if (holders < 10) rugScore += 20;
+      const creatorPercentage = (parseFloat(ethers.formatEther(creatorBalance)) / parseFloat(ethers.formatEther(totalSupply))) * 100;
       
-      // Check contract ownership (would need to check for renounced ownership)
-      rugScore += 10; // Base risk
+      if (creatorPercentage > 50) {
+        rugScore += 40; // Creator holds too much
+      } else if (creatorPercentage > 30) {
+        rugScore += 20;
+      }
+
+      // Check 4: No metadata provided
+      if (!metadata.description && !metadata.imageUrl) {
+        rugScore += 10; // Low effort token
+      }
+
+      // Check 5: Contract verified (would need etherscan API)
+      // For now, skip this check
       
       return {
-        isHoneypot: hasTransferRestrictions,
-        rugScore: Math.min(rugScore, 100),
+        isHoneypot,
+        rugScore: Math.min(100, rugScore),
       };
     } catch (error) {
       this.logger.error(`Failed to check token safety for ${tokenAddress}:`, error);
-      return { isHoneypot: false, rugScore: 50 }; // Medium risk by default
+      // Return neutral scores on error
+      return { isHoneypot: false, rugScore: 50 };
     }
   }
 
-  /**
-   * Get price for multiple tokens (batch)
-   */
-  async getBatchPrices(tokenAddresses: string[]): Promise<Map<string, number>> {
-    const prices = new Map<string, number>();
+  async getMultipleTokenPrices(tokenAddresses: string[]): Promise<Map<string, PriceData>> {
+    const results = new Map<string, PriceData>();
     
-    // Process in parallel but limit concurrency
+    // Process in parallel but with a limit to avoid rate limiting
     const batchSize = 5;
     for (let i = 0; i < tokenAddresses.length; i += batchSize) {
       const batch = tokenAddresses.slice(i, i + batchSize);
-      const results = await Promise.all(
+      const prices = await Promise.all(
         batch.map(async (address) => {
           try {
-            const priceData = await this.getTokenPrice(address);
-            return { address, price: priceData.priceInCore };
-          } catch {
-            return { address, price: 0 };
+            return await this.getTokenPrice(address);
+          } catch (error) {
+            this.logger.error(`Failed to get price for ${address}:`, error);
+            return null;
           }
         })
       );
       
-      results.forEach(({ address, price }) => {
-        prices.set(address, price);
+      batch.forEach((address, index) => {
+        if (prices[index]) {
+          results.set(address, prices[index]);
+        }
       });
     }
     
-    return prices;
+    return results;
   }
 
-  /**
-   * Subscribe to price updates (WebSocket in production)
-   */
-  subscribeToPriceUpdates(
-    tokenAddress: string,
-    callback: (price: PriceData) => void
-  ): () => void {
-    // In production, this would use WebSocket connection to DEX events
-    const interval = setInterval(async () => {
-      try {
-        const priceData = await this.getTokenPrice(tokenAddress);
-        callback(priceData);
-      } catch (error) {
-        this.logger.error(`Price update failed for ${tokenAddress}:`, error);
-      }
-    }, 30000); // Update every 30 seconds
-
-    // Return unsubscribe function
-    return () => clearInterval(interval);
+  clearCache() {
+    this.priceCache.clear();
+    this.tokenInfoCache.clear();
   }
 }

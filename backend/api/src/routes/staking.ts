@@ -2,15 +2,15 @@ import { Router, Request, Response } from 'express';
 import { ethers } from 'ethers';
 import { createLogger, ContractDataService } from '@core-meme/shared';
 import { DatabaseService } from '@core-meme/shared';
-import { WalletService } from '../../services/WalletService';
+import { WalletService } from '@core-meme/shared';
 import { authenticate } from '../middleware/auth';
 
-const router = Router();
+const router: Router = Router();
 const logger = createLogger({ service: 'staking-api' });
 
 // Initialize services
 const db = new DatabaseService();
-const walletService = new WalletService();
+const walletService = new WalletService(db);
 const contractService = new ContractDataService(
   process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network',
   process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
@@ -217,6 +217,13 @@ router.post('/stake', authenticate, async (req: Request, res: Response) => {
       });
     }
     
+    // Check if encrypted private key exists
+    if (!userWallet.encryptedPrivateKey) {
+      return res.status(400).json({
+        error: 'Wallet private key not found'
+      });
+    }
+    
     // Decrypt private key
     const privateKey = await walletService.decryptPrivateKey(
       userWallet.encryptedPrivateKey,
@@ -318,6 +325,13 @@ router.post('/unstake', authenticate, async (req: Request, res: Response) => {
       });
     }
     
+    // Check if encrypted private key exists
+    if (!userWallet.encryptedPrivateKey) {
+      return res.status(400).json({
+        error: 'Wallet private key not found'
+      });
+    }
+    
     // Decrypt private key
     const privateKey = await walletService.decryptPrivateKey(
       userWallet.encryptedPrivateKey,
@@ -398,6 +412,13 @@ router.post('/claim', authenticate, async (req: Request, res: Response) => {
     if (!userWallet) {
       return res.status(400).json({
         error: 'User wallet not found'
+      });
+    }
+    
+    // Check if encrypted private key exists
+    if (!userWallet.encryptedPrivateKey) {
+      return res.status(400).json({
+        error: 'Wallet private key not found'
       });
     }
     
@@ -552,5 +573,62 @@ function getTierFeatures(tier: string): string[] {
   
   return features[tier as keyof typeof features] || features['Free'];
 }
+
+/**
+ * Get minimum stake required for a given tier
+ */
+function getMinStakeForTier(tier: number): number {
+  const minStakes = [0, 1000, 10000, 50000, 100000]; // Free, Bronze, Silver, Gold, Platinum
+  return minStakes[tier] || 0;
+}
+
+/**
+ * GET /staking/:address
+ * Get staking info for an address (frontend compatibility route)
+ * This route matches what the frontend expects
+ */
+router.get('/:address', async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    
+    if (!ethers.isAddress(address)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid address'
+      });
+    }
+
+    // Get staking data from contract
+    const stakingData = await contractService.getUserStakingBenefits(address);
+    
+    // Format response to match frontend expectations
+    const tierNames = ['free', 'bronze', 'silver', 'gold', 'platinum'];
+    const tierName = tierNames[stakingData.tier] || 'free';
+    
+    res.json({
+      success: true,
+      data: {
+        amount: stakingData.userStake,
+        rewardDebt: '0', // Not exposed by contract
+        lastStakeTime: Date.now() - 86400000, // Placeholder
+        totalEarned: stakingData.totalEarned || '0',
+        isPremium: stakingData.isPremium,
+        tier: {
+          name: tierName.charAt(0).toUpperCase() + tierName.slice(1),
+          minStake: getMinStakeForTier(stakingData.tier).toString(),
+          feeDiscount: stakingData.feeDiscount,
+          hasAccess: true
+        },
+        pendingRewards: stakingData.pendingRewards || '0'
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error fetching staking info:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch staking info'
+    });
+  }
+});
 
 export default router;

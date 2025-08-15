@@ -4,10 +4,33 @@
 ![Version](https://img.shields.io/badge/version-2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-Production_Ready-brightgreen)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-@core__dot__fun__bot-blue)](https://t.me/core_dot_fun_bot)
 
 ## 🎯 Overview
 
-Core.fun is a comprehensive DeFi ecosystem built on Core blockchain, revolutionizing meme token creation and trading through advanced bonding curve mechanics, automated market making, and integrated social features. The platform combines Web3 innovation with traditional finance concepts to create a secure, scalable, and user-friendly environment for meme token enthusiasts.
+**Core.Fun** is a comprehensive DeFi ecosystem built on Core blockchain, **inspired by NeoBullX's innovative approach** to meme token trading. We revolutionize meme token creation and trading through advanced bonding curve mechanics, automated market making, and **full Telegram bot integration**. 
+
+What sets us apart: **Complete trading functionality inside Telegram** - users never need to leave their chat app to create tokens, trade, stake, or copy successful traders.
+
+**🤖 Try our Telegram Bot**: [@core_dot_fun_bot](https://t.me/core_dot_fun_bot)
+
+## 📸 Platform Screenshots
+
+<div align="center">
+
+### 🏠 Landing Page & Hero Section
+![Hero Section](Images/hero.png)
+
+### 🎯 Why Choose Core.Fun
+![Why Choose Us](Images/whychoose.png)
+
+### 🏆 Platform Milestones
+![Milestones](Images/milestone.png)
+
+### 🤖 Telegram Bot Integration
+![Telegram Bot](Images/telegram.png)
+
+</div>
 
 ## 🌟 Key Features
 
@@ -41,13 +64,15 @@ Core.fun is a comprehensive DeFi ecosystem built on Core blockchain, revolutioni
 - **Market Sentiment**: Social sentiment analysis
 - **Platform Metrics**: Total value locked, volume, and user stats
 
-### 🤖 Telegram Bot Integration
+### 🤖 Telegram Bot Integration - **[@core_dot_fun_bot](https://t.me/core_dot_fun_bot)**
+**Inspired by NeoBullX's approach, bringing DeFi to chat:**
 - **Full Trading Interface**: Complete trading without leaving Telegram
-- **Custodial Wallet System**: Secure wallet management
-- **Instant Notifications**: Price alerts and trade notifications
-- **Copy Trading Bots**: Automated trading strategies with tier-based slots
-- **Group Features**: Token launches in Telegram groups
-- **Premium Features**: Advanced trading tools for premium users
+- **Custodial Wallet System**: Secure wallet management with /wallet commands
+- **Copy Trading Commands**: `/copytrade`, `/copystop`, `/copylist`, `/toptraders`
+- **Staking Integration**: `/stake`, `/unstake`, `/tiers` - all tier management in chat
+- **Real-time Notifications**: Price alerts, trade confirmations, copy trade notifications
+- **Token Operations**: Create, buy, sell tokens directly in Telegram
+- **Portfolio Management**: `/portfolio`, `/balance`, `/trades` for complete overview
 
 ### 🔐 Security & Infrastructure
 - **Multi-Signature Wallets**: Enhanced security for platform funds

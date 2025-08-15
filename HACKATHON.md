@@ -59,9 +59,14 @@ graph TB
 
 ## 🎮 Live Demo
 
-**Frontend**: [Core.Fun Platform](https://github.com/Blockchain-Oracle/Core.Fun)
-**Contracts**: `0x0eeF9597a9B231b398c29717e2ee89eF6962b784` (Core Testnet)
-**Bot**: Search `@CoreFunBot` on Telegram
+**Frontend**: [Core.Fun Platform](https://github.com/Blockchain-Oracle/Core.Fun)  
+**Telegram Bot**: [@core_dot_fun_bot](https://t.me/core_dot_fun_bot)
+
+### 🔗 Smart Contracts (Core Testnet)
+| Contract | Address |
+|----------|---------|
+| **MemeFactory** | [`0x0eeF9597a9B231b398c29717e2ee89eF6962b784`](https://scan.test.btcs.network/address/0x0eeF9597a9B231b398c29717e2ee89eF6962b784) |
+| **Staking** | [`0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa`](https://scan.test.btcs.network/address/0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa) |
 
 ```bash
 # Quick Start

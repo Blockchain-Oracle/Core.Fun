@@ -384,6 +384,52 @@ core-meme-platform/
 └── docker-compose.yml              # Docker orchestration
 ```
 
+## ⛓️ Smart Contracts & Addresses
+
+### Core Testnet Deployment (Chain ID: 1114)
+
+<div align="center">
+
+| 🏷️ Contract | 📍 Address | 🔍 Explorer | 📋 Description |
+|-------------|------------|-------------|-----------------|
+| **🏭 MemeFactory** | [`0x0eeF9597a9B231b398c29717e2ee89eF6962b784`](https://scan.test.btcs.network/address/0x0eeF9597a9B231b398c29717e2ee89eF6962b784) | [View Contract](https://scan.test.btcs.network/address/0x0eeF9597a9B231b398c29717e2ee89eF6962b784) | Token factory with bonding curves |
+| **🥩 Staking Contract** | [`0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa`](https://scan.test.btcs.network/address/0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa) | [View Contract](https://scan.test.btcs.network/address/0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa) | Tier-based staking & rewards |
+| **🪙 Platform Token** | [`0x26EfC13dF039c6B4E084CEf627a47c348197b655`](https://scan.test.btcs.network/address/0x26EfC13dF039c6B4E084CEf627a47c348197b655) | [View Contract](https://scan.test.btcs.network/address/0x26EfC13dF039c6B4E084CEf627a47c348197b655) | Core.Fun governance token |
+| **🏛️ Treasury** | [`0xe397a72377F43645Cd4DA02d709c378df6e9eE5a`](https://scan.test.btcs.network/address/0xe397a72377F43645Cd4DA02d709c378df6e9eE5a) | [View Contract](https://scan.test.btcs.network/address/0xe397a72377F43645Cd4DA02d709c378df6e9eE5a) | Platform revenue & fees |
+| **👷 Deployer** | [`0xe397a72377F43645Cd4DA02d709c378df6e9eE5a`](https://scan.test.btcs.network/address/0xe397a72377F43645Cd4DA02d709c378df6e9eE5a) | [View Address](https://scan.test.btcs.network/address/0xe397a72377F43645Cd4DA02d709c378df6e9eE5a) | Contract deployer wallet |
+
+</div>
+
+### 🌐 Network Information
+
+```mermaid
+graph LR
+    subgraph "🌐 Core Testnet"
+        A[Chain ID: 1114]
+        B[RPC: https://1114.rpc.thirdweb.com]
+        C[Explorer: scan.test.btcs.network]
+    end
+    
+    subgraph "📋 Contract Addresses"
+        D[🏭 MemeFactory<br/>0x0eeF...b784]
+        E[🥩 Staking<br/>0x3e3E...7ECa]
+        F[🪙 Platform Token<br/>0x26Ef...b655]
+        G[🏛️ Treasury<br/>0xe397...eE5a]
+    end
+    
+    A --> D
+    B --> E
+    C --> F
+    A --> G
+    
+    style D fill:#ff6b6b,stroke:#333,stroke-width:2px
+    style E fill:#4ecdc4,stroke:#333,stroke-width:2px
+    style F fill:#feca57,stroke:#333,stroke-width:2px
+    style G fill:#45b7d1,stroke:#333,stroke-width:2px
+```
+
+**📅 Deployed**: August 14, 2025 | **🔗 Network**: [Core Testnet](https://scan.test.btcs.network/) | **⛽ Gas Token**: CORE
+
 ## 🚀 Quick Start
 
 ### Prerequisites

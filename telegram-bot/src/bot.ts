@@ -426,7 +426,7 @@ class CoreMemeBot {
     });
 
     // Copy Trading callbacks
-    this.bot.action('copytrade_menu', authMiddleware, async (ctx) => {
+    this.bot.action('copy_trading_menu', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.tradingCommands.handleCopyTradeMenu(ctx);
     });
@@ -450,7 +450,7 @@ class CoreMemeBot {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('🔙 Cancel', 'copytrade_menu')]
+            [Markup.button.callback('🔙 Cancel', 'copy_trading_menu')]
           ])
         }
       );

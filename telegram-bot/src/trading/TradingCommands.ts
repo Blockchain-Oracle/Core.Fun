@@ -843,4 +843,120 @@ export class TradingCommands {
       reply_markup: { inline_keyboard: keyboard },
     });
   }
+
+  /**
+   * Copy Trading Methods
+   */
+  async handleCopyTradeMenu(ctx: BotContext): Promise<void> {
+    await ctx.reply(
+      '🤝 *Copy Trading*\n\n' +
+      'Copy successful traders automatically!\n\n' +
+      '• Start copying: `/copytrade <wallet>`\n' +
+      '• Stop copying: `/copystop <wallet>`\n' +
+      '• View active: `/copylist`\n' +
+      '• Top traders: `/toptraders`\n' +
+      '• Analyze wallet: `/analyze <wallet>`\n\n' +
+      '⚡ Copy slots based on staking tier:\n' +
+      '• Bronze: 1 slot\n' +
+      '• Silver: 3 slots\n' +
+      '• Gold: 5 slots\n' +
+      '• Platinum: 10 slots',
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🏆 View Top Traders', 'view_toptraders')],
+          [Markup.button.callback('📋 My Copy Trades', 'view_following')],
+          [Markup.button.callback('🔙 Back', 'trade_menu')]
+        ])
+      }
+    );
+  }
+
+  async showFollowing(ctx: BotContext): Promise<void> {
+    await ctx.reply(
+      '📋 *Your Copy Trades*\n\n' +
+      'Use `/copylist` command to view your active copy trades.\n\n' +
+      'Or use the dedicated copy trading commands:\n' +
+      '• `/copytrade <wallet>` - Start copying\n' +
+      '• `/copystop <wallet>` - Stop copying',
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'copy_trading_menu')]
+        ])
+      }
+    );
+  }
+
+  async showTopTraders(ctx: BotContext): Promise<void> {
+    await ctx.reply(
+      '🏆 *Top Traders*\n\n' +
+      'Use `/toptraders` command to view the best performing traders.\n\n' +
+      'You can also analyze any wallet with:\n' +
+      '• `/analyze <wallet>` - View performance stats',
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'copy_trading_menu')]
+        ])
+      }
+    );
+  }
+
+  async followWallet(ctx: BotContext, wallet: string): Promise<void> {
+    await ctx.reply(
+      `🤝 *Follow Wallet*\n\n` +
+      `Wallet: \`${wallet}\`\n\n` +
+      `Use \`/copytrade ${wallet}\` to start copying this trader.`,
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'copy_trading_menu')]
+        ])
+      }
+    );
+  }
+
+  async unfollowWallet(ctx: BotContext, wallet: string): Promise<void> {
+    await ctx.reply(
+      `🚫 *Unfollow Wallet*\n\n` +
+      `Wallet: \`${wallet}\`\n\n` +
+      `Use \`/copystop ${wallet}\` to stop copying this trader.`,
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'copy_trading_menu')]
+        ])
+      }
+    );
+  }
+
+  async showCopySettings(ctx: BotContext, wallet: string): Promise<void> {
+    await ctx.reply(
+      `⚙️ *Copy Settings*\n\n` +
+      `Wallet: \`${wallet}\`\n\n` +
+      `Copy trading settings will be available in future updates.\n` +
+      `For now, use the basic copy commands.`,
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'copy_trading_menu')]
+        ])
+      }
+    );
+  }
+
+  async showCopyHistory(ctx: BotContext): Promise<void> {
+    await ctx.reply(
+      '📊 *Copy Trading History*\n\n' +
+      'Your copy trading history will be displayed here.\n\n' +
+      'Use `/copylist` to view active copy trades.',
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back', 'copy_trading_menu')]
+        ])
+      }
+    );
+  }
 }

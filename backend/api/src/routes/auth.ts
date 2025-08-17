@@ -48,7 +48,7 @@ router.post('/auth/init', async (req: Request, res: Response) => {
     
     // Generate unique auth code
     const authCode = crypto.randomBytes(32).toString('hex');
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'CoreMemeBot';
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'core_dot_fun_bot';
     
     // Store auth code in Redis with 5 min expiry
     await redis.setex(
@@ -248,6 +248,60 @@ router.post('/auth/callback', async (req: Request, res: Response) => {
         success: false,
         error: 'Token data mismatch',
       });
+    }
+    
+    // Check if user exists and has wallet private key
+    const userKey = `user:id:${decoded.userId}`;
+    let userData = await redis.get(userKey);
+    
+    if (!userData) {
+      // User doesn't exist in Redis, need to create full user data with wallet
+      const telegramKey = `user:telegram:${decoded.telegramId}`;
+      userData = await redis.get(telegramKey);
+      
+      if (!userData) {
+        // Create complete user data with wallet private key
+        const walletData = generateWallet();
+        const newUserData = {
+          id: decoded.userId,
+          telegramId: decoded.telegramId,
+          username: decoded.username,
+          firstName: decoded.username,
+          lastName: '',
+          photoUrl: '',
+          walletAddress: walletData.address,
+          walletPrivateKey: walletData.privateKey, // Store the private key for transactions
+          createdAt: Date.now(),
+          lastLoginAt: Date.now(),
+          subscriptionTier: 'FREE',
+          isActive: true,
+        };
+        
+        // Store user data in both keys
+        await redis.set(userKey, JSON.stringify(newUserData));
+        await redis.set(telegramKey, JSON.stringify(newUserData));
+        
+        logger.info(`Created wallet for user ${decoded.userId} during web callback`);
+      }
+    } else {
+      // Update last login
+      const existingUserData = JSON.parse(userData);
+      
+      // If user exists but doesn't have a private key, generate one
+      if (!existingUserData.walletPrivateKey) {
+        const walletData = generateWallet();
+        existingUserData.walletAddress = walletData.address;
+        existingUserData.walletPrivateKey = walletData.privateKey;
+        existingUserData.lastLoginAt = Date.now();
+        
+        await redis.set(userKey, JSON.stringify(existingUserData));
+        await redis.set(`user:telegram:${decoded.telegramId}`, JSON.stringify(existingUserData));
+        
+        logger.info(`Generated wallet for existing user ${decoded.userId}`);
+      } else {
+        existingUserData.lastLoginAt = Date.now();
+        await redis.set(userKey, JSON.stringify(existingUserData));
+      }
     }
     
     // Create session tokens

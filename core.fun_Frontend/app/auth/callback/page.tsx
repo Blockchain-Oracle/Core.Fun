@@ -23,7 +23,20 @@ function CallbackInner() {
       const username = searchParams.get('username')
       const telegramId = searchParams.get('telegramId')
       const telegramUserId = searchParams.get('telegramUserId')
-      const redirectUrl = searchParams.get('redirectUrl') || '/'
+      // Handle redirectUrl - it might be base64 encoded JSON or a direct path
+      let redirectUrl = '/'
+      const redirectParam = searchParams.get('redirectUrl')
+      if (redirectParam) {
+        try {
+          // Try to decode as base64 JSON first
+          const decoded = atob(redirectParam)
+          const parsed = JSON.parse(decoded)
+          redirectUrl = parsed.redirectUrl || '/'
+        } catch {
+          // If not base64 JSON, use as-is (but ensure it's a valid path)
+          redirectUrl = redirectParam.startsWith('/') ? redirectParam : '/'
+        }
+      }
 
       // Debug logging
       const params = {
@@ -113,7 +126,9 @@ function CallbackInner() {
           setMessage('Authentication successful! Redirecting...')
           
           setTimeout(() => {
-            router.replace(redirectUrl === '/' ? '/' : decodeURIComponent(redirectUrl))
+            // Make sure we're redirecting to a valid path
+            const finalRedirect = redirectUrl && redirectUrl.startsWith('/') ? redirectUrl : '/'
+            router.replace(finalRedirect)
           }, 1500)
         } else {
           setStatus('error')

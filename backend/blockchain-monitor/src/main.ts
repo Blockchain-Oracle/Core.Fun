@@ -54,13 +54,17 @@ class BlockchainMonitorService {
     // Initialize providers
     this.rpcUrl = this.network === 'mainnet'
       ? process.env.CORE_MAINNET_RPC || 'https://rpc.coredao.org'
-      : process.env.CORE_TESTNET_RPC || 'https://1114.rpc.thirdweb.com';
+      : process.env.CORE_TESTNET_RPC || 'https://rpc.test2.btcs.network';
     
     this.wsUrl = this.network === 'mainnet'
       ? process.env.CORE_MAINNET_WS
       : process.env.CORE_TESTNET_WS;
     
-    this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
+    // Create provider with increased timeout
+    this.provider = new ethers.JsonRpcProvider(this.rpcUrl, undefined, {
+      timeout: 30000, // 30 seconds timeout
+      retryCount: 3
+    } as any);
     
     if (this.wsUrl) {
       this.wsProvider = new ethers.WebSocketProvider(this.wsUrl);

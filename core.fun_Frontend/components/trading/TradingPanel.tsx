@@ -16,7 +16,10 @@ import {
   AlertTriangle,
   Loader2,
   Info,
-  Zap
+  Zap,
+  Check,
+  ExternalLink,
+  Send
 } from 'lucide-react'
 import { useAuthStore, useTreasuryStore } from '@/lib/stores'
 import { apiClient } from '@/lib/api'
@@ -42,6 +45,9 @@ export function TradingPanel({
   // Staking removed from platform
   const { calculateFee } = useTreasuryStore()
   
+  // Check if running in Telegram WebApp
+  const isTelegramWebApp = typeof window !== 'undefined' && !!(window as any).Telegram?.WebApp
+  
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy')
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState(5)
@@ -59,6 +65,7 @@ export function TradingPanel({
   const [isExecuting, setIsExecuting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [insufficientReason, setInsufficientReason] = useState<string | null>(null)
 
@@ -143,7 +150,8 @@ export function TradingPanel({
         console.log('[TradingPanel] Wallet info:', walletInfo)
         if (walletInfo.success) {
           const tradeAmount = parseFloat(amount)
-          const userCoreBalance = parseFloat(walletInfo.coreBalance || '0')
+          // Fix: Access balance from data object
+          const userCoreBalance = parseFloat(walletInfo.data?.coreBalance || walletInfo.coreBalance || '0')
 
           if (tradeType === 'buy') {
             if (userCoreBalance < tradeAmount) {
@@ -156,7 +164,9 @@ export function TradingPanel({
               return
             }
           } else {
-            const tokenBalance = walletInfo.tokenBalances?.find((t) =>
+            // Fix: Access tokenBalances from data object
+            const tokenBalances = walletInfo.data?.tokenBalances || walletInfo.tokenBalances || []
+            const tokenBalance = tokenBalances.find((t: any) =>
               (t.token || '').toLowerCase() === tokenAddress.toLowerCase()
             )
             const userTokenBalance = parseFloat(tokenBalance?.balance || '0')
@@ -189,7 +199,8 @@ export function TradingPanel({
       const walletInfo = await apiClient.getWalletInfo()
       console.log('[TradingPanel] handleTrade walletInfo:', walletInfo)
       if (walletInfo.success) {
-        const userCoreBalance = parseFloat(walletInfo.coreBalance || '0')
+        // Fix: Access balance from data object
+        const userCoreBalance = parseFloat(walletInfo.data?.coreBalance || walletInfo.coreBalance || '0')
         const tradeAmount = parseFloat(amount)
         
         if (tradeType === 'buy') {
@@ -225,6 +236,7 @@ export function TradingPanel({
     setIsExecuting(true)
     setError(null)
     setSuccess(null)
+    setTxHash(null)
 
     try {
       let result
@@ -237,14 +249,26 @@ export function TradingPanel({
       }
 
       if (result.success) {
-        setSuccess(`${tradeType === 'buy' ? 'Buy' : 'Sell'} order executed successfully!`)
+        const tokenAmount = quote?.expectedAmount || '0'
+        const successMessage = tradeType === 'buy' 
+          ? `Successfully bought ${parseFloat(tokenAmount).toFixed(2)} ${tokenSymbol} for ${amount} CORE!`
+          : `Successfully sold ${amount} ${tokenSymbol} for ${tokenAmount} CORE!`
+        setSuccess(successMessage)
+        setTxHash((result as any).txHash)
         setAmount('')
         setQuote(null)
+        
+        // Clear success message after 10 seconds
+        setTimeout(() => {
+          setSuccess(null)
+          setTxHash(null)
+        }, 10000)
       } else {
         setError((result as any).error || 'Transaction failed')
       }
     } catch (err) {
-      setError('Transaction failed')
+      console.error('[TradingPanel] Transaction error:', err)
+      setError('Transaction failed. Please try again.')
     } finally {
       setIsExecuting(false)
     }
@@ -274,6 +298,67 @@ export function TradingPanel({
               This token has graduated! Trade it on DEX instead.
             </AlertDescription>
           </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Show Telegram trading prompt for web users
+  if (!isTelegramWebApp) {
+    const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'core_dot_fun_bot'
+    // Pre-fill the message with the token address - the bot will auto-detect and show token preview
+    const deepLink = `https://t.me/${botUsername}?text=${encodeURIComponent(tokenAddress)}`
+    
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Trade {tokenSymbol}</CardTitle>
+            <Badge variant="outline" className="text-xs">
+              Telegram Only
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="bg-orange-500/10 border-orange-500/30">
+            <Send className="h-4 w-4" />
+            <AlertDescription className="space-y-2">
+              <p className="font-medium">Trading is currently available on Telegram only</p>
+              <p className="text-sm text-white/60">
+                Web trading is coming soon! For now, trade this token directly in our Telegram bot.
+              </p>
+            </AlertDescription>
+          </Alert>
+          
+          <div className="bg-white/5 rounded-lg p-4 space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-white/60">Token Address</span>
+              <code className="text-xs">{tokenAddress.slice(0, 6)}...{tokenAddress.slice(-4)}</code>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/60">Current Price</span>
+              <span>{(currentRaised / currentSold).toFixed(6)} CORE</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/60">Progress to Graduation</span>
+              <span>{progress.toFixed(1)}%</span>
+            </div>
+          </div>
+          
+          <a
+            href={deepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-3 rounded-lg transition-all transform hover:scale-[1.02]"
+          >
+            <Send className="h-5 w-5" />
+            <span className="font-medium">Trade on Telegram</span>
+            <ExternalLink className="h-4 w-4" />
+          </a>
+          
+          <p className="text-xs text-center text-white/40">
+            Open in Telegram to buy or sell {tokenSymbol} tokens
+          </p>
         </CardContent>
       </Card>
     )
@@ -389,10 +474,17 @@ export function TradingPanel({
               </div>
             )}
 
-            {isLoadingQuote && (
-              <div className="bg-white/5 rounded-lg p-4 flex items-center justify-center">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span className="text-sm text-white/60">Fetching quote...</span>
+            {isLoadingQuote && amount && parseFloat(amount) > 0 && (
+              <div className="bg-white/5 rounded-lg p-4">
+                <div className="flex items-center justify-center mb-2">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-white/60">Calculating best price...</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-white/5 rounded h-2 animate-pulse" />
+                  <div className="bg-white/5 rounded h-2 animate-pulse" />
+                  <div className="bg-white/5 rounded h-2 animate-pulse" />
+                </div>
               </div>
             )}
 
@@ -437,9 +529,22 @@ export function TradingPanel({
             )}
 
             {success && (
-              <Alert className="bg-orange-500/10 border-orange-500/30">
-                <Info className="h-4 w-4" />
-                <AlertDescription>{success}</AlertDescription>
+              <Alert className="bg-green-500/10 border-green-500/30">
+                <Check className="h-4 w-4 text-green-400" />
+                <AlertDescription className="flex flex-col gap-2">
+                  <span className="font-medium">{success}</span>
+                  {txHash && (
+                    <a 
+                      href={`https://scan.test.btcs.network/tx/${txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-green-400 hover:text-green-300 underline flex items-center gap-1"
+                    >
+                      View transaction
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
 
@@ -451,12 +556,24 @@ export function TradingPanel({
               size="lg"
             >
               {isExecuting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Processing...
-                </>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="flex items-center">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span>Processing Transaction...</span>
+                  </div>
+                  <span className="text-xs opacity-70">Please wait, this may take a moment</span>
+                </div>
               ) : !isAuthenticated ? (
                 'Connect Wallet'
+              ) : !amount || parseFloat(amount) <= 0 ? (
+                'Enter Amount'
+              ) : isLoadingQuote ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Getting Quote...
+                </>
+              ) : insufficientReason ? (
+                'Insufficient Balance'
               ) : (
                 <>
                   {tradeType === 'buy' ? (

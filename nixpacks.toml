@@ -9,14 +9,14 @@ aptPkgs = ['python3', 'make', 'g++', 'git']
 [phases.install]
 # Install all workspace dependencies and build shared library
 cmds = [
-  'pnpm install --frozen-lockfile',
+  'pnpm install',
   'pnpm --filter @core-meme/shared build'
 ]
 
 [phases.build]
 # Build all services using Turborepo for optimal caching
 cmds = [
-  'pnpm build',
+  'npx turbo run build',
   'mkdir -p logs',
   'npm install -g pm2@latest'
 ]

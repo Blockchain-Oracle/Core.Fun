@@ -496,10 +496,12 @@ export class MemeFactoryService extends EventEmitter {
     try {
       const amountInWei = ethers.parseEther(coreAmount);
       
-      const tx = await this.factory.buyToken.populateTransaction(
-        tokenAddress,
-        { value: amountInWei }
-      );
+      // The buyToken function only takes tokenAddress as parameter
+      // The CORE value is sent as msg.value in the transaction
+      const tx = await this.factory.buyToken.populateTransaction(tokenAddress);
+      
+      // Keep value as bigint - it's a valid BigNumberish type
+      tx.value = amountInWei;
 
       return tx;
     } catch (error) {

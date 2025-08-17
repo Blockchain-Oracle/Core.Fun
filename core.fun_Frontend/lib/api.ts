@@ -20,16 +20,25 @@ export interface TokenInfo {
   decimals: number;
   totalSupply: string;
   creator: string;
+  createdAt?: number;
+  blockNumber?: number;
+  transactionHash?: string;
+  status?: 'CREATED' | 'GRADUATED' | 'LAUNCHED';
+  isVerified?: boolean;
+  ownershipRenounced?: boolean;
   description?: string;
   imageUrl?: string;
+  image_url?: string; // API returns this
   twitter?: string;
   telegram?: string;
   website?: string;
-  raised: number;
-  sold: number;
-  isGraduated: boolean;
-  graduationPercentage: number;
-  tradingEnabled: boolean;
+  raised?: number;
+  raisedAmount?: number; // API returns this
+  sold?: number;
+  isGraduated?: boolean;
+  graduationPercentage?: number;
+  targetAmount?: number;
+  tradingEnabled?: boolean;
   maxWallet?: string;
   maxTransaction?: string;
   price?: number;
@@ -38,6 +47,9 @@ export interface TokenInfo {
   liquidity?: number;
   marketCap?: number;
   holders?: number;
+  transactions24h?: number;
+  rugScore?: number;
+  isHoneypot?: boolean;
 }
 
 export interface Trade {

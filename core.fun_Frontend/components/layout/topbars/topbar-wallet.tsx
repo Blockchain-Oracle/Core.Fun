@@ -2,14 +2,12 @@
 
 import { HeaderBase } from '../HeaderBase'
 import { Button } from "@/components/ui/button"
-import { Upload, Download, History, Wallet as WalletIcon } from "lucide-react"
+import { Download, History, Wallet as WalletIcon } from "lucide-react"
 import { useWalletStore } from '@/lib/stores'
 import { useState } from 'react'
-import { WalletSendModal } from '@/components/wallet/WalletSendModal'
 import { WalletReceiveModal } from '@/components/wallet/WalletReceiveModal'
 
 export default function WalletTopbar() {
-  const [showSendModal, setShowSendModal] = useState(false)
   const [showReceiveModal, setShowReceiveModal] = useState(false)
   const { } = useWalletStore()
 
@@ -35,15 +33,7 @@ export default function WalletTopbar() {
         Receive
       </Button>
       
-      <Button 
-        variant="ghost" 
-        size="sm" 
-        className="gap-2"
-        onClick={() => setShowSendModal(true)}
-      >
-        <Upload className="h-4 w-4" /> 
-        Send
-      </Button>
+      {/* Send button removed - send features removed from platform */}
       
       {/* Export Key button removed - now only available in Telegram bot */}
       
@@ -64,11 +54,6 @@ export default function WalletTopbar() {
         leftContent={leftContent}
         rightContent={rightContent}
         showSearch={false}
-      />
-      
-      <WalletSendModal 
-        open={showSendModal}
-        onOpenChange={setShowSendModal}
       />
       
       <WalletReceiveModal 

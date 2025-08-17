@@ -96,7 +96,7 @@ export default function NeoPage() {
       </div>
 
       {/* Mobile bottom bar */}
-      <NeoBottomBar active={active} setActive={setActive} tabs={tabs} />
+      <NeoBottomBar activeTab={active} onTabChange={setActive} />
     </div>
   )
 }

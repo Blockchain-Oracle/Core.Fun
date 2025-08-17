@@ -149,11 +149,6 @@ export function HeaderBase({
         {/* Common right elements */}
         {isAuthenticated ? (
           <>
-            {showBuyButton && (
-              <Button variant="secondary" size="sm" className="hidden sm:flex" onClick={handleBuyQuick}>
-                Buy CORE
-              </Button>
-            )}
             
             {showWalletBalance && (
               <Badge variant="outline" className="hidden sm:inline-flex">

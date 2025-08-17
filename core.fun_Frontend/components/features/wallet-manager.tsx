@@ -16,13 +16,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatNumber } from "@/lib/data-transform"
-import { WalletSendModal } from "@/components/wallet/WalletSendModal"
 import { WalletReceiveModal } from "@/components/wallet/WalletReceiveModal"
 
 export default function WalletManager() {
   const { user } = useAuthStore()
   const { coreBalance, usdBalance, transactions, refreshBalance, exportPrivateKey } = useWalletStore()
-  const [showSendModal, setShowSendModal] = React.useState(false)
   const [showReceiveModal, setShowReceiveModal] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
   const [exportedKey, setExportedKey] = React.useState(false)
@@ -134,14 +132,6 @@ export default function WalletManager() {
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Receive
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowSendModal(true)}
-                  className="flex-1"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Send
                 </Button>
                 <Button 
                   variant="outline" 
@@ -262,11 +252,6 @@ export default function WalletManager() {
       </div>
 
       {/* Modals */}
-      <WalletSendModal 
-        open={showSendModal}
-        onOpenChange={setShowSendModal}
-      />
-      
       <WalletReceiveModal 
         open={showReceiveModal}
         onOpenChange={setShowReceiveModal}

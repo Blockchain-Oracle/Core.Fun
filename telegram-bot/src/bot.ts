@@ -256,7 +256,7 @@ class CoreMemeBot {
     // Handle text messages
     this.bot.on(message('text'), async (ctx) => {
       // Check if user is in a specific flow
-      if (ctx.session?.pendingAction) {
+      if (ctx.session?.pendingAction || ctx.session?.awaitingInput) {
         await this.handlePendingAction(ctx);
         return;
       }
@@ -1016,7 +1016,56 @@ class CoreMemeBot {
         // Handle wallet import
         break;
       case 'add_withdraw_address':
-        // Handle adding withdraw address
+        // Handle adding withdraw address (validate and save)
+        if (!ctx.session?.userId) {
+          await ctx.reply('Please /start the bot first');
+          break;
+        }
+        if (!ctx.message || !('text' in ctx.message)) {
+          await ctx.reply('❌ Please paste a valid CORE address.');
+          break;
+        }
+        {
+          const address = ctx.message.text.trim();
+          const isHex40 = /^0x[a-fA-F0-9]{40}$/.test(address);
+          if (!isHex40) {
+            await ctx.reply('❌ Invalid address format. Please send a CORE address like `0x...`', { parse_mode: 'Markdown' });
+            break;
+          }
+          try {
+            // Check if already exists
+            const existing = await this.db.getWithdrawWallet(ctx.session.userId, address);
+            if (existing) {
+              await ctx.reply('ℹ️ This address is already whitelisted for withdrawals.');
+            } else {
+              await this.db.createWallet({
+                userId: ctx.session.userId,
+                name: 'Withdraw',
+                address: address,
+                type: 'withdraw',
+                network: 'CORE'
+              });
+              await ctx.reply(
+                `✅ Withdraw address added:\n\`${address}\``,
+                {
+                  parse_mode: 'Markdown',
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.callback('📤 Withdraw', 'withdraw')],
+                    [Markup.button.callback('🔙 Back', 'wallet_view')]
+                  ])
+                }
+              );
+            }
+            // Clear flags so future pasted addresses can preview tokens again
+            if (ctx.session) {
+              ctx.session.pendingAction = undefined;
+              ctx.session.awaitingInput = undefined;
+            }
+          } catch (e) {
+            this.logger.error('Failed saving withdraw address:', e);
+            await ctx.reply('❌ Failed to save address. Please try again.');
+          }
+        }
         break;
       case 'buy_amount':
         // Handle buy amount input
@@ -1076,6 +1125,8 @@ class CoreMemeBot {
    */
   private async handleTokenAddressDetection(ctx: BotContext) {
     if (!ctx.message || !('text' in ctx.message)) return;
+    // If user is in any pending input flow, do not auto-preview tokens
+    if (ctx.session?.pendingAction || ctx.session?.awaitingInput) return;
     
     const text = ctx.message.text.trim();
     

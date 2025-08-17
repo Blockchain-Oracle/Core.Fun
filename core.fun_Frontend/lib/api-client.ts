@@ -172,11 +172,12 @@ class EnhancedApiClient {
   }
 
   // Alias for getAllTokens to match what frontend components expect
-  async getTokens(): Promise<{ success: boolean; data: { tokens: TokenInfo[] } }> {
+  async getTokens(): Promise<{ success: boolean; data: { tokens: TokenInfo[] }; tokens?: TokenInfo[] }> {
     const result = await this.getAllTokens()
     return {
       success: result.success,
-      data: { tokens: result.tokens || [] }
+      data: { tokens: result.tokens || [] },
+      tokens: result.tokens || [] // Include at root level for compatibility
     }
   }
 
@@ -399,7 +400,8 @@ class EnhancedApiClient {
       cooldownEnd?: Date
     }
   }> {
-    return this.get(`/staking/status/${walletAddress}`)
+    // Staking removed from platform
+    return { success: false }
   }
 
   async getStakingHistory(walletAddress: string, limit: number = 50): Promise<{
@@ -431,7 +433,8 @@ class EnhancedApiClient {
       benefits: string[]
     }>
   }> {
-    return this.get('/staking/tiers')
+    // Staking removed from platform
+    return { success: true, data: [] }
   }
 
   async getStakingStats(): Promise<{
@@ -445,7 +448,8 @@ class EnhancedApiClient {
       tierDistribution: Record<string, number>
     }
   }> {
-    return this.get('/staking/stats')
+    // Staking removed from platform
+    return { success: false }
   }
 
   async getStakingLeaderboard(limit: number = 100): Promise<{
@@ -457,7 +461,8 @@ class EnhancedApiClient {
       rank: number
     }>
   }> {
-    return this.get(`/staking/leaderboard?limit=${limit}`)
+    // Staking removed from platform
+    return { success: true, data: [] }
   }
 
   async stake(amount: string): Promise<{
@@ -465,7 +470,8 @@ class EnhancedApiClient {
     txHash?: string
     error?: string
   }> {
-    return this.post('/staking/stake', { amount })
+    // Staking removed from platform
+    return { success: false, error: 'Staking is not available' }
   }
 
   async unstake(amount: string): Promise<{
@@ -473,7 +479,8 @@ class EnhancedApiClient {
     txHash?: string
     error?: string
   }> {
-    return this.post('/staking/unstake', { amount })
+    // Staking removed from platform
+    return { success: false, error: 'Staking is not available' }
   }
 
   async claimRewards(): Promise<{
@@ -482,7 +489,8 @@ class EnhancedApiClient {
     amount?: string
     error?: string
   }> {
-    return this.post('/staking/claim')
+    // Staking removed from platform
+    return { success: false, error: 'Staking is not available' }
   }
 
   // Treasury endpoints - Not available in backend
@@ -528,6 +536,18 @@ class EnhancedApiClient {
     }
   }
 
+  // Search tokens
+  async searchTokens(query: string): Promise<{
+    success: boolean
+    data: TokenInfo[]
+  }> {
+    const result = await this.get<{ success: boolean; tokens: TokenInfo[] }>(`/tokens/search?q=${encodeURIComponent(query)}`)
+    return {
+      success: result.success,
+      data: result.tokens || []
+    }
+  }
+
   async claimTreasuryRewards(walletAddress: string): Promise<{
     success: boolean
     txHash?: string
@@ -559,7 +579,8 @@ class EnhancedApiClient {
     }
   }> {
     // Route migrated to staking service
-    return this.get(`/staking/status/${walletAddress}`)
+    // Staking removed from platform
+    return { success: false }
   }
 
   async getSubscriptionTiers(): Promise<{
@@ -573,7 +594,8 @@ class EnhancedApiClient {
     }>
   }> {
     // Route migrated to staking service
-    return this.get('/staking/tiers')
+    // Staking removed from platform
+    return { success: true, data: [] }
   }
 
   // Analytics endpoints - uses /api/stats

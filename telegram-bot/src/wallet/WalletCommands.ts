@@ -159,9 +159,8 @@ export class WalletCommands {
     if (withdrawWallets.length === 0) {
       await ctx.reply(
         `📤 *Withdraw Funds*\n\n` +
-        `You haven't added any withdraw addresses yet.\n` +
-        `For security, you must add withdraw addresses through the web interface.\n\n` +
-        `This ensures addresses are properly validated and whitelisted.`,
+        `You haven't added any withdraw addresses yet.\n\n` +
+        `Tap "Add Withdraw Address" to whitelist a CORE address for withdrawals.`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
@@ -293,20 +292,24 @@ export class WalletCommands {
    * Add withdraw wallet
    */
   async addWithdrawWallet(ctx: BotContext) {
-    const webUrl = `${process.env.FRONTEND_URL}/walletManager?action=add_withdraw&telegramId=${ctx.session?.telegramId}`;
+    if (!ctx.session?.userId) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+    
+    if (ctx.session) {
+      ctx.session.pendingAction = 'add_withdraw_address';
+      ctx.session.awaitingInput = 'add_withdraw_address';
+    }
     
     await ctx.reply(
-      `📤 *Add Withdraw Address*\n\n` +
-      `For security reasons, withdraw addresses must be added through our secure web interface.\n\n` +
-      `This ensures:\n` +
-      `• Address validation\n` +
-      `• Whitelist protection\n` +
-      `• 2FA verification (if enabled)\n`,
+      `➕ *Add Withdraw Address*\n\n` +
+      `Paste the CORE address you want to whitelist for withdrawals.\n\n` +
+      `Example: \`0x1234...abcd\``,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.url('🌐 Open Wallet Manager', webUrl)],
-          [Markup.button.callback('🔙 Back', 'wallet_view')],
+          [Markup.button.callback('🔙 Back', 'wallet_view')]
         ])
       }
     );

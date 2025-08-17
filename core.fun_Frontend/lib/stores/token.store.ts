@@ -110,9 +110,9 @@ export const useTokenStore = create<TokenState>()(
         try {
           const response = await apiClient.getTokens()
 
-          if (response.success && response.data) {
-            // Build working list
-            const incoming = response.data.tokens || []
+          if (response.success) {
+            // Build working list - handle both response structures
+            const incoming = response.tokens || response.data?.tokens || []
 
             // Apply filters client-side
             const filtered = incoming.filter((t) => {
@@ -158,8 +158,15 @@ export const useTokenStore = create<TokenState>()(
               state.page += 1
 
               // Update categorized lists
-              state.newTokens = state.allTokens.filter(t => t.status === 'CREATED')
-              state.graduatedTokens = state.allTokens.filter(t => t.status === 'GRADUATED' || t.status === 'LAUNCHED')
+              console.log('All tokens status values:', state.allTokens.map(t => ({ address: t.address, status: t.status })))
+              // For now, show all tokens in different categories based on graduation percentage
+              const lowProgress = state.allTokens.filter(t => t.graduationPercentage < 50)
+              const highProgress = state.allTokens.filter(t => t.graduationPercentage >= 50 && t.graduationPercentage < 100)
+              const graduated = state.allTokens.filter(t => t.status === 'GRADUATED' || t.status === 'LAUNCHED')
+              
+              state.newTokens = lowProgress.length > 0 ? lowProgress : state.allTokens.slice(0, 1)  // Show at least one
+              state.graduatedTokens = graduated
+              console.log('New tokens:', state.newTokens.length, 'Graduated:', state.graduatedTokens.length)
             })
           }
         } catch (error) {
@@ -177,8 +184,8 @@ export const useTokenStore = create<TokenState>()(
       fetchTrendingTokens: async () => {
         try {
           const response = await apiClient.getTokens()
-          if (response.success && response.data) {
-            const tokens = [...(response.data.tokens || [])]
+          if (response.success) {
+            const tokens = [...(response.tokens || response.data?.tokens || [])]
             tokens.sort((a: any, b: any) => (b.volume24h || 0) - (a.volume24h || 0))
             set((state) => {
               state.trendingTokens = tokens.slice(0, 10)

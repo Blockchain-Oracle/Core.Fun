@@ -122,18 +122,21 @@ export default function TokenCard({ token, variant = "compact", viewMode = "grid
                     )}
                   </div>
 
-                  {/* Price and Change */}
+                  {/* Price - Price change not available */}
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-sm text-white/90">
                       ${token.price && token.price < 0.01 ? token.price.toFixed(6) : kFormatter(token.price || 0)}
                     </span>
-                    <span className={cn(
-                      "flex items-center gap-1 text-xs font-medium",
-                      isPositive ? "text-orange-400" : "text-red-400"
-                    )}>
-                      {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                      {Math.abs(token.priceChange24h || 0).toFixed(1)}%
-                    </span>
+                    {/* Price change NOT AVAILABLE - requires historical tracking */}
+                    {false && (
+                      <span className={cn(
+                        "flex items-center gap-1 text-xs font-medium",
+                        isPositive ? "text-orange-400" : "text-red-400"
+                      )}>
+                        {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {Math.abs(token.priceChange24h || 0).toFixed(1)}%
+                      </span>
+                    )}
                   </div>
 
                   {/* Description if available */}
@@ -161,23 +164,38 @@ export default function TokenCard({ token, variant = "compact", viewMode = "grid
                     </div>
                   )}
                   
-                  {/* Stats Row */}
+                  {/* Stats Row - Hide unavailable metrics */}
                   <div className="flex items-center gap-4 mt-2 text-xs">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-3 w-3 text-white/40" />
-                      <span className="text-white/70">{kFormatter(token.holders || 0)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Activity className="h-3 w-3 text-white/40" />
-                      <span className="text-white/70">{kFormatter(token.transactions24h || 0)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <DollarSign className="h-3 w-3 text-white/40" />
-                      <span className="text-white/70">V ${kFormatter(token.volume24h || 0)}</span>
-                    </div>
+                    {/* Holders - NOT AVAILABLE from contract */}
+                    {false && (
+                      <div className="flex items-center gap-1">
+                        <Users className="h-3 w-3 text-white/40" />
+                        <span className="text-white/70">{kFormatter(token.holders || 0)}</span>
+                      </div>
+                    )}
+                    {/* Transactions - NOT AVAILABLE from contract */}
+                    {false && (
+                      <div className="flex items-center gap-1">
+                        <Activity className="h-3 w-3 text-white/40" />
+                        <span className="text-white/70">{kFormatter(token.transactions24h || 0)}</span>
+                      </div>
+                    )}
+                    {/* Volume - NOT AVAILABLE from contract */}
+                    {false && (
+                      <div className="flex items-center gap-1">
+                        <DollarSign className="h-3 w-3 text-white/40" />
+                        <span className="text-white/70">V ${kFormatter(token.volume24h || 0)}</span>
+                      </div>
+                    )}
+                    {/* Market Cap - Calculated from bonding curve */}
                     <div className="flex items-center gap-1">
                       <Zap className="h-3 w-3 text-white/40" />
                       <span className="text-orange-400 font-medium">MC ${kFormatter(token.marketCap || 0)}</span>
+                    </div>
+                    {/* Show raised amount instead */}
+                    <div className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3 text-white/40" />
+                      <span className="text-white/70">Raised {token.raised || token.raisedAmount || 0} CORE</span>
                     </div>
                     {/* Show DEX pair link if graduated */}
                     {isGraduated && token.dexPair && (

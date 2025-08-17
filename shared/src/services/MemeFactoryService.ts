@@ -144,33 +144,44 @@ export class MemeFactoryService extends EventEmitter {
         return cached.data;
       }
 
-      // Fetch from contract
+      // Fetch from contract - getTokenInfo returns TokenSale struct
       const rawInfo = await this.factory.getTokenInfo(tokenAddress);
       
-      // The contract returns a tuple, ethers.js might return it as an array or object
-      // Handle both cases
-      let info: TokenInfo;
+      // Contract returns: token, name, symbol, creator, sold, raised, isOpen, isLaunched, createdAt, launchedAt
+      let saleInfo: any;
       if (Array.isArray(rawInfo)) {
-        // If it's an array, destructure it
-        info = {
-          creator: rawInfo[0],
-          name: rawInfo[1], 
+        saleInfo = {
+          token: rawInfo[0],
+          name: rawInfo[1],
           symbol: rawInfo[2],
-          totalSupply: rawInfo[3],
-          availableSupply: rawInfo[4],
-          reserveBalance: rawInfo[5],
-          isLaunched: rawInfo[6],
-          createdAt: Number(rawInfo[7]),
-          launchedAt: Number(rawInfo[8]),
-          creatorBalance: rawInfo[9]
+          creator: rawInfo[3],
+          sold: rawInfo[4],
+          raised: rawInfo[5],
+          isOpen: rawInfo[6],
+          isLaunched: rawInfo[7],
+          createdAt: Number(rawInfo[8]),
+          launchedAt: Number(rawInfo[9])
         };
       } else {
-        // It's already an object with named properties
-        info = rawInfo as TokenInfo;
+        saleInfo = rawInfo;
       }
       
-      // Calculate current price from bonding curve
-      const currentPrice = await this.calculateCurrentPrice(tokenAddress);
+      // Build TokenInfo compatible structure
+      const info: TokenInfo = {
+        creator: saleInfo.creator,
+        name: saleInfo.name,
+        symbol: saleInfo.symbol,
+        totalSupply: ethers.parseEther('1000000'), // MAX_SUPPLY from contract
+        availableSupply: ethers.parseEther('500000') - (saleInfo.sold || BigInt(0)), // TOKEN_LIMIT - sold
+        reserveBalance: saleInfo.raised || BigInt(0),
+        isLaunched: saleInfo.isLaunched,
+        createdAt: saleInfo.createdAt,
+        launchedAt: saleInfo.launchedAt,
+        creatorBalance: BigInt(0) // Not tracked by contract
+      };
+      
+      // Calculate current price from bonding curve using sold amount
+      const currentPrice = await this.calculateCurrentPrice(saleInfo.sold || BigInt(0));
       
       // Calculate market cap - ensure we're passing the right values
       const marketCap = this.calculateMarketCap(info.totalSupply || BigInt(0), currentPrice);
@@ -211,16 +222,11 @@ export class MemeFactoryService extends EventEmitter {
         tradingEnabled = metadata._tradingEnabled || false;
       }
 
-      // Determine token status based on bonding curve progress
+      // Determine token status based on isLaunched flag
+      // Contract TARGET is 3 ETH, not 250!
       let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = 'CREATED';
-      if (info.isLaunched) {
+      if (saleInfo.isLaunched) {
         status = 'GRADUATED';
-      } else {
-        // Check if close to graduation (>= 250 CORE in reserves)
-        const reserveInCore = parseFloat(ethers.formatEther(info.reserveBalance));
-        if (reserveInCore >= 250) {
-          status = 'GRADUATED';
-        }
       }
 
       const tokenData: TokenData = {
@@ -249,9 +255,16 @@ export class MemeFactoryService extends EventEmitter {
         maxWallet,
         maxTransaction,
         tradingEnabled,
-        // Calculate bonding curve progress
-        graduationPercentage: status === 'CREATED' ? 
-          (parseFloat(ethers.formatEther(info.reserveBalance)) / 3) * 100 : 100,
+        // Calculate bonding curve progress (TARGET is 3 ETH)
+        graduationPercentage: saleInfo.isLaunched ? 100 : 
+          (parseFloat(ethers.formatEther(saleInfo.raised || BigInt(0))) / 3) * 100,
+        // Add bonding curve info
+        bondingCurve: {
+          progress: saleInfo.isLaunched ? 100 : (parseFloat(ethers.formatEther(saleInfo.raised || BigInt(0))) / 3) * 100,
+          raisedAmount: parseFloat(ethers.formatEther(saleInfo.raised || BigInt(0))),
+          targetAmount: 3
+        },
+        raised: parseFloat(ethers.formatEther(saleInfo.raised || BigInt(0))),
       };
 
       // Cache the result
@@ -267,11 +280,8 @@ export class MemeFactoryService extends EventEmitter {
   /**
    * Calculate current price from bonding curve
    */
-  async calculateCurrentPrice(tokenAddress: string): Promise<bigint> {
+  async calculateCurrentPrice(soldAmount: bigint): Promise<bigint> {
     try {
-      // Get token info to know current sold amount
-      const info = await this.factory.getTokenInfo(tokenAddress);
-      
       // Bonding curve constants (must match contract)
       const STEP_SIZE = ethers.parseEther('10000'); // 10,000 tokens
       const BASE_PRICE = ethers.parseEther('0.0001'); // 0.0001 CORE
@@ -279,12 +289,12 @@ export class MemeFactoryService extends EventEmitter {
       
       // Calculate current price: BASE_PRICE + (PRICE_INCREMENT * steps)
       // Use BigInt math to avoid precision issues
-      const steps = info.sold / STEP_SIZE;
+      const steps = soldAmount / STEP_SIZE;
       const currentPrice = BASE_PRICE + (PRICE_INCREMENT * steps);
       
       return currentPrice;
     } catch (error) {
-      this.logger.error(`Error calculating price for ${tokenAddress}:`, error);
+      this.logger.error(`Error calculating price:`, error);
       // Return base price as fallback
       return ethers.parseEther('0.0001');
     }
@@ -319,7 +329,7 @@ export class MemeFactoryService extends EventEmitter {
       
       const WEI = BigInt('1000000000000000000');
       // MarketCap (in wei) = totalSupply (wei) * price (wei per token) / 1e18
-      return ts * price / WEI;
+      return (ts * price) / WEI;
     } catch (error) {
       this.logger.error('Error calculating market cap:', error);
       return BigInt(0);

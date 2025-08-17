@@ -18,7 +18,7 @@ import {
   Info,
   Zap
 } from 'lucide-react'
-import { useAuthStore, useStakingStore, useTreasuryStore } from '@/lib/stores'
+import { useAuthStore, useTreasuryStore } from '@/lib/stores'
 import { apiClient } from '@/lib/api'
 import { formatNumber } from '@/lib/data-transform'
 import { Separator } from '@/components/ui/separator'
@@ -39,7 +39,7 @@ export function TradingPanel({
   isLaunched
 }: TradingPanelProps) {
   const { session, isAuthenticated, user } = useAuthStore()
-  const { status: stakingStatus } = useStakingStore()
+  // Staking removed from platform
   const { calculateFee } = useTreasuryStore()
   
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy')
@@ -364,26 +364,8 @@ export function TradingPanel({
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/60">
-                    Platform fee 
-                    {stakingStatus?.feeDiscount ? (
-                      <span className="text-orange-400 ml-1">({stakingStatus.feeDiscount}% off)</span>
-                    ) : (
-                      ' (1%)'
-                    )}
-                  </span>
-                  <span>
-                    {stakingStatus?.feeDiscount ? (
-                      <>
-                        <span className="line-through text-white/40 mr-2">
-                          {(parseFloat(amount || '0') * 0.01).toFixed(6)}
-                        </span>
-                        {calculateFee('trading', parseFloat(amount || '0'), stakingStatus.tier).toFixed(6)} CORE
-                      </>
-                    ) : (
-                      `${(parseFloat(amount || '0') * 0.01).toFixed(6)} CORE`
-                    )}
-                  </span>
+                  <span className="text-white/60">Platform fee (1%)</span>
+                  <span>{(parseFloat(amount || '0') * 0.01).toFixed(6)} CORE</span>
                 </div>
                 {gasEstimate && (
                   <>
@@ -397,7 +379,7 @@ export function TradingPanel({
                       <span>
                         {formatNumber(
                           parseFloat(amount || '0') + 
-                          calculateFee('trading', parseFloat(amount || '0'), stakingStatus?.tier) +
+                          (parseFloat(amount || '0') * 0.01) +
                           parseFloat(gasEstimate.totalCost)
                         )} CORE
                       </span>

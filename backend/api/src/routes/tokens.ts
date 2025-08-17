@@ -108,6 +108,7 @@ router.get('/tokens', async (req: Request, res: Response) => {
       symbol: string;
       decimals: number;
       totalSupply: string;
+      totalSupplyFormatted?: number;
       creator: string;
       createdAt: number;
       blockNumber?: number;
@@ -118,79 +119,137 @@ router.get('/tokens', async (req: Request, res: Response) => {
       priceUsd?: number;
       marketCap?: number;
       liquidityCore?: number;
-      holders?: number;
-      transactions24h?: number;
       graduationPercentage?: number;
+      soldAmount?: number;
+      holders?: number;
       description?: string;
       website?: string;
       twitter?: string;
       telegram?: string;
       image_url?: string;
-    }) => ({
-      address: p.address,
-      name: p.name,
-      symbol: p.symbol,
-      decimals: p.decimals || 18,
-      totalSupply: p.totalSupply,
-      creator: p.creator || '',
-      createdAt: p.createdAt,
-      blockNumber: p.blockNumber || 0,
-      transactionHash: p.transactionHash || '',
-      status: p.status || (p.isLaunched ? 'GRADUATED' : 'CREATED'),
-      isVerified: false,
-      ownershipRenounced: false,
-      price: (p.priceUsd ?? ((p.priceCore || 0) * CORE_PRICE_USD)),
-      priceChange24h: 0,
-      marketCap: p.marketCap ?? 0,
-      volume24h: 0,
-      liquidity: (p.liquidityCore || 0) * CORE_PRICE_USD,
-      holders: p.holders || 0,
-      transactions24h: p.transactions24h || 0,
-      graduationPercentage: Math.min(Math.max(p.graduationPercentage || 0, 0), 100),
-      targetAmount: TARGET_CORE,
-      raisedAmount: p.liquidityCore || 0,
-      description: p.description || '',
-      website: p.website || '',
-      twitter: p.twitter || '',
-      telegram: p.telegram || '',
-      image_url: p.image_url || '',
-      rugScore: 0,
-      isHoneypot: false,
-    });
+    }) => {
+      // Format totalSupply for display - ALWAYS 1M tokens per contract
+      let totalSupplyFormatted: number;
+      if (p.totalSupplyFormatted !== undefined) {
+        totalSupplyFormatted = p.totalSupplyFormatted;
+      } else {
+        // Contract ALWAYS mints MAX_SUPPLY = 1,000,000 tokens
+        // No need for complex BigInt conversion - it's always 1M
+        totalSupplyFormatted = 1000000; // Always 1M tokens as per contract
+      }
+      
+      return {
+        address: p.address,
+        name: p.name,
+        symbol: p.symbol,
+        decimals: p.decimals || 18,
+        totalSupply: totalSupplyFormatted.toFixed(1),  // Return formatted supply like "1000000.0"
+        creator: p.creator || '',
+        createdAt: p.createdAt,
+        blockNumber: p.blockNumber || 0,
+        transactionHash: p.transactionHash || '',
+        status: p.status || (p.isLaunched ? 'GRADUATED' : 'CREATED'),
+        isVerified: false,
+        ownershipRenounced: false,
+        price: (p.priceUsd ?? ((p.priceCore || 0) * CORE_PRICE_USD)),
+        priceChange24h: 0,  // NOT AVAILABLE: Requires price history tracking
+        // Calculate market cap using the formatted total supply
+        marketCap: p.marketCap ?? (totalSupplyFormatted * (p.priceUsd ?? ((p.priceCore || 0) * CORE_PRICE_USD))),
+        volume24h: 0,  // NOT AVAILABLE: Requires event aggregation over time
+        liquidity: (p.liquidityCore || 0) * CORE_PRICE_USD,
+        holders: p.holders || 0,  // From database via Transfer event tracking
+        transactions24h: 0,  // NOT AVAILABLE: Requires event aggregation
+        graduationPercentage: Math.min(Math.max(p.graduationPercentage || 0, 0), 100),
+        targetAmount: TARGET_CORE,
+        raisedAmount: p.liquidityCore || 0,
+        description: p.description || '',
+        website: p.website || '',
+        twitter: p.twitter || '',
+        telegram: p.telegram || '',
+        image_url: p.image_url || '',
+        rugScore: 0,
+        isHoneypot: false,
+      };
+    };
 
+    // Fetch holder counts from token_holders table if available
+    const tokenAddresses = tokens.map(t => t.address);
+    let holderCounts: Record<string, number> = {};
+    
+    try {
+      // Check if token_holders table exists
+      const hasHolderTable = await db.schema.hasTable('token_holders');
+      if (hasHolderTable) {
+        // Get holder counts for all tokens in one query
+        const holderData = await db('token_holders')
+          .select('token_address')
+          .count('* as count')
+          .whereIn('token_address', tokenAddresses)
+          .where('balance', '>', '0')
+          .groupBy('token_address');
+        
+        holderData.forEach(h => {
+          holderCounts[h.token_address.toString().toLowerCase()] = parseInt(h.count.toString());
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch holder counts:', error);
+    }
+    
     let formattedTokens = tokens.map(token => {
-      const liquidityAdded = parseFloat(token.liquidity_added || '0');
-      const totalSupplyWei = token.total_supply || '1000000000000000000000000';
-      const totalSupply = parseFloat(totalSupplyWei) / 1e18;
-      const graduationPercentage = Math.min((liquidityAdded / TARGET_CORE) * 100, 100);
-      const priceCore = parseFloat(token.price_core || '0');
+      // Use 'raised' column instead of 'liquidity_added'
+      const raisedAmount = parseFloat(token.raised || '0');
+      
+      // IMPORTANT: Contract mints MAX_SUPPLY (1M tokens) on creation
+      // Database should have this, but ensure we use correct value
+      const totalSupplyWei = token.total_supply || '1000000000000000000000000'; // 1M tokens in wei
+      const totalSupply = 1000000; // Always 1M tokens as per contract MAX_SUPPLY
+      
+      // Calculate sold amount from database or estimate from raised amount
+      // Contract uses bonding curve: base price 0.0001 CORE
+      // For simplicity at low amounts: sold ≈ raised / 0.0001
+      const soldAmount = parseFloat(token.sold || '0') || (raisedAmount > 0 ? raisedAmount / 0.0001 : 0);
+      
+      // Calculate price based on bonding curve (matching contract exactly)
+      const BASE_PRICE = 0.0001; // in CORE
+      const PRICE_INCREMENT = 0.0001; // in CORE per step
+      const STEP_SIZE = 10000; // tokens per step
+      const steps = Math.floor(soldAmount / STEP_SIZE);
+      const priceCore = BASE_PRICE + (PRICE_INCREMENT * steps);
       const priceUsd = priceCore * CORE_PRICE_USD;
-      const marketCap = totalSupply * priceUsd;
-      const createdAtTimestamp = token.created_at
-        ? Math.floor(new Date(token.created_at).getTime() / 1000)
-        : Math.floor(Date.now() / 1000);
+      // Market cap = total supply (1M) * price per token in USD
+      const marketCap = 1000000 * priceUsd; // Always use 1M tokens
+      
+      // Use bonding_curve_progress if available, otherwise calculate
+      const graduationPercentage = token.bonding_curve_progress || Math.min((raisedAmount / TARGET_CORE) * 100, 100);
+      const createdAtTimestamp = token.created_timestamp || Math.floor(Date.now() / 1000);
 
-      let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = 'CREATED';
-      if (token.is_launched) status = 'GRADUATED';
-      else if (graduationPercentage >= 100) status = 'LAUNCHED';
+      // Use 'status' column directly or derive from progress
+      let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = token.status || 'CREATED';
+      if (status === 'CREATED' && graduationPercentage >= 100) status = 'LAUNCHED';
+      
+      // Get holder count from our fetched data
+      const holderCount = holderCounts[token.address.toLowerCase()] || token.holders_count || 0;
 
       return toDto({
         address: token.address,
         name: token.name,
         symbol: token.symbol,
         decimals: token.decimals || 18,
-        totalSupply: totalSupplyWei,
-        creator: token.creator_address || '',
+        totalSupply: totalSupplyWei,  // Pass wei, will be formatted in toDto
+        totalSupplyFormatted: totalSupply,  // Pass the formatted number
+        creator: token.creator || '0x0000000000000000000000000000000000000000',
         createdAt: createdAtTimestamp,
         blockNumber: 0,
         transactionHash: '',
         status,
         priceCore,
+        priceUsd,  // Pass the USD price directly
         marketCap,
-        liquidityCore: liquidityAdded,
-        holders: token.holders_count || 0,
-        transactions24h: token.transactions_count || 0,
+        liquidityCore: raisedAmount,
         graduationPercentage,
+        soldAmount, // Track how many tokens have been sold
+        holders: holderCount, // Pass the actual holder count
         description: token.description || '',
         website: token.website || '',
         twitter: token.twitter || '',
@@ -208,24 +267,33 @@ router.get('/tokens', async (req: Request, res: Response) => {
         logger.info(`Fetched ${onchainTokens.length} tokens from blockchain`);
         formattedTokens = onchainTokens.map(t => {
           const totalSupplyWei = t.totalSupply;
-          const totalSupply = parseFloat(totalSupplyWei) / 1e18;
-          const priceCore = parseFloat(t.currentPrice || '0');
-          const liquidityCore = parseFloat(t.reserveBalance || '0');
-          const marketCap = totalSupply * (priceCore * CORE_PRICE_USD);
-          logger.info(`Token ${t.symbol}: currentPrice=${t.currentPrice}, priceCore=${priceCore}, CORE_PRICE_USD=${CORE_PRICE_USD}, price USD=${priceCore * CORE_PRICE_USD}`);
-          const graduationPercentage = Math.min((liquidityCore / TARGET_CORE) * 100, 100);
+          // Contract ALWAYS mints 1M tokens
+          const totalSupply = 1000000;
+          
+          // Use the price from contract or calculate from bonding curve
+          const priceCore = parseFloat(t.currentPrice || '0') || 0.0001; // Default to base price
+          const priceUsd = priceCore * CORE_PRICE_USD;
+          
+          // Use raised amount from bondingCurve or raised field
+          const raisedAmount = t.raised || t.bondingCurve?.raisedAmount || parseFloat(t.reserveBalance || '0');
+          const marketCap = 1000000 * priceUsd; // Always 1M tokens
+          logger.info(`Token ${t.symbol}: currentPrice=${t.currentPrice}, priceCore=${priceCore}, CORE_PRICE_USD=${CORE_PRICE_USD}, price USD=${priceUsd}, marketCap=${marketCap}, totalSupply=${totalSupply}`);
+          // Use graduationPercentage from contract or calculate from raised/TARGET
+          const graduationPercentage = t.graduationPercentage || Math.min((raisedAmount / TARGET_CORE) * 100, 100);
           return toDto({
             address: t.address,
             name: t.name,
             symbol: t.symbol,
             decimals: 18,
             totalSupply: totalSupplyWei,
+            totalSupplyFormatted: totalSupply,
             creator: t.creator,
             createdAt: t.createdAt,
             isLaunched: t.isLaunched,
             priceCore,
+            priceUsd,
             marketCap,
-            liquidityCore,
+            liquidityCore: raisedAmount,
             graduationPercentage,
             description: t.description,
             website: t.website,

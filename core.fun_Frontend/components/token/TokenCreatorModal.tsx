@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuthStore, useStakingStore, useTreasuryStore } from '@/lib/stores'
+import { useAuthStore, useTreasuryStore } from '@/lib/stores'
 import { apiClient } from '@/lib/api'
 import { ethers } from 'ethers'
 
@@ -53,19 +53,9 @@ interface TokenParams {
   liquidityCore: string
 }
 
-// Get actual fee based on staking tier
-const getCreationFee = (stakingTier?: string) => {
-  const baseFee = 0.1 // Base creation fee in CORE
-  if (!stakingTier || stakingTier === 'Free') return baseFee
-  
-  // Apply staking discount
-  const discounts: Record<string, number> = {
-    'Bronze': 0.099,
-    'Silver': 0.098,
-    'Gold': 0.097,
-    'Platinum': 0.095
-  }
-  return discounts[stakingTier] || baseFee
+// Get creation fee
+const getCreationFee = () => {
+  return 0.1 // Base creation fee in CORE
 }
 
 const TOKEN_SUPPLY = 1000000000 // 1B total supply (standard)
@@ -73,7 +63,7 @@ const GRADUATION_TARGET = 3 // 3 CORE raised to graduate
 
 export function TokenCreatorModal({ open, onOpenChange }: TokenCreatorModalProps) {
   const { user, isAuthenticated, session } = useAuthStore()
-  const { status: stakingStatus } = useStakingStore()
+  // Staking removed from platform
   const { calculateFee } = useTreasuryStore()
   const wallet = user?.walletAddress
   const [params, setParams] = useState<TokenParams>({
@@ -133,7 +123,7 @@ export function TokenCreatorModal({ open, onOpenChange }: TokenCreatorModalProps
       return false
     }
 
-    const creationFee = getCreationFee(stakingStatus?.tier)
+    const creationFee = getCreationFee()
     const totalCoreNeeded = creationFee + parseFloat(params.liquidityCore)
     
     if (coreBalance < totalCoreNeeded) {
@@ -228,7 +218,7 @@ export function TokenCreatorModal({ open, onOpenChange }: TokenCreatorModalProps
     fetchBalance()
   }, [wallet])
   
-  const creationFee = getCreationFee(stakingStatus?.tier)
+  const creationFee = getCreationFee()
   const totalCoreNeeded = creationFee + parseFloat(params.liquidityCore || '0')
   const hasInsufficientBalance = coreBalance < totalCoreNeeded
 
@@ -439,21 +429,7 @@ export function TokenCreatorModal({ open, onOpenChange }: TokenCreatorModalProps
               <CardContent className="space-y-2">
                 <div className="flex justify-between">
                   <span>Creation Fee</span>
-                  <div className="text-right">
-                    {stakingStatus?.tier && stakingStatus.tier !== 'Free' ? (
-                      <>
-                        <span className="line-through text-muted-foreground text-sm mr-2">
-                          {0.1} CORE
-                        </span>
-                        <span>{creationFee} CORE</span>
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {stakingStatus.feeDiscount}% off
-                        </Badge>
-                      </>
-                    ) : (
-                      <span>{creationFee} CORE</span>
-                    )}
-                  </div>
+                  <span>{creationFee} CORE</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Initial Liquidity</span>
@@ -468,13 +444,6 @@ export function TokenCreatorModal({ open, onOpenChange }: TokenCreatorModalProps
                   <span>Your Balance</span>
                   <span>{formatNumber(coreBalance)} CORE</span>
                 </div>
-                {stakingStatus?.tier === 'Free' && (
-                  <Alert className="mt-2">
-                    <AlertDescription className="text-xs">
-                      Stake CMP tokens to unlock fee discounts up to 5%
-                    </AlertDescription>
-                  </Alert>
-                )}
               </CardContent>
             </Card>
 

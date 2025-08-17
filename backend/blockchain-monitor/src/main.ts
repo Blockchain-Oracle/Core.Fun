@@ -9,7 +9,10 @@ import { TradeProcessor } from './processors/TradeProcessor';
 import { StakingProcessor } from './processors/StakingProcessor';
 import Redis from 'ioredis';
 import { MemeFactoryMonitor } from './monitors/MemeFactoryMonitor';
+import { TransferMonitor } from './monitors/TransferMonitor';
 import { MonitorConfig } from './types';
+import { RedisService } from './services/RedisService';
+import { WebSocketService } from './services/WebSocketService';
 import { 
   getPlatformContracts, 
   isMemeFactoryConfigured, 
@@ -40,6 +43,9 @@ class BlockchainMonitorService {
   private stakingProcessor: StakingProcessor;
   private monitors: Map<string, any> = new Map();
   private redis: Redis;
+  private redisService: RedisService;
+  private wsService: WebSocketService;
+  private transferMonitor?: TransferMonitor;
   private isRunning: boolean = false;
 
   constructor() {
@@ -96,6 +102,13 @@ class BlockchainMonitorService {
     };
     
     this.redis = new Redis(redisConfig);
+    
+    // Initialize Redis and WebSocket services
+    this.redisService = new RedisService(this.redis);
+    this.wsService = new WebSocketService(
+      parseInt(process.env.WS_PORT || '8080'),
+      this.redis
+    );
     
     // Initialize StakingProcessor
     this.stakingProcessor = new StakingProcessor(
@@ -192,12 +205,64 @@ class BlockchainMonitorService {
         this.monitors.set('memeFactory', memeFactoryMonitor);
         
         logger.info('✅ MemeFactory monitor started');
+        
+        // Start TransferMonitor for holder tracking
+        await this.startTransferMonitor();
       }
     } else {
       logger.warn('⚠️  MemeFactory address not configured for', this.network);
     }
     
     logger.info(`✅ All monitors started (${this.monitors.size} total)`);
+  }
+
+  private async startTransferMonitor(): Promise<void> {
+    try {
+      logger.info('Starting TransferMonitor for holder tracking...');
+      
+      // Get all token addresses from database
+      const tokens = await this.db.knex('tokens')
+        .select('address')
+        .orderBy('created_at', 'desc')
+        .limit(100); // Start with first 100 tokens
+      
+      const tokenAddresses = tokens.map(t => t.address);
+      
+      if (tokenAddresses.length === 0) {
+        logger.warn('No tokens found to monitor for Transfer events');
+        return;
+      }
+      
+      logger.info(`Initializing TransferMonitor for ${tokenAddresses.length} tokens`);
+      
+      // Create TransferMonitor instance
+      this.transferMonitor = new TransferMonitor(
+        this.provider,
+        this.wsProvider,
+        this.db,
+        this.redisService,
+        this.wsService
+      );
+      
+      // Initialize with token addresses
+      await this.transferMonitor.initialize(tokenAddresses);
+      
+      // Start historical sync for each token if needed
+      const syncFromBlock = parseInt(process.env.SYNC_HOLDERS_FROM_BLOCK || '0');
+      if (syncFromBlock > 0) {
+        logger.info(`Syncing historical Transfer events from block ${syncFromBlock}`);
+        for (const address of tokenAddresses) {
+          await this.transferMonitor.syncHistoricalEvents(address, syncFromBlock);
+        }
+      }
+      
+      this.monitors.set('transfer', this.transferMonitor);
+      logger.info('✅ TransferMonitor started successfully');
+      
+    } catch (error) {
+      logger.error('Failed to start TransferMonitor:', error);
+      // Non-critical, continue without holder tracking
+    }
   }
 
   private setupShutdownHandlers(): void {
@@ -238,6 +303,12 @@ class BlockchainMonitorService {
       await monitor.stop();
     }
     
+    // Stop TransferMonitor if running
+    if (this.transferMonitor) {
+      logger.info('Stopping TransferMonitor...');
+      await this.transferMonitor.stop();
+    }
+    
     // Stop StakingProcessor
     logger.info('Stopping StakingProcessor...');
     await this.stakingProcessor.stop();
@@ -246,6 +317,7 @@ class BlockchainMonitorService {
     await this.tokenProcessor.close();
     await this.tradeProcessor.close();
     await this.alertService.close();
+    await this.wsService.close();
     await this.db.close();
     
     // Close Redis connection

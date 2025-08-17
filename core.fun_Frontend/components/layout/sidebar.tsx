@@ -34,9 +34,6 @@ const items = [
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/portfolio", icon: Wallet, label: "Portfolio" },
   { href: "/wallet", icon: Wallet, label: "Wallet" },
-  // Treasury feature not available in backend
-  // { href: "/treasury", icon: DollarSign, label: "Treasury" },
-  { href: "/staking", icon: Repeat, label: "Staking" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ]
 

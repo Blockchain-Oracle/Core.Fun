@@ -376,6 +376,63 @@ export class WalletCommands {
   }
 
   /**
+   * Process withdraw to selected address
+   */
+  async processWithdraw(ctx: BotContext, walletId: string): Promise<void> {
+    if (!ctx.session?.userId) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+
+    try {
+      // Get the withdraw wallet details
+      const wallet = await this.db.getWalletById(walletId);
+      
+      if (!wallet || wallet.userId !== ctx.session.userId || wallet.type !== 'withdraw') {
+        await ctx.reply('❌ Invalid withdraw address selected.');
+        return;
+      }
+
+      // Get user's primary wallet balance
+      const primaryWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
+      if (!primaryWallet) {
+        await ctx.reply('❌ No primary wallet found.');
+        return;
+      }
+
+      const balance = await this.walletService.getBalance(primaryWallet.address);
+      
+      // Show withdraw form
+      let message = `💸 *Withdraw to ${wallet.name}*\n\n`;
+      message += `📍 *Destination:*\n\`${wallet.address}\`\n\n`;
+      message += `💰 *Available Balance:* ${balance.core} CORE ($${balance.usd})\n\n`;
+      message += `Enter the amount of CORE you want to withdraw:`;
+
+      // Set pending action for amount input
+      if (ctx.session) {
+        ctx.session.pendingAction = 'withdraw_amount';
+        ctx.session.awaitingInput = `withdraw_amount_${walletId}`;
+      }
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('25%', `withdraw_percent_25_${walletId}`),
+            Markup.button.callback('50%', `withdraw_percent_50_${walletId}`),
+            Markup.button.callback('75%', `withdraw_percent_75_${walletId}`),
+            Markup.button.callback('100%', `withdraw_percent_100_${walletId}`),
+          ],
+          [Markup.button.callback('🔙 Back', 'withdraw')],
+        ])
+      });
+    } catch (error) {
+      this.logger.error('Error processing withdraw:', error);
+      await ctx.reply('❌ Failed to process withdraw. Please try again.');
+    }
+  }
+
+  /**
    * Helper: Shorten address
    */
   private shortenAddress(address: string): string {

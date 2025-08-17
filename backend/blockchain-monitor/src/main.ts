@@ -221,12 +221,11 @@ class BlockchainMonitorService {
       logger.info('Starting TransferMonitor for holder tracking...');
       
       // Get all token addresses from database
-      const tokens = await this.db.knex('tokens')
-        .select('address')
-        .orderBy('created_at', 'desc')
-        .limit(100); // Start with first 100 tokens
+      const result = await db.db.query(
+        'SELECT address FROM tokens ORDER BY created_at DESC LIMIT 100'
+      );
       
-      const tokenAddresses = tokens.map(t => t.address);
+      const tokenAddresses = result.rows.map((t: any) => t.address);
       
       if (tokenAddresses.length === 0) {
         logger.warn('No tokens found to monitor for Transfer events');

@@ -1,10 +1,11 @@
 import { ethers } from 'ethers';
-import { EventMonitor } from '../types/EventMonitor';
+import { EventMonitor } from './EventMonitor';
 import { createLogger } from '@core-meme/shared';
 import { DatabaseService } from '@core-meme/shared';
 import { RedisService } from '../services/RedisService';
 import { WebSocketService } from '../services/WebSocketService';
-import MemeTokenABI from '@core-meme/shared/abis/MemeToken.json';
+import { BlockRange } from '../types';
+const MemeTokenABI = require('@core-meme/shared/src/abis/MemeToken.json');
 
 interface TransferEvent {
   from: string;
@@ -25,7 +26,7 @@ interface HolderBalance {
 }
 
 export class TransferMonitor extends EventMonitor {
-  private readonly logger = createLogger({ service: 'transfer-monitor' });
+  private readonly customLogger = createLogger({ service: 'transfer-monitor' });
   private readonly db: DatabaseService;
   private readonly redis: RedisService;
   private readonly ws: WebSocketService;
@@ -34,13 +35,12 @@ export class TransferMonitor extends EventMonitor {
   private holderCache: Map<string, Set<string>> = new Map(); // tokenAddress -> Set of holder addresses
 
   constructor(
-    provider: ethers.JsonRpcProvider,
-    wsProvider: ethers.WebSocketProvider | undefined,
+    config: any,
     db: DatabaseService,
     redis: RedisService,
     ws: WebSocketService
   ) {
-    super(provider, wsProvider);
+    super(config);
     this.db = db;
     this.redis = redis;
     this.ws = ws;
@@ -60,7 +60,7 @@ export class TransferMonitor extends EventMonitor {
   }
 
   async initialize(tokenAddresses: string[]): Promise<void> {
-    this.logger.info(`Initializing TransferMonitor for ${tokenAddresses.length} tokens`);
+    this.customLogger.info(`Initializing TransferMonitor for ${tokenAddresses.length} tokens`);
     
     // Create contract instances for each token
     for (const address of tokenAddresses) {
@@ -82,7 +82,7 @@ export class TransferMonitor extends EventMonitor {
       await this.setupPollingListeners();
     }
     
-    this.logger.info('TransferMonitor initialized successfully');
+    this.customLogger.info('TransferMonitor initialized successfully');
   }
 
   private async setupWebSocketListeners(): Promise<void> {
@@ -102,9 +102,9 @@ export class TransferMonitor extends EventMonitor {
           });
         });
         
-        this.logger.info(`WebSocket listener attached for token ${address}`);
+        this.customLogger.info(`WebSocket listener attached for token ${address}`);
       } catch (error) {
-        this.logger.error(`Failed to attach WebSocket listener for ${address}:`, error);
+        this.customLogger.error(`Failed to attach WebSocket listener for ${address}:`, error);
       }
     }
   }
@@ -126,11 +126,12 @@ export class TransferMonitor extends EventMonitor {
         const events = await contract.queryFilter(filter, fromBlock, currentBlock);
         
         for (const event of events) {
-          if (event.args) {
+          const eventLog = event as ethers.EventLog;
+          if (eventLog.args) {
             await this.handleTransferEvent({
-              from: event.args[0],
-              to: event.args[1],
-              value: event.args[2].toString(),
+              from: eventLog.args[0],
+              to: eventLog.args[1],
+              value: eventLog.args[2].toString(),
               tokenAddress: address,
               blockNumber: event.blockNumber,
               transactionHash: event.transactionHash,
@@ -141,7 +142,7 @@ export class TransferMonitor extends EventMonitor {
         }
       }
     } catch (error) {
-      this.logger.error('Error polling for Transfer events:', error);
+      this.customLogger.error('Error polling for Transfer events:', error);
     }
   }
 
@@ -150,9 +151,42 @@ export class TransferMonitor extends EventMonitor {
     // So we can leave this empty or delegate to handleTransferEvent
   }
 
+  protected async getLogs(range: BlockRange): Promise<ethers.Log[]> {
+    const logs: ethers.Log[] = [];
+    for (const [address, contract] of this.tokenContracts) {
+      const filter = contract.filters.Transfer();
+      const events = await contract.queryFilter(filter, range.fromBlock, range.toBlock);
+      logs.push(...events);
+    }
+    return logs;
+  }
+
+  protected async processLogs(logs: ethers.Log[]): Promise<void> {
+    for (const log of logs) {
+      const event = log as ethers.EventLog;
+      if (event.args) {
+        await this.handleTransferEvent({
+          from: event.args[0],
+          to: event.args[1],
+          value: event.args[2].toString(),
+          tokenAddress: event.address,
+          blockNumber: event.blockNumber,
+          transactionHash: event.transactionHash,
+          logIndex: event.index,
+          timestamp: Date.now()
+        });
+      }
+    }
+  }
+
+  protected async processBlockData(block: ethers.Block): Promise<void> {
+    // Not needed for Transfer monitoring
+    return;
+  }
+
   private async handleTransferEvent(event: TransferEvent): Promise<void> {
     try {
-      this.logger.debug(`Processing Transfer event for token ${event.tokenAddress}`, {
+      this.customLogger.debug(`Processing Transfer event for token ${event.tokenAddress}`, {
         from: event.from,
         to: event.to,
         value: event.value,
@@ -170,7 +204,7 @@ export class TransferMonitor extends EventMonitor {
         setTimeout(() => this.processBatch(), 1000);
       }
     } catch (error) {
-      this.logger.error('Error handling Transfer event:', error);
+      this.customLogger.error('Error handling Transfer event:', error);
     }
   }
 
@@ -181,11 +215,10 @@ export class TransferMonitor extends EventMonitor {
     this.processingQueue = [];
     
     try {
-      await this.db.transaction(async (trx) => {
-        for (const event of batch) {
-          await this.updateHolderBalances(event, trx);
-        }
-      });
+      // Process events directly without transaction
+      for (const event of batch) {
+        await this.updateHolderBalances(event);
+      }
       
       // Update holder counts in cache
       await this.updateHolderCounts();
@@ -193,13 +226,13 @@ export class TransferMonitor extends EventMonitor {
       // Publish updates via WebSocket
       await this.publishHolderUpdates(batch);
     } catch (error) {
-      this.logger.error('Error processing batch:', error);
+      this.customLogger.error('Error processing batch:', error);
       // Re-add failed events to queue for retry
       this.processingQueue.push(...batch);
     }
   }
 
-  private async updateHolderBalances(event: TransferEvent, trx: any): Promise<void> {
+  private async updateHolderBalances(event: TransferEvent): Promise<void> {
     const { from, to, value, tokenAddress } = event;
     const tokenAddr = tokenAddress.toLowerCase();
     
@@ -208,27 +241,27 @@ export class TransferMonitor extends EventMonitor {
     
     // Update sender balance (if not mint)
     if (from.toLowerCase() !== ZERO_ADDRESS.toLowerCase()) {
-      const fromBalance = await this.getBalance(from, tokenAddr, trx);
+      const fromBalance = await this.getBalance(from, tokenAddr);
       const newFromBalance = BigInt(fromBalance) - BigInt(value);
       
       if (newFromBalance > 0n) {
-        await this.updateBalance(from, tokenAddr, newFromBalance.toString(), trx);
+        await this.updateBalance(from, tokenAddr, newFromBalance.toString());
       } else {
         // Remove holder if balance is 0
-        await this.removeHolder(from, tokenAddr, trx);
+        await this.removeHolder(from, tokenAddr);
         this.getHolderSet(tokenAddr).delete(from.toLowerCase());
       }
     }
     
     // Update receiver balance (if not burn)
     if (to.toLowerCase() !== ZERO_ADDRESS.toLowerCase()) {
-      const toBalance = await this.getBalance(to, tokenAddr, trx);
+      const toBalance = await this.getBalance(to, tokenAddr);
       const newToBalance = BigInt(toBalance) + BigInt(value);
       
       // Check if this is a new holder
       const wasNewHolder = toBalance === '0';
       
-      await this.updateBalance(to, tokenAddr, newToBalance.toString(), trx);
+      await this.updateBalance(to, tokenAddr, newToBalance.toString());
       
       if (wasNewHolder) {
         this.getHolderSet(tokenAddr).add(to.toLowerCase());
@@ -236,67 +269,68 @@ export class TransferMonitor extends EventMonitor {
     }
     
     // Store the transfer event
-    await this.storeTransferEvent(event, trx);
+    await this.storeTransferEvent(event);
   }
 
-  private async getBalance(address: string, tokenAddress: string, trx: any): Promise<string> {
-    const result = await trx('token_holders')
-      .where({ address: address.toLowerCase(), token_address: tokenAddress.toLowerCase() })
-      .first();
+  private async getBalance(address: string, tokenAddress: string): Promise<string> {
+    const result = await this.db.db.query(
+      'SELECT balance FROM token_holders WHERE address = $1 AND token_address = $2',
+      [address.toLowerCase(), tokenAddress.toLowerCase()]
+    );
     
-    return result?.balance || '0';
+    return result.rows[0]?.balance || '0';
   }
 
-  private async updateBalance(address: string, tokenAddress: string, balance: string, trx: any): Promise<void> {
-    await trx('token_holders')
-      .insert({
-        address: address.toLowerCase(),
-        token_address: tokenAddress.toLowerCase(),
-        balance,
-        last_updated: new Date()
-      })
-      .onConflict(['address', 'token_address'])
-      .merge({
-        balance,
-        last_updated: new Date()
-      });
+
+  private async updateBalance(address: string, tokenAddress: string, balance: string): Promise<void> {
+    await this.db.db.query(
+      `INSERT INTO token_holders (address, token_address, balance, last_updated)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (address, token_address)
+       DO UPDATE SET balance = $3, last_updated = $4`,
+      [address.toLowerCase(), tokenAddress.toLowerCase(), balance, new Date()]
+    );
   }
 
-  private async removeHolder(address: string, tokenAddress: string, trx: any): Promise<void> {
-    await trx('token_holders')
-      .where({ address: address.toLowerCase(), token_address: tokenAddress.toLowerCase() })
-      .delete();
+  private async removeHolder(address: string, tokenAddress: string): Promise<void> {
+    await this.db.db.query(
+      'DELETE FROM token_holders WHERE address = $1 AND token_address = $2',
+      [address.toLowerCase(), tokenAddress.toLowerCase()]
+    );
   }
 
-  private async storeTransferEvent(event: TransferEvent, trx: any): Promise<void> {
-    await trx('transfer_events')
-      .insert({
-        token_address: event.tokenAddress.toLowerCase(),
-        from_address: event.from.toLowerCase(),
-        to_address: event.to.toLowerCase(),
-        value: event.value,
-        block_number: event.blockNumber,
-        transaction_hash: event.transactionHash,
-        log_index: event.logIndex,
-        timestamp: new Date(event.timestamp)
-      })
-      .onConflict(['transaction_hash', 'log_index'])
-      .ignore(); // Ignore duplicates
+  private async storeTransferEvent(event: TransferEvent): Promise<void> {
+    await this.db.db.query(
+      `INSERT INTO transfer_events 
+       (token_address, from_address, to_address, value, block_number, transaction_hash, log_index, timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (transaction_hash, log_index) DO NOTHING`,
+      [
+        event.tokenAddress.toLowerCase(),
+        event.from.toLowerCase(),
+        event.to.toLowerCase(),
+        event.value,
+        event.blockNumber,
+        event.transactionHash,
+        event.logIndex,
+        new Date(event.timestamp)
+      ]
+    );
   }
 
   private async loadExistingHolders(tokenAddress: string): Promise<void> {
     try {
-      const holders = await this.db.knex('token_holders')
-        .where({ token_address: tokenAddress.toLowerCase() })
-        .where('balance', '>', '0')
-        .select('address');
+      const result = await this.db.db.query(
+        'SELECT address FROM token_holders WHERE token_address = $1 AND balance > $2',
+        [tokenAddress.toLowerCase(), '0']
+      );
       
-      const holderSet = new Set(holders.map(h => h.address.toLowerCase()));
+      const holderSet = new Set(result.rows.map((h: any) => h.address.toLowerCase()));
       this.holderCache.set(tokenAddress.toLowerCase(), holderSet);
       
-      this.logger.info(`Loaded ${holderSet.size} existing holders for token ${tokenAddress}`);
+      this.customLogger.info(`Loaded ${holderSet.size} existing holders for token ${tokenAddress}`);
     } catch (error) {
-      this.logger.error(`Error loading existing holders for ${tokenAddress}:`, error);
+      this.customLogger.error(`Error loading existing holders for ${tokenAddress}:`, error);
       this.holderCache.set(tokenAddress.toLowerCase(), new Set());
     }
   }
@@ -314,14 +348,15 @@ export class TransferMonitor extends EventMonitor {
       const count = holderSet.size;
       
       // Update database
-      await this.db.knex('tokens')
-        .where({ address: tokenAddress })
-        .update({ holders_count: count });
+      await this.db.db.query(
+        'UPDATE tokens SET holders_count = $1 WHERE address = $2',
+        [count, tokenAddress]
+      );
       
       // Update Redis cache
       await this.redis.set(`holders:${tokenAddress}`, count.toString(), 300); // 5 min TTL
       
-      this.logger.debug(`Updated holder count for ${tokenAddress}: ${count}`);
+      this.customLogger.debug(`Updated holder count for ${tokenAddress}: ${count}`);
     }
   }
 
@@ -359,23 +394,21 @@ export class TransferMonitor extends EventMonitor {
     }
     
     // Query database
-    const count = await this.db.knex('token_holders')
-      .where({ token_address: addr })
-      .where('balance', '>', '0')
-      .count('* as count')
-      .first();
+    const result = await this.db.db.query(
+      'SELECT COUNT(*) as count FROM token_holders WHERE token_address = $1 AND balance > $2',
+      [addr, '0']
+    );
     
-    return count?.count || 0;
+    return parseInt(result.rows[0]?.count || '0');
   }
 
   async getTopHolders(tokenAddress: string, limit: number = 10): Promise<HolderBalance[]> {
-    const holders = await this.db.knex('token_holders')
-      .where({ token_address: tokenAddress.toLowerCase() })
-      .where('balance', '>', '0')
-      .orderBy('balance', 'desc')
-      .limit(limit);
+    const result = await this.db.db.query(
+      'SELECT address, token_address, balance, last_updated FROM token_holders WHERE token_address = $1 AND balance > $2 ORDER BY balance DESC LIMIT $3',
+      [tokenAddress.toLowerCase(), '0', limit]
+    );
     
-    return holders.map(h => ({
+    return result.rows.map((h: any) => ({
       address: h.address,
       tokenAddress: h.token_address,
       balance: h.balance,
@@ -384,7 +417,7 @@ export class TransferMonitor extends EventMonitor {
   }
 
   async syncHistoricalEvents(tokenAddress: string, fromBlock: number = 0): Promise<void> {
-    this.logger.info(`Syncing historical Transfer events for ${tokenAddress} from block ${fromBlock}`);
+    this.customLogger.info(`Syncing historical Transfer events for ${tokenAddress} from block ${fromBlock}`);
     
     const contract = this.tokenContracts.get(tokenAddress.toLowerCase());
     if (!contract) {
@@ -401,14 +434,15 @@ export class TransferMonitor extends EventMonitor {
         const filter = contract.filters.Transfer();
         const events = await contract.queryFilter(filter, startBlock, endBlock);
         
-        this.logger.info(`Found ${events.length} Transfer events in blocks ${startBlock}-${endBlock}`);
+        this.customLogger.info(`Found ${events.length} Transfer events in blocks ${startBlock}-${endBlock}`);
         
         for (const event of events) {
-          if (event.args) {
+          const eventLog = event as ethers.EventLog;
+          if (eventLog.args) {
             await this.handleTransferEvent({
-              from: event.args[0],
-              to: event.args[1],
-              value: event.args[2].toString(),
+              from: eventLog.args[0],
+              to: eventLog.args[1],
+              value: eventLog.args[2].toString(),
               tokenAddress: tokenAddress,
               blockNumber: event.blockNumber,
               transactionHash: event.transactionHash,
@@ -422,11 +456,11 @@ export class TransferMonitor extends EventMonitor {
         await this.processBatch();
         
       } catch (error) {
-        this.logger.error(`Error syncing blocks ${startBlock}-${endBlock}:`, error);
+        this.customLogger.error(`Error syncing blocks ${startBlock}-${endBlock}:`, error);
       }
     }
     
-    this.logger.info(`Historical sync complete for ${tokenAddress}`);
+    this.customLogger.info(`Historical sync complete for ${tokenAddress}`);
   }
 
   async stop(): Promise<void> {

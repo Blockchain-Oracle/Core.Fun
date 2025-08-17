@@ -255,6 +255,15 @@ class CoreMemeBot {
 
     // Handle text messages
     this.bot.on(message('text'), async (ctx) => {
+      // Debug logging for session state
+      if (ctx.session?.pendingAction || ctx.session?.awaitingInput) {
+        this.logger.info('Session state - handling pending action:', {
+          pendingAction: ctx.session?.pendingAction,
+          awaitingInput: ctx.session?.awaitingInput,
+          userId: ctx.session?.userId
+        });
+      }
+      
       // Check if user is in a specific flow
       if (ctx.session?.pendingAction || ctx.session?.awaitingInput) {
         await this.handlePendingAction(ctx);
@@ -468,6 +477,13 @@ class CoreMemeBot {
     this.bot.action('withdraw', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.walletCommands.handleWithdraw(ctx);
+    });
+
+    // Handle withdraw to specific address
+    this.bot.action(/^withdraw_to_(.+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const walletId = ctx.match![1];
+      await this.walletCommands.processWithdraw(ctx, walletId);
     });
 
     this.bot.action('add_wallet_menu', authMiddleware, async (ctx) => {

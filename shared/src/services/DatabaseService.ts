@@ -600,6 +600,13 @@ export class DatabaseService {
     return result.rows[0] ? this.mapToWallet(result.rows[0]) : null;
   }
 
+  async getWalletById(walletId: string): Promise<Wallet | null> {
+    const query = 'SELECT * FROM wallets WHERE id = $1';
+    const result = await this.pool.query(query, [walletId]);
+    
+    return result.rows[0] ? this.mapToWallet(result.rows[0]) : null;
+  }
+
   async getUserWallet(userId: string): Promise<Wallet | null> {
     const user = await this.getUserById(userId);
     if (!user || !user.walletAddress || !user.encryptedPrivateKey) {

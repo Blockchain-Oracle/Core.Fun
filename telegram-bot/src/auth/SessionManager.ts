@@ -63,6 +63,8 @@ export class SessionManager {
             isAuthenticated: true,
             isPremium: session.subscriptionTier === 'premium',
             isPro: session.subscriptionTier === 'pro',
+            pendingAction: session.pendingAction,
+            awaitingInput: session.awaitingInput,
           };
         } else {
           // Initialize empty session
@@ -95,6 +97,8 @@ export class SessionManager {
               username: ctx.session.username,
               walletAddress: ctx.session.walletAddress,
               subscriptionTier: ctx.session.isPro ? 'pro' : ctx.session.isPremium ? 'premium' : 'free',
+              pendingAction: ctx.session.pendingAction,
+              awaitingInput: ctx.session.awaitingInput,
             })
           );
         } catch (error) {

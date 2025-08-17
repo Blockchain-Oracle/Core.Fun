@@ -79,7 +79,8 @@ export class CopyTradingCommands {
 
       // Check available slots based on tier
       const tierLevel = stakingData.subscription.tierLevel
-      const maxSlots = this.getMaxSlotsForTier(tierLevel.toString())
+      const tierName = stakingData.subscription.tier
+      const maxSlots = this.getMaxSlotsForTier(tierName)
       const currentCopyTrades = await this.getCurrentCopyTrades(telegramId)
       
       if (currentCopyTrades.length >= maxSlots) {
@@ -98,7 +99,7 @@ export class CopyTradingCommands {
       await ctx.reply('🔄 Starting copy trading...')
       
       const success = await this.copyTrader.startCopyTrading({
-        userId: telegramId,
+        userId: user.id,
         targetWallet: targetWallet,
         enabled: true,
         copyBuys: true,
@@ -166,7 +167,7 @@ export class CopyTradingCommands {
       // Stop copy trading
       try {
         await this.copyTrader.stopCopyTrading(
-          user.walletAddress,
+          user.id,
           targetWallet
         )
         
@@ -200,13 +201,17 @@ export class CopyTradingCommands {
       }
 
       const copyTrades = await this.getCurrentCopyTrades(telegramId)
-      const stakingData = await contractService.getUserStakingBenefits(user.walletAddress)
-      const maxSlots = this.getMaxSlotsForTier(stakingData.tier.toString())
+      
+      // Get staking status from API
+      const stakingResponse = await apiService.getStakingStatus(user.walletAddress)
+      const stakingData: any = stakingResponse.data || stakingResponse
+      const tierName = stakingData.subscription?.tier || 'free'
+      const maxSlots = this.getMaxSlotsForTier(tierName)
 
       if (copyTrades.length === 0) {
         await ctx.reply(
           `📊 *Your Copy Trading Status*\n\n` +
-          `Tier: ${stakingData.tier}\n` +
+          `Tier: ${tierName}\n` +
           `Available slots: ${maxSlots}\n\n` +
           `You're not copying any traders.\n` +
           `Use \`/copytrade <wallet>\` to start!`,
@@ -216,13 +221,16 @@ export class CopyTradingCommands {
       }
 
       let message = `📊 *Your Copy Trading Status*\n\n`
-      message += `Tier: ${stakingData.tier}\n`
+      message += `Tier: ${tierName}\n`
       message += `Slots: ${copyTrades.length}/${maxSlots}\n\n`
       message += `*Active Copy Trades:*\n`
 
       for (const trade of copyTrades) {
-        message += `\n• \`${trade.target_wallet}\`\n`
-        message += `  Started: ${new Date(trade.created_at).toLocaleDateString()}\n`
+        const target = trade.targetWallet || trade.target_wallet || 'unknown'
+        const created = trade.createdAt || trade.created_at
+        const createdText = created ? new Date(created).toLocaleString() : 'N/A'
+        message += `\n• \`${target}\`\n`
+        message += `  Started: ${createdText}\n`
       }
 
       message += `\n\nUse \`/copystop <wallet>\` to stop copying a trader.`

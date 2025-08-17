@@ -281,25 +281,33 @@ export class StakingCommands {
       }
       
       // PROGRESS TO NEXT TIER
-      const nextTierIndex = tiers.findIndex(t => t.name === stakingData.tier) + 1;
+      const currentTierName = stakingData.tier || stakingData.subscription?.tier || 'free';
+      const nextTierIndex = tiers.findIndex(t => t.name === currentTierName) + 1;
       const nextTier = nextTierIndex < tiers.length ? tiers[nextTierIndex] : null;
       
       if (nextTier) {
-        const currentStake = parseFloat(stakingData.stakedAmount);
-        const progress = (currentStake / nextTier.minStake) * 100;
+        const currentBalance = parseFloat(stakingData.cmpBalance || stakingData.subscription?.cmpBalance || '0');
+        const progress = Math.min(100, (currentBalance / nextTier.minStake) * 100);
         message += `📈 *Progress to ${nextTier.name}:*\n`;
         message += this.createProgressBar(progress);
-        message += `\n${currentStake.toLocaleString()} / ${nextTier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}`;
+        message += `\n${currentBalance.toLocaleString()} / ${nextTier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}`;
         message += ` (${progress.toFixed(1)}%)\n\n`;
       }
       
       // TIER BENEFITS
+      const benefits = stakingData.subscription?.benefits || stakingData.benefits || {};
+      const feeDiscount = stakingData.feeDiscount || stakingData.subscription?.feeDiscount || 0;
+      const copySlots = benefits.copyTradeSlots || stakingData.copyTradeSlots || 0;
+      const alertLimit = benefits.alertLimit || stakingData.maxAlerts || 5;
+      const apiAccess = benefits.apiAccess || stakingData.hasApiAccess || false;
+      const prioritySupport = benefits.prioritySupport || (currentTier && (currentTier.name === 'Gold' || currentTier.name === 'Platinum')) || false;
+      
       message += `🎯 *Your Benefits:*\n`;
-      message += `├ Trading Fee: ${stakingData.feeDiscount}% OFF\n`;
-      message += `├ Copy Trade Slots: ${stakingData.copyTradeSlots}\n`;
-      message += `├ Alert Limits: ${stakingData.maxAlerts === -1 ? 'Unlimited' : stakingData.maxAlerts}\n`;
-      message += `├ API Access: ${stakingData.hasApiAccess ? '✅' : '❌'}\n`;
-      message += `└ Priority Support: ${currentTier.name === 'Gold' || currentTier.name === 'Platinum' ? '✅' : '❌'}\n\n`;
+      message += `├ Trading Fee: ${feeDiscount}% OFF\n`;
+      message += `├ Copy Trade Slots: ${copySlots}\n`;
+      message += `├ Alert Limits: ${alertLimit === -1 ? 'Unlimited' : alertLimit}\n`;
+      message += `├ API Access: ${apiAccess ? '✅' : '❌'}\n`;
+      message += `└ Priority Support: ${prioritySupport ? '✅' : '❌'}\n\n`;
       
       message += `💡 *Tip:* Stake more ${this.TOKEN_SYMBOL} to unlock higher tiers!`;
 

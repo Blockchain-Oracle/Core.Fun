@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { DatabaseService, StakingPosition, WalletService, CopiedTrade } from '@core-meme/shared';
 import { createLogger } from '@core-meme/shared';
 import { ContractDataService } from '@core-meme/shared';
+import { ApiService } from '../services/ApiService';
 
 // Staking tier-based copy trade slot limits
 const TIER_LIMITS: Record<number, { slots: number; name: string }> = {
@@ -89,10 +90,12 @@ export class MemeFactoryCopyTrader {
   private isMonitoring: boolean = false;
   private pollInterval?: NodeJS.Timeout;
   private walletService: WalletService;
+  private apiService: ApiService;
 
   constructor(db: DatabaseService) {
     this.db = db;
     this.walletService = new WalletService(db);
+    this.apiService = new ApiService();
     
     const rpcUrl = process.env.CORE_RPC_HTTP_URL || process.env.CORE_RPC_URL || 'https://rpc.coredao.org';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -878,15 +881,17 @@ export class MemeFactoryCopyTrader {
     usedSlots: number;
   }> {
     try {
-      // Get user's staking positions and compute tier
-      const positions: StakingPosition[] = await this.db.getUserStakingPositions(userId);
+      // Use balance-based tier from staking status API
+      const user = await this.db.getUserById(userId);
       let tierLevel = 0;
-      if (positions && positions.length > 0) {
-        const totalStaked = positions.reduce((sum, p) => sum + (p.stakedAmount || 0), 0);
-        if (totalStaked >= 50000) tierLevel = 4;      // Platinum
-        else if (totalStaked >= 10000) tierLevel = 3; // Gold  
-        else if (totalStaked >= 5000) tierLevel = 2;  // Silver
-        else if (totalStaked >= 1000) tierLevel = 1;  // Bronze
+      if (user && user.walletAddress) {
+        try {
+          const stakingResp: any = await this.apiService.getStakingStatus(user.walletAddress);
+          const data = stakingResp.data || stakingResp;
+          tierLevel = data?.subscription?.tierLevel ?? 0;
+        } catch (e) {
+          this.logger.warn('Failed to fetch staking status for copy slots, defaulting to None tier');
+        }
       }
       
       // Get current copy trade settings

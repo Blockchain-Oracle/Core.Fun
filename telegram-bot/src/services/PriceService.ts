@@ -181,22 +181,16 @@ export class PriceService {
       let priceInCore = 0;
       
       if (!saleInfo.isLaunched) {
-        // Token is still on bonding curve
-        // Use the bonding curve formula: BASE_PRICE + (PRICE_INCREMENT * steps)
-        const STEP_SIZE = ethers.parseEther('10000'); // 10,000 tokens
-        const BASE_PRICE = ethers.parseEther('0.0001'); // 0.0001 CORE
-        const PRICE_INCREMENT = ethers.parseEther('0.0001'); // 0.0001 CORE per step
-        
-        // Calculate current price based on tokens sold
-        const steps = currentSold / STEP_SIZE;
-        const currentPriceWei = BASE_PRICE + (PRICE_INCREMENT * steps);
-        priceInCore = parseFloat(ethers.formatEther(currentPriceWei));
+        // Use on-chain formula for precise unit handling: ETH needed for 1 token
+        const oneTokenWei = ethers.parseEther('1');
+        const ethOutForOne = await this.memeFactory.calculateETHOut(currentSold, oneTokenWei);
+        priceInCore = parseFloat(ethers.formatEther(ethOutForOne));
       } else {
-        // Token has graduated - use max bonding curve price
-        // For graduated tokens, should ideally fetch from DEX
-        const MAX_STEPS = 50n; // 500k tokens / 10k per step
-        const maxPrice = ethers.parseEther('0.0001') + (ethers.parseEther('0.0001') * MAX_STEPS);
-        priceInCore = parseFloat(ethers.formatEther(maxPrice));
+        // Graduated tokens: cap at last bonding curve step price
+        const oneTokenWei = ethers.parseEther('1');
+        const MAX_TOKENS = ethers.parseEther('500000');
+        const ethOutForOne = await this.memeFactory.calculateETHOut(MAX_TOKENS, oneTokenWei).catch(() => ethers.parseEther('0.0051'));
+        priceInCore = parseFloat(ethers.formatEther(ethOutForOne));
       }
 
       const priceData: PriceData = {

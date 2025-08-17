@@ -161,7 +161,8 @@ export class ApiService {
   }
 
   async getStakingTiers(): Promise<ApiResponse<StakingTier[]>> {
-    return this.request<StakingTier[]>('/api/subscription/tiers');
+    // Use staking tiers endpoint (subscription routes deprecated)
+    return this.request<StakingTier[]>('/api/staking/tiers');
   }
 
   async stake(amount: string): Promise<ApiResponse<{ txHash: string }>> {

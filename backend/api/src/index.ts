@@ -8,7 +8,6 @@ import walletRoutes from './routes/wallet';
 import tokenRoutes from './routes/tokens';
 import tradingRoutes from './routes/trading';
 import statsRoutes from './routes/stats';
-import subscriptionRoutes from './routes/subscription';
 import stakingRoutes from './routes/staking';
 
 dotenv.config();
@@ -59,7 +58,6 @@ app.use('/api', walletRoutes);
 app.use('/api', tokenRoutes);
 app.use('/api', tradingRoutes);
 app.use('/api', statsRoutes);
-app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/staking', stakingRoutes);
 
 // Error handling

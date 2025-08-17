@@ -2,6 +2,8 @@ import { BotContext } from '../bot';
 import { DatabaseService } from '@core-meme/shared';
 import { Markup } from 'telegraf';
 import { createLogger } from '@core-meme/shared';
+import { ApiService } from '../services/ApiService';
+import { PriceService } from '../services/PriceService';
 
 export class AlertCommands {
   private db: DatabaseService;
@@ -207,8 +209,8 @@ export class AlertCommands {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [
-              Markup.button.callback('🔔 Set Alert', `set_alert_${tokenAddress.slice(0, 10)}`),
-              Markup.button.callback('📊 View Price', `view_price_${tokenAddress.slice(0, 10)}`)
+              Markup.button.callback('🔔 Set Alert', `set_alert_${tokenAddress}`),
+              Markup.button.callback('📊 View Price', `view_price_${tokenAddress}`)
             ],
             [
               Markup.button.callback('👀 View Watchlist', 'view_watchlist'),
@@ -318,21 +320,10 @@ export class AlertCommands {
         return;
       }
       
-      // Store in session for multi-step process
-      ctx.session = ctx.session || {};
-      ctx.session.pendingAction = 'create_alert';
-      
+      // Guide users to paste the address (auto-detect preview) and then tap Add Alert
       await ctx.reply(
-        '🔔 **Create Price Alert**\n\n' +
-        'Step 1: Enter the token address\n\n' +
-        'Example: `0x1234...abcd`\n\n' +
-        'Or paste the full token address:',
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('❌ Cancel', 'cancel_alert')]
-          ])
-        }
+        '🔔 Send a token address in chat to preview it, then tap "📈 Add Alert" on the preview to set a price alert.',
+        { parse_mode: 'Markdown' }
       );
     } catch (error) {
       this.logger.error('Error creating price alert:', error);
@@ -445,6 +436,87 @@ export class AlertCommands {
     } catch (error) {
       this.logger.error('Error creating alert:', error);
       await ctx.reply('❌ Error creating alert. Please try again.');
+    }
+  }
+
+  /**
+   * Create alert directly for a specific token from the preview button
+   */
+  async createAlertForToken(ctx: BotContext, tokenAddress: string) {
+    try {
+      const userId = ctx.from?.id.toString();
+      if (!userId) return;
+      const user = await this.db.getUserByTelegramId(parseInt(userId));
+      if (!user) return;
+
+      // Fetch current price for quick-pick buttons
+      let currentPrice: number | null = null;
+      let tokenSymbol = 'TOKEN';
+      
+      try {
+        const api = new ApiService();
+        const priceResponse = await api.getTokenPrice(tokenAddress);
+        if (priceResponse.success && priceResponse.data) {
+          currentPrice = priceResponse.data.priceInUsd;
+        }
+        
+        // Also try to get token info for symbol
+        const infoResponse = await api.getTokenInfo(tokenAddress);
+        if (infoResponse.success && infoResponse.data) {
+          tokenSymbol = infoResponse.data.symbol || 'TOKEN';
+        }
+      } catch (error) {
+        this.logger.warn('Failed to fetch token price for quick-picks:', error);
+        // Try fallback with PriceService
+        try {
+          const priceService = new PriceService();
+          const priceData = await priceService.getTokenPrice(tokenAddress);
+          if (priceData) {
+            currentPrice = priceData.priceInUsd;
+          }
+        } catch (fallbackError) {
+          this.logger.warn('Fallback price fetch also failed:', fallbackError);
+        }
+      }
+
+      let message = `🔔 **Set Price Alert**\n\n`;
+      message += `Token: **${tokenSymbol}**\n`;
+      message += `Address: \`${tokenAddress}\`\n`;
+      
+      if (currentPrice !== null && currentPrice > 0) {
+        message += `Current Price: **$${currentPrice.toFixed(6)}**\n\n`;
+        message += `Choose alert type:`;
+      } else {
+        message += `\nChoose alert type:`;
+      }
+
+      await ctx.reply(
+        message,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [
+              Markup.button.callback(`📈 Above`, `alert_direction_above_${tokenAddress}`),
+              Markup.button.callback(`📉 Below`, `alert_direction_below_${tokenAddress}`)
+            ],
+            [Markup.button.callback('❌ Cancel', 'alerts_menu')]
+          ])
+        }
+      );
+
+      // Store current price in session for quick-picks
+      if (ctx.session && currentPrice !== null) {
+        ctx.session.alertTokenPrice = currentPrice;
+        ctx.session.alertTokenSymbol = tokenSymbol;
+      }
+
+      if (ctx.session) {
+        ctx.session.awaitingInput = undefined;
+        ctx.session.pendingAction = undefined;
+      }
+    } catch (error) {
+      this.logger.error('Error preparing alert for token:', error);
+      await ctx.reply('❌ Failed to start alert setup.');
     }
   }
 

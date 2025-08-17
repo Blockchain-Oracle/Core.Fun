@@ -631,11 +631,31 @@ export class DatabaseService {
   }
 
   async getPosition(userId: string, tokenAddress: string): Promise<Position | null> {
+    // DEBUG LOGGING
+    this.logger.info('DatabaseService.getPosition - Query params:', {
+      userId: userId,
+      tokenAddress: tokenAddress,
+      tokenAddressLower: tokenAddress?.toLowerCase()
+    });
+    
     const query = `
       SELECT * FROM positions 
-      WHERE user_id = $1 AND token_address = $2 AND is_active = true
+      WHERE user_id = $1 AND LOWER(token_address) = LOWER($2) AND is_active = true
     `;
     const result = await this.pool.query(query, [userId, tokenAddress]);
+    
+    // DEBUG LOGGING
+    this.logger.info('DatabaseService.getPosition - Query result:', {
+      rowCount: result.rowCount,
+      found: result.rows.length > 0,
+      position: result.rows[0] ? {
+        id: result.rows[0].id,
+        user_id: result.rows[0].user_id,
+        token_address: result.rows[0].token_address,
+        amount: result.rows[0].amount,
+        is_active: result.rows[0].is_active
+      } : null
+    });
     
     return result.rows[0] ? this.mapToPosition(result.rows[0]) : null;
   }
@@ -653,7 +673,7 @@ export class DatabaseService {
     
     const result = await this.pool.query(query, [
       positionData.userId,
-      positionData.tokenAddress,
+      positionData.tokenAddress?.toLowerCase(),
       positionData.tokenSymbol,
       positionData.tokenName,
       positionData.amount,
@@ -681,7 +701,7 @@ export class DatabaseService {
         pnl_percentage = COALESCE($8, pnl_percentage),
         trades = COALESCE($9, trades),
         last_update_time = NOW()
-      WHERE user_id = $1 AND token_address = $2
+      WHERE user_id = $1 AND LOWER(token_address) = LOWER($2)
     `;
     
     await this.pool.query(query, [
@@ -701,7 +721,7 @@ export class DatabaseService {
     const query = `
       UPDATE positions 
       SET is_active = false, last_update_time = NOW()
-      WHERE user_id = $1 AND token_address = $2
+      WHERE user_id = $1 AND LOWER(token_address) = LOWER($2)
     `;
     
     await this.pool.query(query, [userId, tokenAddress]);
@@ -1483,7 +1503,7 @@ export class DatabaseService {
 
   async updateTokenPrice(tokenAddress: string, price: number): Promise<void> {
     await this.pool.query(
-      'UPDATE positions SET current_price = $1, last_update_time = NOW() WHERE token_address = $2',
+      'UPDATE positions SET current_price = $1, last_update_time = NOW() WHERE LOWER(token_address) = LOWER($2)',
       [price, tokenAddress]
     );
   }

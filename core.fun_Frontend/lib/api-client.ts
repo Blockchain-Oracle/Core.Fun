@@ -275,26 +275,20 @@ class EnhancedApiClient {
     }
   }> {
     // Use wallet/info to get token balances
-    const walletInfo = await this.getWalletInfo()
-    
-    if (!walletInfo.success || !walletInfo.data) {
-      return {
-        success: false,
-        data: { holdings: [] }
-      }
-    }
-    
+    const walletInfo = await this.getWalletInfo() as any
+    const tokenBalances = walletInfo?.data?.tokenBalances || walletInfo?.tokenBalances || []
+
     // Map token balances to portfolio holdings
-    const holdings = (walletInfo.data.tokenBalances || []).map((token: any) => ({
+    const holdings = tokenBalances.map((token: any) => ({
       tokenAddress: token.token || token.address,
       symbol: token.symbol,
-      name: token.symbol, // Use symbol as name if not provided
+      name: token.symbol,
       balance: token.balance,
-      averageCost: 0, // Not available from wallet info
+      averageCost: 0,
       currentPrice: token.value || 0,
-      trades: 0 // Not available from wallet info
+      trades: 0
     }))
-    
+
     return {
       success: true,
       data: { holdings }
@@ -332,18 +326,8 @@ class EnhancedApiClient {
   }
 
   // Wallet endpoints
-  async getWalletInfo(): Promise<{
-    success: boolean
-    balance: string
-    coreBalance: string
-    tokenBalances: Array<{
-      token: string
-      symbol: string
-      balance: string
-      value: number
-    }>
-  }> {
-    return this.get('/wallet/info')
+  async getWalletInfo(): Promise<any> {
+    return this.get('/wallet/info') as any
   }
 
   async getWalletBalance(address?: string): Promise<{
@@ -357,22 +341,8 @@ class EnhancedApiClient {
     }
   }> {
     // Use wallet/info endpoint instead of non-existent balance endpoint
-    const walletInfo = await this.getWalletInfo()
-    
-    if (!walletInfo.success || !walletInfo.data) {
-      return {
-        success: false,
-        balance: '0',
-        coreBalance: '0',
-        data: {
-          balance: {
-            core: '0'
-          }
-        }
-      }
-    }
-    
-    const coreBalance = walletInfo.data.coreBalance || '0'
+    const walletInfo = await this.getWalletInfo() as any
+    const coreBalance = walletInfo?.data?.coreBalance || walletInfo?.coreBalance || '0'
     return {
       success: true,
       balance: coreBalance,
@@ -588,7 +558,8 @@ class EnhancedApiClient {
       }
     }
   }> {
-    return this.get(`/subscription/status/${walletAddress}`)
+    // Route migrated to staking service
+    return this.get(`/staking/status/${walletAddress}`)
   }
 
   async getSubscriptionTiers(): Promise<{
@@ -601,7 +572,8 @@ class EnhancedApiClient {
       features: Record<string, any>
     }>
   }> {
-    return this.get('/subscription/tiers')
+    // Route migrated to staking service
+    return this.get('/staking/tiers')
   }
 
   // Analytics endpoints - uses /api/stats

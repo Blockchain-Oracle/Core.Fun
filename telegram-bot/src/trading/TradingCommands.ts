@@ -384,7 +384,26 @@ export class TradingCommands {
     }
 
     const loadingMsg = await ctx.reply('🔄 Loading position...');
+    
+    // DEBUG LOGGING
+    this.logger.info('ShowSellPanel - Looking up position:', {
+      userId: ctx.session.userId,
+      tokenAddress: tokenAddress,
+      sessionData: ctx.session
+    });
+    
     const position = await this.positionManager.getPosition(ctx.session.userId, tokenAddress);
+    
+    // DEBUG LOGGING
+    this.logger.info('ShowSellPanel - Position lookup result:', {
+      found: !!position,
+      position: position ? {
+        id: position.id,
+        tokenAddress: position.tokenAddress,
+        amount: position.amount,
+        tokenSymbol: position.tokenSymbol
+      } : null
+    });
 
     if (!position) {
       await ctx.telegram.editMessageText(
@@ -539,28 +558,10 @@ export class TradingCommands {
    * Handle /snipe command
    */
   async handleSnipe(ctx: BotContext): Promise<void> {
-    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
-    const args = text.split(' ').slice(1);
-
-    if (args.length < 2) {
-      await ctx.reply(
-        `🎯 *Snipe Usage:*\n\n` +
-        `\`/snipe [token_address] [amount]\`\n\n` +
-        `Example: \`/snipe 0x123... 1\`\n\n` +
-        `This will auto-buy when liquidity is added.`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-
-    const tokenAddress = args[0];
-    const amount = args[1];
-
-    // Create snipe order
     await ctx.reply(
-      `🎯 *Snipe Order Created*\n\n` +
-      `Token: \`${tokenAddress}\`\n` +
-      `Amount: ${amount} CORE\n\n` +
-      `I'll execute this as soon as liquidity is detected!`,
+      '🎯 Snipe is coming soon!\n\n' +
+      'We\'re finalizing the liquidity-detection and auto-execution flow.\n' +
+      'You\'ll be able to pre-arm a buy that triggers on launch.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -694,19 +695,60 @@ export class TradingCommands {
   }
 
   /**
+   * Execute sell with percentage
+   */
+  async executeSellWithPercentage(ctx: BotContext, tokenAddress: string, percentage: number, isEmergency: boolean = false) {
+    if (!ctx.session?.userId) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+
+    // DEBUG LOGGING
+    this.logger.info('ExecuteSellWithPercentage - Called with:', {
+      userId: ctx.session.userId,
+      tokenAddress: tokenAddress,
+      percentage: percentage,
+      isEmergency: isEmergency,
+      sessionData: ctx.session
+    });
+
+    // Check if user has a position
+    const position = await this.positionManager.getPosition(ctx.session.userId, tokenAddress);
+    
+    // DEBUG LOGGING
+    this.logger.info('ExecuteSellWithPercentage - Position lookup result:', {
+      found: !!position,
+      position: position ? {
+        id: position.id,
+        tokenAddress: position.tokenAddress,
+        amount: position.amount,
+        tokenSymbol: position.tokenSymbol
+      } : null
+    });
+    
+    if (!position) {
+      await ctx.reply('❌ You have no position in this token');
+      return;
+    }
+
+    // For emergency sell, use higher slippage tolerance
+    if (isEmergency) {
+      await ctx.reply('🚨 Executing emergency sell with 15% slippage tolerance...');
+    }
+
+    await this.executeSellTrade(ctx, tokenAddress, percentage);
+  }
+
+  /**
    * Setup snipe order
    */
   async setupSnipe(ctx: BotContext, tokenAddress: string) {
     await ctx.reply(
-      `🎯 *Setup Snipe*\n\n` +
-      `Token: \`${tokenAddress}\`\n\n` +
-      `Enter the amount of CORE to snipe with:`,
+      '🎯 Snipe is coming soon!\n\n' +
+      'We\'re finalizing the liquidity-detection and auto-execution flow.\n' +
+      'You\'ll be able to pre-arm a buy that triggers on launch.',
       { parse_mode: 'Markdown' }
     );
-
-    if (ctx.session) {
-      ctx.session.pendingAction = `snipe_${tokenAddress}`;
-    }
   }
 
   /**

@@ -86,85 +86,15 @@ const TIER_BENEFITS = {
  * GET /subscription/status/:wallet
  * Get subscription status for a wallet address
  */
+// Deprecated: inform clients to use /api/staking/status/:wallet
 router.get('/status/:wallet', async (req: Request, res: Response) => {
-  const walletParam = req.params.wallet
   try {
-    const wallet = walletParam
-    
-    if (!ethers.isAddress(wallet)) {
-      return res.status(400).json({
-        error: 'Invalid wallet address'
-      })
-    }
-
-    // Get staking data from contract
-    const stakingData = await contractService.getUserStakingBenefits(wallet)
-    
-    // Get user from database
-    const user = await db.getUserByWallet(wallet.toLowerCase())
-    
-    // Calculate tier from staked amount
-    // Use safe conversion for BigNumber operations
-    const safeUserStakeValue = safeBigNumberValue(stakingData.userStake)
-    const stakedAmount = Number(ethers.formatEther(safeUserStakeValue))
-    const tierIndex = Math.min(stakingData.tier || 0, TIER_NAMES.length - 1)
-    const tierName = TIER_NAMES[tierIndex]
-    
-    // Get tier benefits
-    const benefits = TIER_BENEFITS[tierName as keyof typeof TIER_BENEFITS]
-    
-    // Calculate progress to next tier
-    let progressToNext = null
-    if (tierIndex < TIER_NAMES.length - 1) {
-      const nextThreshold = TIER_THRESHOLDS[tierIndex + 1]
-      progressToNext = {
-        currentStake: stakedAmount,
-        requiredStake: nextThreshold,
-        remaining: nextThreshold - stakedAmount,
-        percentage: (stakedAmount / nextThreshold) * 100
-      }
-    }
-    
-    res.json({
-      success: true,
-      data: {
-        wallet: wallet,
-        stakedAmount: stakedAmount.toString(),
-        tier: tierName,
-        rewards: Number(ethers.formatEther(safeBigNumberValue(stakingData.pendingRewards))).toString(),
-        apy: 12, // Default APY - could be calculated dynamically
-        lockEndTime: 0, // No lock period in current implementation
-        canUnstake: stakedAmount > 0,
-        feeDiscount: stakingData.feeDiscount || 0,
-        maxAlerts: benefits.alertLimit,
-        copyTradeSlots: benefits.copyTradeSlots,
-        hasApiAccess: benefits.prioritySupport,
-        lastClaimTime: 0, // Could be tracked if needed
-        
-        // Keep the original structure for backward compatibility
-        subscription: {
-          tier: tierName,
-          tierLevel: tierIndex,
-          isPremium: stakingData.tier > 0,
-          stakedAmount: stakedAmount,
-          pendingRewards: Number(ethers.formatEther(safeBigNumberValue(stakingData.pendingRewards))),
-          feeDiscount: stakingData.feeDiscount || 0,
-          benefits,
-          progressToNext
-        },
-        user: user ? {
-          userId: user.id,
-          username: user.username,
-          createdAt: user.createdAt
-        } : null
-      }
-    })
-  } catch (error) {
-    logger.error('Error fetching subscription status for wallet:', walletParam, error)
-    res.status(500).json({
+    return res.status(410).json({
       success: false,
-      error: 'Failed to fetch subscription status'
+      error: 'Deprecated. Use /api/staking/status/:wallet instead.'
     })
+  } catch {
+    return res.status(410).json({ success: false, error: 'Deprecated endpoint' })
   }
 })
 
@@ -172,133 +102,33 @@ router.get('/status/:wallet', async (req: Request, res: Response) => {
  * GET /subscription/tiers
  * Get all available subscription tiers
  */
-router.get('/tiers', async (req: Request, res: Response) => {
-  try {
-    const tiers = TIER_NAMES.map((name, index) => ({
-      name,
-      level: index,
-      minStake: TIER_THRESHOLDS[index],
-      benefits: TIER_BENEFITS[name as keyof typeof TIER_BENEFITS],
-      features: getTierFeatures(name)
-    }))
-    
-    res.json({ tiers })
-  } catch (error) {
-    logger.error('Error fetching tiers:', error)
-    res.status(500).json({
-      error: 'Failed to fetch subscription tiers'
-    })
-  }
+// Deprecated: inform clients to use /api/staking/tiers
+router.get('/tiers', async (_req: Request, res: Response) => {
+  return res.status(410).json({ success: false, error: 'Deprecated. Use /api/staking/tiers instead.' })
 })
 
 /**
  * GET /subscription/stats
  * Get platform-wide subscription statistics
  */
-router.get('/stats', async (req: Request, res: Response) => {
-  try {
-    // Get provider and staking contract
-    const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL)
-    const stakingContract = new ethers.Contract(
-      process.env.STAKING_ADDRESS || '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa',
-      [
-        'function totalStaked() view returns (uint256)',
-        'function totalRewardsDistributed() view returns (uint256)',
-        'function activeStakers() view returns (uint256)'
-      ],
-      provider
-    )
-    
-    // Get contract stats
-    const [totalStaked, totalRewards, activeStakers] = await Promise.all([
-      stakingContract.totalStaked().catch(() => 0n),
-      stakingContract.totalRewardsDistributed().catch(() => 0n),
-      stakingContract.activeStakers().catch(() => 0n)
-    ])
-    
-    // Get tier distribution from database
-    const tierDistribution = await db.getSubscriptionTierDistribution()
-    
-    res.json({
-      totalStaked: ethers.formatEther(totalStaked),
-      totalRewardsDistributed: ethers.formatEther(totalRewards),
-      activeStakers: Number(activeStakers),
-      tierDistribution,
-      tokenSymbol: process.env.STAKING_TOKEN_SYMBOL || 'CMP',
-      stakingAddress: process.env.STAKING_ADDRESS
-    })
-  } catch (error) {
-    logger.error('Error fetching subscription stats:', error)
-    res.status(500).json({
-      error: 'Failed to fetch subscription statistics'
-    })
-  }
+router.get('/stats', async (_req: Request, res: Response) => {
+  return res.status(410).json({ success: false, error: 'Deprecated. Use /api/staking/stats instead.' })
 })
 
 /**
  * POST /subscription/claim/:wallet
  * Claim pending rewards for a wallet
  */
-router.post('/claim/:wallet', async (req: Request, res: Response) => {
-  try {
-    const { wallet } = req.params
-    
-    if (!ethers.isAddress(wallet)) {
-      return res.status(400).json({
-        error: 'Invalid wallet address'
-      })
-    }
-    
-    // Note: This endpoint would typically require authentication
-    // and would execute the claim transaction on behalf of the user
-    // For now, we just return the pending rewards
-    
-    const pendingRewards = await contractService.getUserStakingBenefits(wallet)
-    
-    res.json({
-      wallet,
-      pendingRewards: ethers.formatEther(pendingRewards.pendingRewards || '0'),
-      message: 'Use the Telegram bot or web interface to claim rewards'
-    })
-  } catch (error) {
-    logger.error('Error processing claim:', error)
-    res.status(500).json({
-      error: 'Failed to process claim request'
-    })
-  }
+router.post('/claim/:wallet', async (_req: Request, res: Response) => {
+  return res.status(410).json({ success: false, error: 'Deprecated. Use /api/staking/claim instead.' })
 })
 
 /**
  * GET /subscription/leaderboard
  * Get top stakers leaderboard
  */
-router.get('/leaderboard', async (req: Request, res: Response) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100)
-    
-    // Get top stakers from database
-    const topStakers = await db.getTopStakers(limit)
-    
-    // Enrich with tier information
-    const leaderboard = topStakers.map((staker: any, index: number) => {
-      const tierIndex = getTierFromStake(staker.staked_amount)
-      return {
-        rank: index + 1,
-        wallet: staker.wallet_address,
-        username: staker.username,
-        stakedAmount: staker.staked_amount,
-        tier: TIER_NAMES[tierIndex],
-        totalEarned: staker.total_earned || 0
-      }
-    })
-    
-    res.json({ leaderboard })
-  } catch (error) {
-    logger.error('Error fetching leaderboard:', error)
-    res.status(500).json({
-      error: 'Failed to fetch leaderboard'
-    })
-  }
+router.get('/leaderboard', async (_req: Request, res: Response) => {
+  return res.status(410).json({ success: false, error: 'Deprecated. Use /api/staking/leaderboard instead.' })
 })
 
 /**

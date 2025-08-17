@@ -10,6 +10,7 @@ import { CopyTradingCommands } from './commands/CopyTradingCommands';
 import { SessionManager } from './auth/SessionManager';
 import { DatabaseService } from '@core-meme/shared';
 import { SocketIOClient } from './services/SocketIOClient';
+import { ApiService } from './services/ApiService';
 import { WebhookHandler } from './services/WebhookHandler';
 import { createLogger } from '@core-meme/shared';
 import { authMiddleware } from './middleware/auth';
@@ -30,6 +31,8 @@ export interface BotContext extends Context {
     isPro?: boolean;
     pendingAction?: string;
     awaitingInput?: string;
+    alertTokenPrice?: number;
+    alertTokenSymbol?: string;
   };
   db?: DatabaseService;
 }
@@ -276,6 +279,21 @@ class CoreMemeBot {
           }
           return;
         }
+        // Handle custom sell percentage
+        if (state.action === 'sell_custom' && ctx.message && 'text' in ctx.message) {
+          const percentageText = ctx.message.text.trim();
+          const percentage = parseFloat(percentageText);
+          if (isNaN(percentage) || percentage <= 0 || percentage > 100) {
+            await ctx.reply('❌ Invalid percentage. Please enter a number between 1 and 100.');
+            return;
+          }
+          try {
+            await this.tradingCommands.executeSellWithPercentage(ctx, state.tokenAddress!, percentage);
+          } finally {
+            this.userStates.delete(fromId);
+          }
+          return;
+        }
       }
 
       // Auto-detect token addresses and show preview
@@ -308,6 +326,12 @@ class CoreMemeBot {
     this.bot.action('wallet_manager', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.walletCommands.openWalletManager(ctx);
+    });
+
+    // Add withdraw address callback
+    this.bot.action('add_withdraw_address', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.walletCommands.addWithdrawWallet(ctx);
     });
 
     this.bot.action('get_web_link', authMiddleware, async (ctx) => {
@@ -602,9 +626,62 @@ class CoreMemeBot {
       await this.tradingCommands.buyToken(ctx, tokenAddress);
     });
 
-    this.bot.action(/^sell_(.+)$/, authMiddleware, async (ctx) => {
+    // Handle sell with percentage buttons - MUST BE BEFORE general sell handler
+    this.bot.action(/^sell_amount_([0-9a-fA-Fx]+)_([0-9]+)$/, authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       const tokenAddress = ctx.match[1];
+      const percentage = parseInt(ctx.match[2]);
+      
+      // DEBUG LOGGING
+      this.logger.info('Sell percentage callback triggered:', {
+        tokenAddress: tokenAddress,
+        percentage: percentage,
+        userId: ctx.session?.userId,
+        sessionData: ctx.session,
+        callbackData: 'data' in ctx.callbackQuery! ? ctx.callbackQuery.data : undefined
+      });
+      
+      await this.tradingCommands.executeSellWithPercentage(ctx, tokenAddress, percentage);
+    });
+
+    // Handle emergency sell - MUST BE BEFORE general sell handler
+    this.bot.action(/^sell_emergency_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      // Emergency sell = 100% with slippage tolerance
+      await this.tradingCommands.executeSellWithPercentage(ctx, tokenAddress, 100, true);
+    });
+
+    // Handle custom sell percentage - MUST BE BEFORE general sell handler
+    this.bot.action(/^sell_custom_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      await ctx.reply('💰 Please enter the percentage you want to sell (1-100):');
+      // Store state for next message
+      const userId = ctx.from!.id;
+      this.userStates.set(userId, { action: 'sell_custom', tokenAddress });
+    });
+
+    // Handle refresh position - MUST BE BEFORE general sell handler
+    this.bot.action(/^refresh_position_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery('Refreshing...');
+      const tokenAddress = ctx.match[1];
+      await this.tradingCommands.sellToken(ctx, tokenAddress);
+    });
+
+    // General sell handler - MUST BE LAST to catch only direct sell buttons
+    this.bot.action(/^sell_(0x[0-9a-fA-F]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      
+      // DEBUG LOGGING
+      this.logger.info('Main sell callback triggered:', {
+        tokenAddress: tokenAddress,
+        userId: ctx.session?.userId,
+        sessionData: ctx.session,
+        callbackData: 'data' in ctx.callbackQuery! ? ctx.callbackQuery.data : undefined
+      });
+      
       await this.tradingCommands.sellToken(ctx, tokenAddress);
     });
 
@@ -665,6 +742,14 @@ class CoreMemeBot {
       await this.alertCommands.toggleAlert(ctx, alertType);
     });
 
+    // Create alert from token preview button with full address
+    this.bot.action(/^create_alert_([0-9a-fA-Fx]+)$/i, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      await this.alertCommands.createAlertForToken(ctx, tokenAddress);
+    });
+
+    // Fallback create alert (from Alerts menu)
     this.bot.action('create_alert', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.alertCommands.createAlert(ctx);
@@ -683,6 +768,147 @@ class CoreMemeBot {
     this.bot.action('alert_history', authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       await this.alertCommands.alertHistory(ctx);
+    });
+
+    // Inline selection for alert direction
+    // Handle alert direction selection with quick-pick prices
+    this.bot.action(/^alert_direction_(above|below)_([0-9a-fA-Fx]+)$/i, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const direction = ctx.match[1] as 'above' | 'below';
+      const tokenAddress = ctx.match[2];
+      
+      // Get stored price from session or fetch it
+      const currentPrice = ctx.session?.alertTokenPrice || null;
+      const tokenSymbol = ctx.session?.alertTokenSymbol || 'TOKEN';
+      
+      if (currentPrice !== null && currentPrice > 0) {
+        // Show quick-pick buttons
+        const quickPicks = [];
+        
+        if (direction === 'above') {
+          // For above alerts: current, +5%, +10%, +20%
+          quickPicks.push(
+            { label: `Current ($${currentPrice.toFixed(6)})`, price: currentPrice },
+            { label: `+5% ($${(currentPrice * 1.05).toFixed(6)})`, price: currentPrice * 1.05 },
+            { label: `+10% ($${(currentPrice * 1.10).toFixed(6)})`, price: currentPrice * 1.10 },
+            { label: `+20% ($${(currentPrice * 1.20).toFixed(6)})`, price: currentPrice * 1.20 }
+          );
+        } else {
+          // For below alerts: -20%, -10%, -5%, current
+          quickPicks.push(
+            { label: `-20% ($${(currentPrice * 0.80).toFixed(6)})`, price: currentPrice * 0.80 },
+            { label: `-10% ($${(currentPrice * 0.90).toFixed(6)})`, price: currentPrice * 0.90 },
+            { label: `-5% ($${(currentPrice * 0.95).toFixed(6)})`, price: currentPrice * 0.95 },
+            { label: `Current ($${currentPrice.toFixed(6)})`, price: currentPrice }
+          );
+        }
+        
+        const keyboard = [];
+        // Add quick-pick buttons (2 per row)
+        for (let i = 0; i < quickPicks.length; i += 2) {
+          const row = [];
+          row.push(Markup.button.callback(
+            quickPicks[i].label,
+            `quick_alert_${direction}_${tokenAddress}_${quickPicks[i].price.toFixed(8)}`
+          ));
+          if (i + 1 < quickPicks.length) {
+            row.push(Markup.button.callback(
+              quickPicks[i + 1].label,
+              `quick_alert_${direction}_${tokenAddress}_${quickPicks[i + 1].price.toFixed(8)}`
+            ));
+          }
+          keyboard.push(row);
+        }
+        
+        // Add custom price button
+        keyboard.push([
+          Markup.button.callback('✏️ Enter Custom Price', `set_alert_${direction}_${tokenAddress}`)
+        ]);
+        keyboard.push([Markup.button.callback('❌ Cancel', 'alerts_menu')]);
+        
+        await ctx.reply(
+          `🔔 **Set ${direction === 'above' ? '📈 Above' : '📉 Below'} Alert for ${tokenSymbol}**\n\n` +
+          `Current Price: **$${currentPrice.toFixed(6)}**\n\n` +
+          `Select a price or enter custom:`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard(keyboard)
+          }
+        );
+      } else {
+        // No price available, go directly to manual entry
+        await ctx.reply(
+          `Enter target price in USD for ${direction.toUpperCase()} alert on \`${tokenAddress}\``,
+          { parse_mode: 'Markdown' }
+        );
+        if (ctx.session) {
+          ctx.session.awaitingInput = `alert_price_${direction}_${tokenAddress}`;
+          ctx.session.pendingAction = `alert_price_${direction}_${tokenAddress}`;
+        }
+      }
+    });
+
+    // Handle quick-pick alert price selection
+    this.bot.action(/^quick_alert_(above|below)_([0-9a-fA-Fx]+)_([0-9.]+)$/i, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const direction = ctx.match[1] as 'above' | 'below';
+      const tokenAddress = ctx.match[2];
+      const price = parseFloat(ctx.match[3]);
+      
+      try {
+        const userId = ctx.from?.id.toString();
+        if (!userId) return;
+        
+        const user = await this.db.getUserByTelegramId(parseInt(userId));
+        if (!user) return;
+        
+        // Get token symbol from session or use default
+        const tokenSymbol = ctx.session?.alertTokenSymbol || 'TOKEN';
+        
+        // Create the alert
+        const success = await this.db.createPriceAlert(
+          user.id,
+          tokenAddress,
+          tokenSymbol,
+          price,
+          direction
+        );
+        
+        if (success) {
+          await ctx.reply(
+            `✅ **Alert Created Successfully!**\n\n` +
+            `Token: **${tokenSymbol}**\n` +
+            `Type: ${direction === 'above' ? '📈 Above' : '📉 Below'}\n` +
+            `Target Price: **$${price.toFixed(6)}**\n` +
+            `Address: \`${tokenAddress}\`\n\n` +
+            `You'll be notified when the price ${direction === 'above' ? 'rises above' : 'falls below'} this target.`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [Markup.button.callback('📋 View All Alerts', 'view_all_alerts')],
+                [Markup.button.callback('🔙 Back to Menu', 'alerts_menu')]
+              ])
+            }
+          );
+        } else {
+          await ctx.reply('❌ Failed to create alert. You may have reached your alert limit.');
+        }
+      } catch (error) {
+        this.logger.error('Error creating quick alert:', error);
+        await ctx.reply('❌ Failed to create alert. Please try again.');
+      }
+    });
+
+    // Handle manual price entry for alerts
+    this.bot.action(/^set_alert_(above|below)_([0-9a-fA-Fx]+)$/i, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const direction = ctx.match[1] as 'above' | 'below';
+      const token = ctx.match[2];
+      await ctx.reply(`Enter target price in USD for ${direction.toUpperCase()} alert on \`${token}\``, { parse_mode: 'Markdown' });
+      if (ctx.session) {
+        ctx.session.awaitingInput = `alert_price_${direction}_${token}`;
+        ctx.session.pendingAction = `alert_price_${direction}_${token}`;
+      }
     });
 
     this.bot.action(/^delete_alert_(.+)$/, authMiddleware, async (ctx) => {
@@ -765,6 +991,26 @@ class CoreMemeBot {
   private async handlePendingAction(ctx: BotContext) {
     const action = ctx.session?.pendingAction;
     
+    // Handle snipe actions with token address
+    if (action && action.startsWith('snipe_')) {
+      const tokenAddress = action.replace('snipe_', '');
+      const amount = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+      
+      if (amount && !isNaN(parseFloat(amount))) {
+        // Execute snipe
+        await ctx.reply(`⚡ Setting up snipe for ${amount} CORE on token ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`);
+        // TODO: Implement actual snipe execution
+        
+        // Clear pending action
+        if (ctx.session) {
+          ctx.session.pendingAction = undefined;
+        }
+      } else {
+        await ctx.reply('❌ Invalid amount. Please enter a valid number.');
+      }
+      return;
+    }
+    
     switch (action) {
       case 'import_wallet':
         // Handle wallet import
@@ -779,6 +1025,43 @@ class CoreMemeBot {
         // Handle sell percentage input
         break;
       default:
+        // Handle alert price entry pattern: alert_price_<direction>_<token>
+        if (action && action.startsWith('alert_price_')) {
+          const parts = action.split('_');
+          const direction = parts[2] as 'above' | 'below';
+          const tokenAddress = parts.slice(3).join('_');
+          const text = ctx.message && 'text' in ctx.message ? ctx.message.text.trim() : '';
+          const target = parseFloat(text);
+          if (!isNaN(target) && target > 0) {
+            try {
+              const userIdStr = ctx.from?.id.toString();
+              if (userIdStr) {
+                const user = await this.db.getUserByTelegramId(parseInt(userIdStr));
+                if (user) {
+                  // Try to infer symbol from token info
+                  let symbol = 'TOKEN';
+                  try {
+                    const api = new ApiService();
+                    const infoResp = await api.getTokenInfo(tokenAddress);
+                    const info = (infoResp as any).data || (infoResp as any).token || infoResp;
+                    if (info?.symbol) symbol = info.symbol;
+                  } catch {}
+                  const ok = await this.db.createPriceAlert(user.id, tokenAddress, symbol, target, direction);
+                  if (ok) {
+                    await ctx.reply(`✅ Alert set: ${symbol} ${direction.toUpperCase()} $${target.toFixed(6)}\nToken: \`${tokenAddress}\``, { parse_mode: 'Markdown' });
+                  } else {
+                    await ctx.reply('❌ Could not create alert (maybe limit reached).');
+                  }
+                }
+              }
+            } catch (e) {
+              // swallow
+            }
+          } else {
+            await ctx.reply('❌ Invalid price. Please enter a positive number.');
+            return;
+          }
+        }
         break;
     }
     
@@ -915,7 +1198,7 @@ class CoreMemeBot {
       // Info buttons
       keyboard.push([
         Markup.button.url('🔍 Explorer', `${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/address/${tokenAddress}`),
-        Markup.button.callback('📈 Add Alert', `alert_${tokenAddress}`)
+        Markup.button.callback('📈 Add Alert', `create_alert_${tokenAddress}`)
       ]);
 
       await ctx.reply(message, {
@@ -1252,9 +1535,18 @@ Manage your account settings and preferences:
         { command: 'sell', description: 'Sell tokens' },
         { command: 'portfolio', description: 'View portfolio' },
         { command: 'copytrade', description: '🔥 Copy top traders' },
+        { command: 'copystop', description: 'Stop copying a trader' },
+        { command: 'copylist', description: 'View active copy trades' },
+        { command: 'analyze', description: 'Analyze a wallet' },
         { command: 'toptraders', description: 'View top traders' },
         { command: 'alerts', description: 'Manage alerts' },
+        { command: 'watchlist', description: 'Your watchlist' },
+        { command: 'track', description: 'Track a token' },
+        { command: 'snipe', description: 'Snipe on launch (coming soon)' },
+        { command: 'trades', description: 'Trade history' },
+        { command: 'subscription', description: 'Current subscription' },
         { command: 'subscribe', description: 'Premium features' },
+        { command: 'upgrade', description: 'Upgrade plan' },
         { command: 'help', description: 'Help and commands' },
       ]);
 

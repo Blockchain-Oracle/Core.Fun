@@ -70,7 +70,24 @@ export class PositionManager {
    */
   async getPosition(userId: string, tokenAddress: string): Promise<Position | null> {
     try {
+      // DEBUG LOGGING
+      this.logger.info('PositionManager.getPosition - Called with:', {
+        userId: userId,
+        tokenAddress: tokenAddress
+      });
+      
       const position = await this.db.getPosition(userId, tokenAddress);
+      
+      // DEBUG LOGGING
+      this.logger.info('PositionManager.getPosition - DB result:', {
+        found: !!position,
+        position: position ? {
+          id: position.id,
+          tokenAddress: position.tokenAddress,
+          amount: position.amount
+        } : null
+      });
+      
       if (!position) return null;
 
       const currentPrice = await this.getCurrentPrice(tokenAddress);

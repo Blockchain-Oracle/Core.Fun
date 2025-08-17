@@ -45,6 +45,7 @@ class CoreMemeBot {
   private sessionManager: SessionManager;
   private db: DatabaseService;
   private wsClient: SocketIOClient;
+  private userStates: Map<number, { action: string; tokenAddress?: string }>;
   private webhookHandler: WebhookHandler;
   private logger = createLogger({ service: 'telegram-bot' });
 
@@ -57,6 +58,7 @@ class CoreMemeBot {
     this.bot = new Telegraf<BotContext>(token);
     this.db = new DatabaseService();
     this.sessionManager = new SessionManager();
+    this.userStates = new Map();
     
     // Initialize Socket.IO client
     const wsUrl = process.env.WEBSOCKET_URL || 'http://localhost:8081';
@@ -197,6 +199,16 @@ class CoreMemeBot {
       await this.stakingCommands.handleTiers(ctx);
     });
 
+    // Airdrop command - claim initial 1000 CMP
+    this.bot.command('claimcmp', authMiddleware, async (ctx) => {
+      await this.stakingCommands.handleClaimCMP(ctx);
+    });
+
+    // Quick buy CMP command
+    this.bot.command('buycmp', authMiddleware, async (ctx) => {
+      await this.tradingCommands.handleBuyCMP(ctx);
+    });
+
     // Copy Trading commands - FULLY EXPOSED!
     this.bot.command('copytrade', authMiddleware, async (ctx) => {
       await this.copyTradingCommands.handleStartCopyTrading(ctx);
@@ -243,7 +255,31 @@ class CoreMemeBot {
       // Check if user is in a specific flow
       if (ctx.session?.pendingAction) {
         await this.handlePendingAction(ctx);
+        return;
       }
+
+      // Handle in-memory custom flows (e.g., custom buy amount)
+      const fromId = ctx.from?.id;
+      if (fromId && this.userStates?.has(fromId)) {
+        const state = this.userStates.get(fromId)!;
+        if (state.action === 'buy_custom' && ctx.message && 'text' in ctx.message) {
+          const amountText = ctx.message.text.trim();
+          const amountNum = parseFloat(amountText);
+          if (isNaN(amountNum) || amountNum <= 0) {
+            await ctx.reply('❌ Invalid amount. Please enter a positive number.');
+            return;
+          }
+          try {
+            await this.tradingCommands.executeBuyWithAmount(ctx, state.tokenAddress!, amountNum.toString());
+          } finally {
+            this.userStates.delete(fromId);
+          }
+          return;
+        }
+      }
+
+      // Auto-detect token addresses and show preview
+      await this.handleTokenAddressDetection(ctx);
     });
   }
 
@@ -524,7 +560,43 @@ class CoreMemeBot {
       }
     });
 
-    this.bot.action(/^buy_(.+)$/, authMiddleware, async (ctx) => {
+    // Handle buy with specific amount
+    this.bot.action(/^buy_amount_([0-9a-fA-Fx]+)_([0-9.]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      const amount = ctx.match[2];
+      await this.tradingCommands.executeBuyWithAmount(ctx, tokenAddress, amount);
+    });
+
+    // Handle custom buy amount
+    this.bot.action(/^buy_custom_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      await ctx.reply('💰 Please enter the amount of CORE you want to spend:');
+      // Store state for next message
+      const userId = ctx.from!.id;
+      if (!this.userStates) {
+        this.userStates = new Map();
+      }
+      this.userStates.set(userId, { action: 'buy_custom', tokenAddress });
+    });
+
+    // Handle ape buy (max amount)
+    this.bot.action(/^buy_ape_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      await this.tradingCommands.executeBuyMax(ctx, tokenAddress);
+    });
+
+    // Handle chart view
+    this.bot.action(/^chart_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      const tokenAddress = ctx.match[1];
+      await this.tradingCommands.showChart(ctx, tokenAddress);
+    });
+
+    // Original buy handler (fallback for simple buy button)
+    this.bot.action(/^buy_([0-9a-fA-Fx]+)$/, authMiddleware, async (ctx) => {
       await ctx.answerCbQuery();
       const tokenAddress = ctx.match[1];
       await this.tradingCommands.buyToken(ctx, tokenAddress);
@@ -665,6 +737,29 @@ class CoreMemeBot {
       await ctx.answerCbQuery();
       await this.sendMainMenu(ctx);
     });
+
+    // Token list callbacks
+    this.bot.action('refresh_tokens', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery('Refreshing...');
+      await this.tradingCommands.handleBuy(ctx);
+    });
+
+    this.bot.action('view_trending', authMiddleware, async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '📈 *Trending Tokens*\n\n' +
+        'Feature coming soon! For now, use:\n' +
+        '• `/buy` - View all available tokens\n' +
+        '• Paste any token address for instant preview',
+        { parse_mode: 'Markdown' }
+      );
+    });
+
+    // Login callback for unauthenticated users
+    this.bot.action('auth_login', async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.authHandler.handleStart(ctx);
+    });
   }
 
   private async handlePendingAction(ctx: BotContext) {
@@ -691,6 +786,166 @@ class CoreMemeBot {
     if (ctx.session) {
       ctx.session.pendingAction = undefined;
     }
+  }
+
+  /**
+   * Auto-detect token addresses in messages and show preview
+   */
+  private async handleTokenAddressDetection(ctx: BotContext) {
+    if (!ctx.message || !('text' in ctx.message)) return;
+    
+    const text = ctx.message.text.trim();
+    
+    // Check if the message is a token address (0x followed by 40 hex characters)
+    const tokenAddressRegex = /^0x[a-fA-F0-9]{40}$/;
+    
+    if (tokenAddressRegex.test(text)) {
+      // User pasted a token address, show preview automatically
+      await this.showTokenPreview(ctx, text);
+    }
+  }
+
+  /**
+   * Show comprehensive token preview with trading options
+   */
+  private async showTokenPreview(ctx: BotContext, tokenAddress: string) {
+    // Check if user is authenticated for trading actions
+    const isAuthenticated = ctx.session?.isAuthenticated;
+    
+    const loadingMsg = await ctx.reply('🔍 Analyzing token...');
+
+    try {
+      // Get token info from trading commands
+      const tokenInfo = await this.tradingCommands.getTokenInfo(tokenAddress);
+      
+      // Delete loading message
+      await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
+      
+      // Send token image if available
+      if (tokenInfo.image_url || tokenInfo.imageUrl || tokenInfo.image) {
+        const imageUrl = tokenInfo.image_url || tokenInfo.imageUrl || tokenInfo.image;
+        if (imageUrl) {
+          try {
+            await ctx.replyWithPhoto(imageUrl, {
+              caption: `🪙 *${tokenInfo.symbol}* Preview`,
+              parse_mode: 'Markdown'
+            });
+          } catch (imgError) {
+            this.logger.warn('Failed to send token image:', imgError);
+          }
+        }
+      }
+      
+      // Format comprehensive token preview
+      let message = `🪙 *${tokenInfo.symbol} - ${tokenInfo.name}*\n`;
+      message += `━━━━━━━━━━━━━━━━━━\n\n`;
+      
+      // Token description
+      if (tokenInfo.description) {
+        message += `📝 *Description:*\n${tokenInfo.description.substring(0, 200)}${tokenInfo.description.length > 200 ? '...' : ''}\n\n`;
+      }
+      
+      // Market metrics
+      message += `📊 *Market Metrics:*\n`;
+      message += `├ Price: $${tokenInfo.price?.toFixed(8) || '0.00000000'}\n`;
+      message += `├ 24h Change: ${(tokenInfo.priceChange24h || 0) > 0 ? '📈' : '📉'} ${(tokenInfo.priceChange24h || 0).toFixed(2)}%\n`;
+      message += `├ Market Cap: $${this.formatLargeNumber(tokenInfo.marketCap || 0)}\n`;
+      message += `├ Volume 24h: $${this.formatLargeNumber(tokenInfo.volume24h || 0)}\n`;
+      message += `├ Liquidity: $${this.formatLargeNumber(tokenInfo.liquidity || 0)}\n`;
+      message += `└ Holders: ${tokenInfo.holders || 0}\n\n`;
+      
+      // Bonding curve progress (if not launched)
+      if (tokenInfo.status === 'CREATED' || !tokenInfo.isLaunched) {
+        const progress = tokenInfo.graduationPercentage || 0;
+        const raisedAmount = tokenInfo.raised || 0;
+        const targetAmount = 3; // Standard target amount for Core
+        
+        message += `📈 *Bonding Curve:*\n`;
+        message += `├ Progress: ${Number(progress).toFixed(1)}% to graduation\n`;
+        message += `├ Raised: ${raisedAmount} CORE\n`;
+        message += `├ Target: ${targetAmount} CORE\n`;
+        message += `└ Status: ${Number(progress) >= 100 ? '✅ Ready to Graduate' : '🔄 Bonding Active'}\n\n`;
+      }
+      
+      // Safety indicators
+      if (tokenInfo.isHoneypot || (tokenInfo.rugScore && tokenInfo.rugScore > 50)) {
+        message += `⚠️ *Safety Warnings:*\n`;
+        if (tokenInfo.isHoneypot) {
+          message += `└ 🚫 Honeypot detected\n`;
+        }
+        if (tokenInfo.rugScore && tokenInfo.rugScore > 50) {
+          message += `└ ⚠️ High rug score: ${tokenInfo.rugScore}/100\n`;
+        }
+        message += `\n`;
+      }
+      
+      message += `📋 *Contract:* \`${tokenAddress}\``;
+
+      // Create action buttons
+      const keyboard = [];
+      
+      // Social links row
+      const socialButtons = [];
+      if (tokenInfo.twitter) {
+        socialButtons.push(Markup.button.url('🐦 Twitter', tokenInfo.twitter));
+      }
+      if (tokenInfo.telegram) {
+        socialButtons.push(Markup.button.url('💬 Telegram', tokenInfo.telegram));
+      }
+      if (tokenInfo.website) {
+        socialButtons.push(Markup.button.url('🌐 Website', tokenInfo.website));
+      }
+      if (socialButtons.length > 0) {
+        keyboard.push(socialButtons);
+      }
+      
+      // Trading buttons (only if authenticated)
+      if (isAuthenticated) {
+        keyboard.push([
+          Markup.button.callback('💰 Buy', `buy_${tokenAddress}`),
+          Markup.button.callback('📊 Chart', `chart_${tokenAddress}`),
+          Markup.button.callback('🎯 Snipe', `snipe_${tokenAddress}`)
+        ]);
+      } else {
+        keyboard.push([
+          Markup.button.callback('🔑 Login to Trade', 'auth_login')
+        ]);
+      }
+      
+      // Info buttons
+      keyboard.push([
+        Markup.button.url('🔍 Explorer', `${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/address/${tokenAddress}`),
+        Markup.button.callback('📈 Add Alert', `alert_${tokenAddress}`)
+      ]);
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
+      
+    } catch (error) {
+      this.logger.error('Failed to show token preview:', error);
+      try {
+        await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
+      } catch {}
+      await ctx.reply('❌ Failed to fetch token information. Please verify the token address.');
+    }
+  }
+
+  /**
+   * Format large numbers for display
+   */
+  private formatLargeNumber(num: number): string {
+    if (num >= 1000000000) {
+      return `${(num / 1000000000).toFixed(2)}B`;
+    }
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(2)}M`;
+    }
+    if (num >= 1000) {
+      return `${(num / 1000).toFixed(2)}K`;
+    }
+    return num.toFixed(2);
   }
 
   private async sendHelpMessage(ctx: BotContext) {

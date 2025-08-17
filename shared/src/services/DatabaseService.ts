@@ -623,7 +623,7 @@ export class DatabaseService {
     const query = `
       SELECT * FROM positions 
       WHERE user_id = $1 AND is_active = true 
-      ORDER BY current_value DESC
+      ORDER BY last_update_time DESC
     `;
     const result = await this.pool.query(query, [userId]);
     
@@ -736,35 +736,18 @@ export class DatabaseService {
 
   // Trade history methods
   async getUserTrades(userId: string, days: number = 30, limit?: number, offset?: number): Promise<Trade[]> {
-    // First get the wallet address for this user
-    const userQuery = `SELECT wallet_address FROM users WHERE telegram_id = $1`;
-    const userResult = await this.pool.query(userQuery, [userId]);
-    
-    if (userResult.rows.length === 0) {
-      return []; // No user found
-    }
-    
-    const walletAddress = userResult.rows[0].wallet_address;
-    
-    // Use transactions table instead of trades table
+    // Query from trades table by internal user id
     let query = `
       SELECT 
-        t.*,
-        t.from_address as wallet_address,
-        t.type as trade_type,
-        t.amount_core,
-        t.amount as amount_token,
-        tok.symbol as token_symbol,
-        tok.address as token_address
-      FROM transactions t
-      LEFT JOIN tokens tok ON t.token_id = tok.id
-      WHERE t.from_address = $1 
-        AND t.timestamp >= NOW() - INTERVAL '${days} days'
+        t.*
+      FROM trades t
+      WHERE t.user_id = $1 
+        AND t.created_at >= NOW() - INTERVAL '${days} days'
         AND t.type IN ('buy', 'sell')
-      ORDER BY t.timestamp DESC
+      ORDER BY t.created_at DESC
     `;
     
-    const params: any[] = [walletAddress];
+    const params: any[] = [userId];
     
     if (limit !== undefined && offset !== undefined) {
       query += ` LIMIT $2 OFFSET $3`;
@@ -2101,6 +2084,46 @@ export class DatabaseService {
       alert.enabled,
       alert.createdAt
     ]);
+  }
+
+  // Airdrop methods
+  async markAirdropClaimed(userId: string, txHash: string): Promise<void> {
+    const query = `
+      UPDATE users 
+      SET claimed_initial_cmp = true,
+          claimed_cmp_at = NOW(),
+          cmp_airdrop_tx_hash = $2,
+          updated_at = NOW()
+      WHERE id = $1
+    `;
+    await this.pool.query(query, [userId, txHash]);
+  }
+  
+  async hasClaimedAirdrop(userId: string): Promise<boolean> {
+    const query = 'SELECT claimed_initial_cmp FROM users WHERE id = $1';
+    const result = await this.pool.query(query, [userId]);
+    return result.rows[0]?.claimed_initial_cmp || false;
+  }
+  
+  async getAirdropStats(): Promise<{
+    totalClaimed: number;
+    totalUnclaimed: number;
+    totalAmount: number;
+  }> {
+    const query = `
+      SELECT 
+        COUNT(CASE WHEN claimed_initial_cmp = true THEN 1 END) as claimed,
+        COUNT(CASE WHEN claimed_initial_cmp = false OR claimed_initial_cmp IS NULL THEN 1 END) as unclaimed
+      FROM users
+    `;
+    const result = await this.pool.query(query);
+    const row = result.rows[0];
+    
+    return {
+      totalClaimed: parseInt(row.claimed) || 0,
+      totalUnclaimed: parseInt(row.unclaimed) || 0,
+      totalAmount: (parseInt(row.claimed) || 0) * 1000 // 1000 CMP per user
+    };
   }
 
   // Cleanup

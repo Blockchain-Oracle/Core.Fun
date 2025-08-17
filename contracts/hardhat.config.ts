@@ -34,7 +34,7 @@ const config: HardhatUserConfig = {
       allowUnlimitedContractSize: true,
     },
     coreTestnet: {
-      url: process.env.CORE_TESTNET_RPC || "https://rpc.test2.btcs.network",
+      url: process.env.CORE_TESTNET_RPC || "https://1114.rpc.thirdweb.com",
       chainId: 1114,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       gasPrice: 35000000000,
@@ -64,7 +64,7 @@ const config: HardhatUserConfig = {
         network: "coreTestnet",
         chainId: 1114,
         urls: {
-          apiURL: "https://openapi.test2.btcs.network/api",
+          apiURL: "https://api.test2.btcs.network/api",
           browserURL: "https://scan.test2.btcs.network",
         },
       },

@@ -70,7 +70,7 @@ export function getConfig(): AppConfig {
     
     network: {
       mainnetRpc: process.env.CORE_MAINNET_RPC || 'https://rpc.coredao.org',
-      testnetRpc: process.env.CORE_TESTNET_RPC || 'https://rpc.test2.btcs.network',
+      testnetRpc: process.env.CORE_TESTNET_RPC || 'https://1114.rpc.thirdweb.com',
       explorerApiMainnet: process.env.CORE_SCAN_MAINNET_API || 'https://openapi.coredao.org/api',
       explorerApiTestnet: process.env.CORE_SCAN_TESTNET_API || 'https://api.test2.btcs.network/api',
       explorerApiKey: process.env.CORE_SCAN_API_KEY,

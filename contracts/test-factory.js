@@ -1,6 +1,6 @@
 const { ethers } = require("ethers");
 
-const provider = new ethers.JsonRpcProvider("https://rpc.test2.btcs.network");
+const provider = new ethers.JsonRpcProvider("https://1114.rpc.thirdweb.com");
 const factoryAddress = "0x0eeF9597a9B231b398c29717e2ee89eF6962b784";
 
 const ABI = [

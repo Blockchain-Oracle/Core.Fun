@@ -38,7 +38,21 @@ export function createLogger(config: LoggerConfig): winston.Logger {
       let log = `${timestamp} [${level}]: ${message}`;
       
       if (Object.keys(meta).length > 0) {
-        log += ` ${JSON.stringify(meta, null, 2)}`;
+        const safeReplacer = (_key: string, value: any) => {
+          if (typeof value === 'bigint') return value.toString();
+          return value;
+        };
+        try {
+          log += ` ${JSON.stringify(meta, safeReplacer, 2)}`;
+        } catch {
+          // Fallback shallow stringify
+          const shallow: Record<string, any> = {};
+          for (const k of Object.keys(meta)) {
+            const v = (meta as any)[k];
+            shallow[k] = typeof v === 'bigint' ? v.toString() : v;
+          }
+          log += ` ${JSON.stringify(shallow)}`;
+        }
       }
       
       return log;

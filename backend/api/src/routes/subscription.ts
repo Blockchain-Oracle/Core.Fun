@@ -10,7 +10,7 @@ const logger = createLogger({ service: 'subscription-api' })
 // Initialize services
 const db = new DatabaseService()
 const contractService = new ContractDataService(
-  process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network',
+  process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com',
   process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
   process.env.STAKING_ADDRESS || '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa'
 )
@@ -23,6 +23,23 @@ const STAKING_ABI = [
   'function pendingReward(address user) view returns (uint256)',
   'function stakes(address user) view returns (uint256 amount, uint256 rewardDebt, uint256 lastStakeTime, uint256 totalEarned, bool isPremium)'
 ]
+
+// Utility function to safely convert values for ethers.formatEther()
+function safeBigNumberValue(value: any): string {
+  if (value === null || value === undefined) return '0'
+  if (typeof value === 'string') {
+    // Handle problematic string values
+    if (value === '0.0' || value === '') return '0'
+    // Remove any non-numeric characters except decimal point
+    const cleaned = value.replace(/[^0-9.]/g, '')
+    return cleaned || '0'
+  }
+  if (typeof value === 'number') {
+    return value.toString()
+  }
+  // For BigInt or other types, convert to string
+  return value.toString()
+}
 
 // Tier mapping
 const TIER_NAMES = ['free', 'bronze', 'silver', 'gold', 'platinum']
@@ -70,8 +87,9 @@ const TIER_BENEFITS = {
  * Get subscription status for a wallet address
  */
 router.get('/status/:wallet', async (req: Request, res: Response) => {
+  const walletParam = req.params.wallet
   try {
-    const { wallet } = req.params
+    const wallet = walletParam
     
     if (!ethers.isAddress(wallet)) {
       return res.status(400).json({
@@ -86,12 +104,9 @@ router.get('/status/:wallet', async (req: Request, res: Response) => {
     const user = await db.getUserByWallet(wallet.toLowerCase())
     
     // Calculate tier from staked amount
-    // Handle the case where userStake might be "0.0" string
-    let userStakeValue = stakingData.userStake || '0'
-    if (typeof userStakeValue === 'string' && userStakeValue === '0.0') {
-      userStakeValue = '0'
-    }
-    const stakedAmount = Number(ethers.formatEther(userStakeValue))
+    // Use safe conversion for BigNumber operations
+    const safeUserStakeValue = safeBigNumberValue(stakingData.userStake)
+    const stakedAmount = Number(ethers.formatEther(safeUserStakeValue))
     const tierIndex = Math.min(stakingData.tier || 0, TIER_NAMES.length - 1)
     const tierName = TIER_NAMES[tierIndex]
     
@@ -111,26 +126,43 @@ router.get('/status/:wallet', async (req: Request, res: Response) => {
     }
     
     res.json({
-      wallet,
-      subscription: {
+      success: true,
+      data: {
+        wallet: wallet,
+        stakedAmount: stakedAmount.toString(),
         tier: tierName,
-        tierLevel: tierIndex,
-        isPremium: stakingData.tier > 0,
-        stakedAmount: stakedAmount,
-        pendingRewards: Number(ethers.formatEther(stakingData.pendingRewards || '0')),
+        rewards: Number(ethers.formatEther(safeBigNumberValue(stakingData.pendingRewards))).toString(),
+        apy: 12, // Default APY - could be calculated dynamically
+        lockEndTime: 0, // No lock period in current implementation
+        canUnstake: stakedAmount > 0,
         feeDiscount: stakingData.feeDiscount || 0,
-        benefits,
-        progressToNext
-      },
-      user: user ? {
-        userId: user.id,
-        username: user.username,
-        createdAt: user.createdAt
-      } : null
+        maxAlerts: benefits.alertLimit,
+        copyTradeSlots: benefits.copyTradeSlots,
+        hasApiAccess: benefits.prioritySupport,
+        lastClaimTime: 0, // Could be tracked if needed
+        
+        // Keep the original structure for backward compatibility
+        subscription: {
+          tier: tierName,
+          tierLevel: tierIndex,
+          isPremium: stakingData.tier > 0,
+          stakedAmount: stakedAmount,
+          pendingRewards: Number(ethers.formatEther(safeBigNumberValue(stakingData.pendingRewards))),
+          feeDiscount: stakingData.feeDiscount || 0,
+          benefits,
+          progressToNext
+        },
+        user: user ? {
+          userId: user.id,
+          username: user.username,
+          createdAt: user.createdAt
+        } : null
+      }
     })
   } catch (error) {
-    logger.error('Error fetching subscription status:', error)
+    logger.error('Error fetching subscription status for wallet:', walletParam, error)
     res.status(500).json({
+      success: false,
       error: 'Failed to fetch subscription status'
     })
   }

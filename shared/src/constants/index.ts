@@ -16,7 +16,7 @@ export const NETWORK_CONFIG = {
   testnet: {
     chainId: 1114,
     name: 'Core Testnet',
-    rpcUrl: 'https://rpc.test2.btcs.network',
+    rpcUrl: 'https://1114.rpc.thirdweb.com',
     wsUrl: 'wss://ws.test2.btcs.network',
     explorerUrl: 'https://scan.test.btcs.network',
     apiUrl: 'https://openapi.test.btcs.network/api',

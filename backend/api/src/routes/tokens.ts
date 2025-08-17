@@ -14,7 +14,7 @@ const logger = createLogger({ service: 'api-tokens', enableFileLogging: false })
 // Initialize services for complete data fetching
 const coreScanService = new CoreScanService('testnet');
 const contractDataService = new ContractDataService(
-  process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network',
+  process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com',
   process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
   process.env.STAKING_ADDRESS || '0x0000000000000000000000000000000000000000'
 );
@@ -69,47 +69,112 @@ const authenticateToken = (req: Request, res: Response, next: any) => {
  */
 router.get('/tokens', async (req: Request, res: Response) => {
   try {
-    // Fetch tokens directly from database
+    // Fetch tokens from database first
     const tokens = await db('tokens')
       .select('*')
       .orderBy('created_at', 'desc');
+
+    // Get real CORE price from CoinGecko
+    let CORE_PRICE_USD = 0.50; // Default fallback
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const geckoResponse = await fetch(
+        'https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd',
+        {
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json', 'User-Agent': 'CoreMemePlatform/1.0' }
+        }
+      );
+      clearTimeout(timeoutId);
+      if (geckoResponse.ok) {
+        const geckoData: any = await geckoResponse.json();
+        const price = geckoData?.coredaoorg?.usd;
+        if (typeof price === 'number' && price > 0) {
+          CORE_PRICE_USD = price;
+          logger.info(`Fetched CORE price from CoinGecko: $${price}`);
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch CORE price, using fallback', error);
+    }
     
     // Constants for calculations
     const TARGET_CORE = 3; // 3 CORE to graduate
-    const CORE_PRICE_USD = 50; // 1 CORE = $50
-    
-    // Transform tokens to match frontend expectations
-    const formattedTokens = tokens.map(token => {
-      // Parse values
+
+    const toDto = (p: {
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      totalSupply: string;
+      creator: string;
+      createdAt: number;
+      blockNumber?: number;
+      transactionHash?: string;
+      isLaunched?: boolean;
+      status?: 'CREATED' | 'LAUNCHED' | 'GRADUATED';
+      priceCore?: number;
+      priceUsd?: number;
+      marketCap?: number;
+      liquidityCore?: number;
+      holders?: number;
+      transactions24h?: number;
+      graduationPercentage?: number;
+      description?: string;
+      website?: string;
+      twitter?: string;
+      telegram?: string;
+      image_url?: string;
+    }) => ({
+      address: p.address,
+      name: p.name,
+      symbol: p.symbol,
+      decimals: p.decimals || 18,
+      totalSupply: p.totalSupply,
+      creator: p.creator || '',
+      createdAt: p.createdAt,
+      blockNumber: p.blockNumber || 0,
+      transactionHash: p.transactionHash || '',
+      status: p.status || (p.isLaunched ? 'GRADUATED' : 'CREATED'),
+      isVerified: false,
+      ownershipRenounced: false,
+      price: (p.priceUsd ?? ((p.priceCore || 0) * CORE_PRICE_USD)),
+      priceChange24h: 0,
+      marketCap: p.marketCap ?? 0,
+      volume24h: 0,
+      liquidity: (p.liquidityCore || 0) * CORE_PRICE_USD,
+      holders: p.holders || 0,
+      transactions24h: p.transactions24h || 0,
+      graduationPercentage: Math.min(Math.max(p.graduationPercentage || 0, 0), 100),
+      targetAmount: TARGET_CORE,
+      raisedAmount: p.liquidityCore || 0,
+      description: p.description || '',
+      website: p.website || '',
+      twitter: p.twitter || '',
+      telegram: p.telegram || '',
+      image_url: p.image_url || '',
+      rugScore: 0,
+      isHoneypot: false,
+    });
+
+    let formattedTokens = tokens.map(token => {
       const liquidityAdded = parseFloat(token.liquidity_added || '0');
       const totalSupplyWei = token.total_supply || '1000000000000000000000000';
       const totalSupply = parseFloat(totalSupplyWei) / 1e18;
-      
-      // Calculate graduation percentage
       const graduationPercentage = Math.min((liquidityAdded / TARGET_CORE) * 100, 100);
-      
-      // Price calculations
-      const priceCore = parseFloat(token.price_core || '0.000001');
+      const priceCore = parseFloat(token.price_core || '0');
       const priceUsd = priceCore * CORE_PRICE_USD;
-      
-      // Market cap calculation
       const marketCap = totalSupply * priceUsd;
-      
-      // Status determination
-      let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = 'CREATED';
-      if (token.is_launched) {
-        status = 'GRADUATED';
-      } else if (graduationPercentage >= 100) {
-        status = 'LAUNCHED';
-      }
-      
-      // Convert created_at to Unix timestamp (seconds)
-      const createdAtTimestamp = token.created_at 
+      const createdAtTimestamp = token.created_at
         ? Math.floor(new Date(token.created_at).getTime() / 1000)
         : Math.floor(Date.now() / 1000);
-      
-      return {
-        // Core fields
+
+      let status: 'CREATED' | 'LAUNCHED' | 'GRADUATED' = 'CREATED';
+      if (token.is_launched) status = 'GRADUATED';
+      else if (graduationPercentage >= 100) status = 'LAUNCHED';
+
+      return toDto({
         address: token.address,
         name: token.name,
         symbol: token.symbol,
@@ -117,50 +182,64 @@ router.get('/tokens', async (req: Request, res: Response) => {
         totalSupply: totalSupplyWei,
         creator: token.creator_address || '',
         createdAt: createdAtTimestamp,
-        blockNumber: 0, // Not stored in DB
-        transactionHash: '', // Not stored in DB
-        
-        // Status fields
-        status: status,
-        isVerified: token.is_verified || false,
-        ownershipRenounced: false, // Would need to check on-chain
-        
-        // Price data
-        price: priceUsd,
-        priceChange24h: parseFloat(token.price_change_24h || '0'),
-        
-        // Market data
-        marketCap: marketCap,
-        volume24h: parseFloat(token.volume_24h || '0'),
-        liquidity: liquidityAdded * CORE_PRICE_USD,
-        
-        // Stats
+        blockNumber: 0,
+        transactionHash: '',
+        status,
+        priceCore,
+        marketCap,
+        liquidityCore: liquidityAdded,
         holders: token.holders_count || 0,
         transactions24h: token.transactions_count || 0,
-        
-        // Graduation progress
-        graduationPercentage: graduationPercentage,
-        targetAmount: TARGET_CORE,
-        raisedAmount: liquidityAdded,
-        
-        // Social links
+        graduationPercentage,
         description: token.description || '',
         website: token.website || '',
         twitter: token.twitter || '',
         telegram: token.telegram || '',
         image_url: token.image_url || '',
-        
-        // Safety scores (would need real calculation)
-        rugScore: 0,
-        isHoneypot: false
-      };
+      });
     });
-    
-    res.json({
-      success: true,
-      tokens: formattedTokens,
-      count: formattedTokens.length
-    });
+
+    logger.info(`Database returned ${tokens.length} tokens, formatted to ${formattedTokens.length} tokens`);
+
+    // Fallback: if DB has no tokens, fetch directly from contract
+    if (formattedTokens.length === 0) {
+      try {
+        const onchainTokens = await memeFactoryService.getAllTokens();
+        logger.info(`Fetched ${onchainTokens.length} tokens from blockchain`);
+        formattedTokens = onchainTokens.map(t => {
+          const totalSupplyWei = t.totalSupply;
+          const totalSupply = parseFloat(totalSupplyWei) / 1e18;
+          const priceCore = parseFloat(t.currentPrice || '0');
+          const liquidityCore = parseFloat(t.reserveBalance || '0');
+          const marketCap = totalSupply * (priceCore * CORE_PRICE_USD);
+          logger.info(`Token ${t.symbol}: currentPrice=${t.currentPrice}, priceCore=${priceCore}, CORE_PRICE_USD=${CORE_PRICE_USD}, price USD=${priceCore * CORE_PRICE_USD}`);
+          const graduationPercentage = Math.min((liquidityCore / TARGET_CORE) * 100, 100);
+          return toDto({
+            address: t.address,
+            name: t.name,
+            symbol: t.symbol,
+            decimals: 18,
+            totalSupply: totalSupplyWei,
+            creator: t.creator,
+            createdAt: t.createdAt,
+            isLaunched: t.isLaunched,
+            priceCore,
+            marketCap,
+            liquidityCore,
+            graduationPercentage,
+            description: t.description,
+            website: t.website,
+            twitter: t.twitter,
+            telegram: t.telegram,
+            image_url: t.image_url,
+          });
+        });
+      } catch (e) {
+        logger.warn('On-chain fallback for tokens failed:', e);
+      }
+    }
+
+    res.json({ success: true, tokens: formattedTokens, count: formattedTokens.length });
   } catch (error: any) {
     logger.error('Error fetching tokens:', error);
     res.status(500).json({

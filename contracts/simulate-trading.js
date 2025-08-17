@@ -1,7 +1,7 @@
 const { ethers } = require("ethers");
 
 // Configuration
-const RPC_URL = "https://rpc.test2.btcs.network";
+const RPC_URL = "https://1114.rpc.thirdweb.com";
 const PRIVATE_KEY = "96f4c91749c35b74a1642694b53161aa97c46f654bd80aac0e126d3ec2114566";
 const FACTORY_ADDRESS = "0x0eeF9597a9B231b398c29717e2ee89eF6962b784";
 

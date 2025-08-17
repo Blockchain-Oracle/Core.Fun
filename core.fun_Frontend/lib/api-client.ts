@@ -1,5 +1,11 @@
-// Enhanced API client for MemeFactory integration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001'
+// Enhanced API client for MemeFactory integration  
+const API_BASE_URL = 'http://localhost:3001' // Hardcoded temporarily to debug
+
+// Debug: log the API base URL to console (remove in production)
+if (typeof window !== 'undefined') {
+  console.log('API_BASE_URL:', API_BASE_URL)
+  console.log('NEXT_PUBLIC_API_BASE_URL env var:', process.env.NEXT_PUBLIC_API_BASE_URL)
+}
 
 export interface TokenInfo {
   address: string
@@ -85,18 +91,7 @@ class EnhancedApiClient {
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl
-    // Get auth token from localStorage if available
-    if (typeof window !== 'undefined') {
-      const session = localStorage.getItem('auth_session')
-      if (session) {
-        try {
-          const parsed = JSON.parse(session)
-          this.authToken = parsed.token
-        } catch (e) {
-          console.error('Failed to parse auth session:', e)
-        }
-      }
-    }
+    // Don't set authToken here - always read from localStorage on each request
   }
 
   setAuthToken(token: string) {
@@ -126,11 +121,28 @@ class EnhancedApiClient {
       }
     }
 
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`
+    // Always get the latest auth token from localStorage
+    let currentToken = this.authToken
+    if (typeof window !== 'undefined') {
+      const session = localStorage.getItem('auth_session')
+      if (session) {
+        try {
+          const parsed = JSON.parse(session)
+          currentToken = parsed.token
+        } catch (e) {
+          console.error('Failed to parse auth session:', e)
+        }
+      }
+    }
+    
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`
     }
 
-    const response = await fetch(`${this.baseUrl}/api${endpoint}`, {
+    const fullUrl = `${this.baseUrl}/api${endpoint}`
+    console.log('Making API request to:', fullUrl, 'baseUrl:', this.baseUrl)
+    
+    const response = await fetch(fullUrl, {
       ...options,
       headers,
     })
@@ -670,7 +682,27 @@ class EnhancedApiClient {
       }
     }
   }> {
-    return this.get('/stats')
+    const response = await this.get<{
+      success: boolean
+      stats?: {
+        totalVolume: string
+        tokensCreated: number
+        totalHolders: number
+        graduated: number
+        totalMarketCap: string
+        tokensCreated24h: number
+        volumeChange24h: number
+        tokensChange24h: number
+        holdersChange24h: number
+        graduatedChange24h: number
+      }
+    }>('/stats')
+    
+    // Transform response to match expected format
+    return {
+      success: response.success,
+      data: response.stats ? { stats: response.stats } : undefined
+    }
   }
 
   async getTrendingTokens(limit: number = 10): Promise<{

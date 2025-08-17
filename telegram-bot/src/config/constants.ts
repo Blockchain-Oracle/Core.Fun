@@ -7,7 +7,7 @@ export const NETWORK_CONFIG = {
   // Use the testnet RPC as default
   RPC_URL: process.env.CORE_RPC_URL || 'https://rpc.test.btcs.network',
   CHAIN_ID: parseInt(process.env.CHAIN_ID || '1115'), // Core testnet
-  EXPLORER_URL: process.env.EXPLORER_URL || 'https://scan.test.btcs.network',
+  EXPLORER_URL: process.env.EXPLORER_URL || 'https://scan.test2.btcs.network',
 };
 
 // Contract addresses (from deployment)

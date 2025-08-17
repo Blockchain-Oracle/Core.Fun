@@ -7,6 +7,7 @@ import { PnLCalculator } from './PnLCalculator';
 import { MemeFactoryCopyTrader } from './MemeFactoryCopyTrader';
 import { ImageGenerator } from '../services/ImageGenerator';
 import { createLogger } from '@core-meme/shared';
+import { ethers } from 'ethers';
 
 export class TradingCommands {
   private logger = createLogger({ service: 'trading-commands' });
@@ -29,6 +30,42 @@ export class TradingCommands {
   }
 
   /**
+   * Quick command to buy CMP (platform staking token)
+   */
+  async handleBuyCMP(ctx: BotContext): Promise<void> {
+    const CMP_ADDRESS = process.env.PLATFORM_TOKEN_ADDRESS || '0x26EfC13dF039c6B4E084CEf627a47c348197b655';
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+    const args = text.split(' ').slice(1);
+    const amount = args[0];
+
+    // Check CMP token status first
+    try {
+      const info = await this.tradingExecutor.getTokenInfo(CMP_ADDRESS);
+      if (!info.isOpen) {
+        await ctx.reply(
+          'ℹ️ CMP is the platform staking token and is not sold via the bonding curve.\n\n' +
+          'To stake, you need CMP in your wallet and a little CORE for gas.\n\n' +
+          'Options:\n' +
+          '• Get CMP from the team faucet/airdrop (dev)\n' +
+          '• Receive CMP from another wallet\n' +
+          '• Once listed, buy on a DEX',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+    } catch {}
+
+    if (!amount) {
+      // Show buy panel for CMP with preset buttons
+      await this.showBuyPanel(ctx, CMP_ADDRESS);
+      return;
+    }
+
+    // Execute a direct buy of CMP
+    await this.executeBuyTrade(ctx, CMP_ADDRESS, amount);
+  }
+
+  /**
    * Handle /buy command
    */
   async handleBuy(ctx: BotContext): Promise<void> {
@@ -36,7 +73,7 @@ export class TradingCommands {
     const args = text.split(' ').slice(1);
 
     if (args.length === 0) {
-      return this.showBuyHelp(ctx);
+      return this.showAvailableTokens(ctx);
     }
 
     const tokenAddress = args[0];
@@ -188,7 +225,7 @@ export class TradingCommands {
       ]);
       keyboard.push([
         Markup.button.callback('📊 Chart', `chart_${tokenAddress}`),
-        Markup.button.url('🔍 Explorer', `https://scan.coredao.org/address/${tokenAddress}`),
+        Markup.button.url('🔍 Explorer', `${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/address/${tokenAddress}`),
       ]);
       keyboard.push([
         Markup.button.callback('❌ Cancel', 'cancel'),
@@ -243,7 +280,7 @@ export class TradingCommands {
             Markup.button.callback('💸 Sell', `sell_${tokenAddress}`),
           ],
           [
-            Markup.button.url('🔍 View TX', `https://scan.coredao.org/tx/${result.transactionHash}`),
+            Markup.button.url('🔍 View TX', `${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/tx/${result.transactionHash}`),
           ],
         ];
 
@@ -252,7 +289,7 @@ export class TradingCommands {
                         `Amount: ${result.amountOut}\n` +
                         `Price: $${result.price}\n` +
                         `Total: ${result.amountIn} CORE\n` +
-                        `Transaction: [View](https://scan.coredao.org/tx/${result.transactionHash})`, {
+                        `Transaction: [View](${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/tx/${result.transactionHash})`, {
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: keyboard },
         });
@@ -466,7 +503,7 @@ export class TradingCommands {
             Markup.button.callback('💼 Portfolio', 'portfolio_view'),
           ],
           [
-            Markup.button.url('🔍 View TX', `https://scan.coredao.org/tx/${result.transactionHash}`),
+            Markup.button.url('🔍 View TX', `${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/tx/${result.transactionHash}`),
           ],
         ];
 
@@ -475,7 +512,7 @@ export class TradingCommands {
                         `Amount: ${result.amountIn}\n` +
                         `Price: $${result.price}\n` +
                         `Total: ${result.amountOut} CORE\n` +
-                        `Transaction: [View](https://scan.coredao.org/tx/${result.transactionHash})`, {
+                        `Transaction: [View](${process.env.EXPLORER_URL || 'https://scan.test2.btcs.network'}/tx/${result.transactionHash})`, {
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: keyboard },
         });
@@ -673,6 +710,266 @@ export class TradingCommands {
   }
 
   /**
+   * Show available tokens for trading
+   */
+  private async showAvailableTokens(ctx: BotContext) {
+    const loadingMsg = await ctx.reply('🔍 Loading available tokens...');
+
+    try {
+      // Fetch tokens from the API (we'll use the API client)
+      const response = await fetch(`${process.env.API_BASE_URL || 'http://localhost:3001'}/api/tokens`);
+      const data = await response.json();
+
+      // Delete loading message
+      await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
+
+      const responseData = data as any;
+      if (!responseData.success || !responseData.tokens || responseData.tokens.length === 0) {
+        await ctx.reply(
+          '📭 *No Tokens Available*\n\n' +
+          'No tokens are currently available for trading.\n\n' +
+          'You can still trade by pasting a token address directly into the chat.',
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Show top 10 tokens with trading buttons
+      const tokens = responseData.tokens.slice(0, 10);
+      
+      let message = `🛒 *Available Tokens*\n\n`;
+      message += `Choose a token to trade:\n\n`;
+
+      const keyboard = [];
+
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const progress = token.graduationPercentage || 0;
+        const status = progress >= 100 ? '✅' : progress >= 80 ? '🔥' : '📈';
+        
+        message += `${i + 1}. ${status} *${token.symbol}*\n`;
+        message += `   ${token.name}\n`;
+        message += `   Price: ${this.formatTokenPrice(token.price)}\n`;
+        message += `   Progress: ${progress.toFixed(1)}%\n\n`;
+
+        // Add buy button for each token
+        keyboard.push([
+          Markup.button.callback(`💰 Buy ${token.symbol}`, `buy_${token.address}`)
+        ]);
+      }
+
+      message += `\n💡 *Tip:* You can also paste any token address directly to get a preview!`;
+
+      // Add navigation buttons
+      keyboard.push([
+        Markup.button.callback('🔄 Refresh', 'refresh_tokens'),
+        Markup.button.callback('📊 Top Tokens', 'view_trending')
+      ]);
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard },
+      });
+
+    } catch (error) {
+      this.logger.error('Failed to fetch available tokens:', error);
+      try {
+        await ctx.telegram.deleteMessage(ctx.chat!.id, loadingMsg.message_id);
+      } catch {}
+      await ctx.reply(
+        '❌ Failed to load available tokens.\n\n' +
+        'You can still trade by pasting a token address directly into the chat.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  /**
+   * Format token price in a human-readable way
+   */
+  private formatTokenPrice(price: number): string {
+    if (!price || price === 0) {
+      return '$0.00';
+    }
+    
+    // For very small prices, show in a readable format
+    if (price < 0.00001) {
+      // Show as "X tokens per $1" for tiny prices
+      const tokensPerDollar = 1 / price;
+      if (tokensPerDollar > 1000000000) {
+        return `${(tokensPerDollar / 1000000000).toFixed(2)}B per $1`;
+      } else if (tokensPerDollar > 1000000) {
+        return `${(tokensPerDollar / 1000000).toFixed(2)}M per $1`;
+      } else if (tokensPerDollar > 1000) {
+        return `${Math.floor(tokensPerDollar).toLocaleString()} per $1`;
+      }
+    }
+    
+    // For small but reasonable prices
+    if (price < 0.01) {
+      return `$${price.toFixed(6)}`;
+    } else if (price < 1) {
+      return `$${price.toFixed(4)}`;
+    } else if (price < 100) {
+      return `$${price.toFixed(2)}`;
+    } else if (price < 1000000) {
+      return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    }
+    
+    // For very large prices (probably an error)
+    return `$${price.toExponential(2)}`;
+  }
+
+  /**
+   * Public method to get token info (for bot.ts)
+   */
+  async getTokenInfo(tokenAddress: string): Promise<any> {
+    return await this.tradingExecutor.getTokenInfo(tokenAddress);
+  }
+
+  /**
+   * Execute buy with specific amount
+   */
+  async executeBuyWithAmount(ctx: any, tokenAddress: string, amount: string) {
+    try {
+      // Resolve internal user id (UUID) from session or telegram id
+      let userId = ctx.session?.userId as string | undefined;
+      if (!userId) {
+        const tgUser = await this.db.getUserByTelegramId(ctx.from!.id);
+        if (!tgUser) {
+          await ctx.reply('❌ Please /start the bot first to create your account.');
+          return;
+        }
+        userId = tgUser.id;
+      }
+      const amountNum = parseFloat(amount);
+      
+      if (isNaN(amountNum) || amountNum <= 0) {
+        await ctx.reply('❌ Invalid amount. Please try again.');
+        return;
+      }
+
+      // Show loading message
+      const loadingMsg = await ctx.reply('🔄 Processing your buy order...');
+      
+      // Balance validation (ensure user has enough CORE for amount + gas)
+      try {
+        const user = await this.db.getUserById(userId);
+        if (!user || !user.walletAddress) {
+          await ctx.reply('❌ No wallet found. Please set up your wallet first with /wallet');
+          return;
+        }
+        const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network');
+        const balance = await provider.getBalance(user.walletAddress);
+        const balanceInCore = parseFloat(ethers.formatEther(balance));
+        const gasBuffer = 0.005; // leave small buffer for gas
+        if (balanceInCore < amountNum + gasBuffer) {
+          await ctx.reply(`❌ Insufficient balance. Available: ${balanceInCore.toFixed(4)} CORE`);
+          return;
+        }
+      } catch {}
+
+      // Execute the buy
+      const result = await this.tradingExecutor.executeBuy({
+        userId,
+        tokenAddress,
+        amount: amountNum.toString(),
+        type: 'buy',
+        slippage: 5
+      });
+      
+      // Delete loading message
+      await ctx.deleteMessage(loadingMsg.message_id);
+      
+      if (result.success) {
+        const explorer = process.env.EXPLORER_URL || 'https://scan.test2.btcs.network';
+        const txUrl = `${explorer}/tx/${result.txHash || result.transactionHash}`;
+        await ctx.reply(
+          `✅ Buy order executed!\n` +
+          `💰 Spent: ${result.amountIn} CORE\n` +
+          `📈 Received: ${result.amountOut} tokens\n` +
+          `📋 TX: ${txUrl}`
+        );
+      } else {
+        await ctx.reply(`❌ Buy failed: ${result.error}`);
+      }
+    } catch (error) {
+      this.logger.error('Error executing buy with amount:', error);
+      await ctx.reply('❌ Failed to execute buy order. Please try again.');
+    }
+  }
+
+  /**
+   * Execute buy with maximum available balance
+   */
+  async executeBuyMax(ctx: any, tokenAddress: string) {
+    try {
+      // Resolve internal user id (UUID) from session or telegram id
+      let userId = ctx.session?.userId as string | undefined;
+      if (!userId) {
+        const tgUser = await this.db.getUserByTelegramId(ctx.from!.id);
+        if (!tgUser) {
+          await ctx.reply('❌ Please /start the bot first to create your account.');
+          return;
+        }
+        userId = tgUser.id;
+      }
+      
+      // Get user's wallet info
+      const user = await this.db.getUserById(userId);
+      if (!user || !user.walletAddress) {
+        await ctx.reply('❌ No wallet found. Please set up your wallet first with /wallet');
+        return;
+      }
+      
+      // Get balance from wallet
+      const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network');
+      const balance = await provider.getBalance(user.walletAddress);
+      const balanceInCore = parseFloat(ethers.formatEther(balance));
+      
+      if (balanceInCore <= 0.01) {
+        await ctx.reply('❌ Insufficient balance. Please add funds first.');
+        return;
+      }
+      
+      // Use 95% of balance to leave some for gas
+      const maxAmount = balanceInCore * 0.95;
+      
+      await ctx.reply(
+        `🦍 Aping in with ${maxAmount.toFixed(4)} CORE!\n` +
+        `⚠️ This will use 95% of your balance.\n\n` +
+        `Confirm?`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Confirm', callback_data: `buy_amount_${tokenAddress}_${maxAmount}` },
+                { text: '❌ Cancel', callback_data: 'cancel' }
+              ]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      this.logger.error('Error executing max buy:', error);
+      await ctx.reply('❌ Failed to check balance. Please try again.');
+    }
+  }
+
+  /**
+   * Show token chart
+   */
+  async showChart(ctx: any, tokenAddress: string) {
+    try {
+      await ctx.reply('📊 Chart feature coming soon!');
+      // TODO: Implement chart generation
+    } catch (error) {
+      this.logger.error('Error showing chart:', error);
+      await ctx.reply('❌ Failed to load chart.');
+    }
+  }
+
+  /**
    * Show buy help
    */
   private async showBuyHelp(ctx: BotContext) {
@@ -680,11 +977,13 @@ export class TradingCommands {
       `💸 *Buy Command*\n\n` +
       `Usage: \`/buy [token_address] [amount]\`\n\n` +
       `Examples:\n` +
+      `\`/buy\` - Show available tokens\n` +
       `\`/buy 0x123...abc\` - Shows buy panel\n` +
       `\`/buy 0x123...abc 1\` - Buy with 1 CORE\n\n` +
-      `You can also use:\n` +
-      `• /ape [token] - Max buy with high slippage\n` +
-      `• /snipe [token] [amount] - Auto-buy on launch`,
+      `You can also:\n` +
+      `• Paste any token address for instant preview\n` +
+      `• Use /ape [token] - Max buy with high slippage\n` +
+      `• Use /snipe [token] [amount] - Auto-buy on launch`,
       { parse_mode: 'Markdown' }
     );
   }

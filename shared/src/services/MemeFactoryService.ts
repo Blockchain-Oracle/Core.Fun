@@ -72,7 +72,7 @@ export class MemeFactoryService extends EventEmitter {
     super();
     
     // Initialize HTTP provider
-    const rpcUrl = process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network';
+    const rpcUrl = process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.factoryAddress = process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784';
     
@@ -145,13 +145,35 @@ export class MemeFactoryService extends EventEmitter {
       }
 
       // Fetch from contract
-      const info: TokenInfo = await this.factory.getTokenInfo(tokenAddress);
+      const rawInfo = await this.factory.getTokenInfo(tokenAddress);
+      
+      // The contract returns a tuple, ethers.js might return it as an array or object
+      // Handle both cases
+      let info: TokenInfo;
+      if (Array.isArray(rawInfo)) {
+        // If it's an array, destructure it
+        info = {
+          creator: rawInfo[0],
+          name: rawInfo[1], 
+          symbol: rawInfo[2],
+          totalSupply: rawInfo[3],
+          availableSupply: rawInfo[4],
+          reserveBalance: rawInfo[5],
+          isLaunched: rawInfo[6],
+          createdAt: Number(rawInfo[7]),
+          launchedAt: Number(rawInfo[8]),
+          creatorBalance: rawInfo[9]
+        };
+      } else {
+        // It's already an object with named properties
+        info = rawInfo as TokenInfo;
+      }
       
       // Calculate current price from bonding curve
       const currentPrice = await this.calculateCurrentPrice(tokenAddress);
       
-      // Calculate market cap
-      const marketCap = this.calculateMarketCap(info.totalSupply, currentPrice);
+      // Calculate market cap - ensure we're passing the right values
+      const marketCap = this.calculateMarketCap(info.totalSupply || BigInt(0), currentPrice);
 
       // Create token contract instance to get more details
       const tokenContract = new ethers.Contract(
@@ -247,22 +269,61 @@ export class MemeFactoryService extends EventEmitter {
    */
   async calculateCurrentPrice(tokenAddress: string): Promise<bigint> {
     try {
-      // Get the current price for buying 1 token (how much ETH needed for 1 token)
-      const oneToken = ethers.parseEther('1');
-      const ethNeeded = await this.factory.calculateETHOut(tokenAddress, oneToken);
-      return ethNeeded;
+      // Get token info to know current sold amount
+      const info = await this.factory.getTokenInfo(tokenAddress);
+      
+      // Bonding curve constants (must match contract)
+      const STEP_SIZE = ethers.parseEther('10000'); // 10,000 tokens
+      const BASE_PRICE = ethers.parseEther('0.0001'); // 0.0001 CORE
+      const PRICE_INCREMENT = ethers.parseEther('0.0001'); // 0.0001 CORE per step
+      
+      // Calculate current price: BASE_PRICE + (PRICE_INCREMENT * steps)
+      // Use BigInt math to avoid precision issues
+      const steps = info.sold / STEP_SIZE;
+      const currentPrice = BASE_PRICE + (PRICE_INCREMENT * steps);
+      
+      return currentPrice;
     } catch (error) {
       this.logger.error(`Error calculating price for ${tokenAddress}:`, error);
-      return BigInt(0);
+      // Return base price as fallback
+      return ethers.parseEther('0.0001');
     }
   }
 
   /**
    * Calculate market cap
    */
-  private calculateMarketCap(totalSupply: bigint, price: bigint): bigint {
-    // MarketCap = totalSupply * price / 1e18 (to adjust for decimals)
-    return (totalSupply * price) / BigInt(10 ** 18);
+  private calculateMarketCap(totalSupply: bigint | string | number, priceWei: bigint | string | number): bigint {
+    try {
+      // Ensure BigInt math only - handle potential object with toString()
+      let ts: bigint;
+      let price: bigint;
+      
+      if (typeof totalSupply === 'bigint') {
+        ts = totalSupply;
+      } else if (totalSupply && typeof totalSupply === 'object') {
+        // Handle ethers.js BigNumber or any object with toString
+        ts = BigInt((totalSupply as any).toString());
+      } else {
+        ts = BigInt(String(totalSupply));
+      }
+      
+      if (typeof priceWei === 'bigint') {
+        price = priceWei;
+      } else if (priceWei && typeof priceWei === 'object') {
+        // Handle ethers.js BigNumber or any object with toString
+        price = BigInt((priceWei as any).toString());
+      } else {
+        price = BigInt(String(priceWei));
+      }
+      
+      const WEI = BigInt('1000000000000000000');
+      // MarketCap (in wei) = totalSupply (wei) * price (wei per token) / 1e18
+      return ts * price / WEI;
+    } catch (error) {
+      this.logger.error('Error calculating market cap:', error);
+      return BigInt(0);
+    }
   }
 
   /**
@@ -351,7 +412,13 @@ export class MemeFactoryService extends EventEmitter {
   async calculateBuyReturn(tokenAddress: string, coreAmount: string): Promise<string> {
     try {
       const amountInWei = ethers.parseEther(coreAmount);
-      const tokenAmount = await this.factory.calculateTokensOut(tokenAddress, amountInWei);
+      
+      // First get the token info to get current sold amount
+      const tokenInfo = await this.factory.getTokenInfo(tokenAddress);
+      const currentSold = tokenInfo.sold; // This is already in wei
+      
+      // Now calculate tokens out using the correct parameters
+      const tokenAmount = await this.factory.calculateTokensOut(currentSold, amountInWei);
       return ethers.formatEther(tokenAmount);
     } catch (error) {
       this.logger.error('Error calculating buy return:', error);
@@ -365,7 +432,13 @@ export class MemeFactoryService extends EventEmitter {
   async calculateSellReturn(tokenAddress: string, tokenAmount: string): Promise<string> {
     try {
       const amountInWei = ethers.parseEther(tokenAmount);
-      const coreAmount = await this.factory.calculateETHOut(tokenAddress, amountInWei);
+      
+      // First get the token info to get current sold amount
+      const tokenInfo = await this.factory.getTokenInfo(tokenAddress);
+      const currentSold = tokenInfo.sold; // This is already in wei
+      
+      // Now calculate ETH out using the correct parameters
+      const coreAmount = await this.factory.calculateETHOut(currentSold, amountInWei);
       return ethers.formatEther(coreAmount);
     } catch (error) {
       this.logger.error('Error calculating sell return:', error);

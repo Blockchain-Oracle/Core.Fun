@@ -13,6 +13,9 @@ export interface User extends BaseEntity {
   encryptedPrivateKey: string;
   subscriptionTier?: string;
   portfolioValue?: number;
+  claimed_initial_cmp?: boolean;
+  claimed_cmp_at?: Date;
+  cmp_airdrop_tx_hash?: string;
 }
 
 export interface Wallet extends BaseEntity {

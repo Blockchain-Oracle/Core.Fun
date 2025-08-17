@@ -32,7 +32,7 @@ const FACTORY_ABI = [
 // Configuration
 const CONFIG = {
   NETWORK: process.env.NETWORK || 'testnet',
-  RPC_URL: process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network',
+  RPC_URL: process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com',
   PRIVATE_KEY: process.env.REVENUE_DISTRIBUTOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '',
   STAKING_ADDRESS: process.env.STAKING_ADDRESS || '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa',
   FACTORY_ADDRESS: process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',

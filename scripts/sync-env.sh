@@ -60,7 +60,7 @@ REDIS_PORT=6379
 
 # Core Blockchain
 NETWORK=testnet
-CORE_RPC_URL=https://rpc.test2.btcs.network
+CORE_RPC_URL=https://1114.rpc.thirdweb.com
 MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
 TREASURY_ADDRESS=0xe397a72377F43645Cd4DA02d709c378df6e9eE5a
 
@@ -106,8 +106,8 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 
 # Core Blockchain
-CORE_RPC_URL=https://rpc.test2.btcs.network
-CORE_TESTNET_RPC=https://rpc.test2.btcs.network
+CORE_RPC_URL=https://1114.rpc.thirdweb.com
+CORE_TESTNET_RPC=https://1114.rpc.thirdweb.com
 MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
 
 # Monitoring Config
@@ -134,7 +134,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 
 # Core Blockchain
-CORE_RPC_URL=https://rpc.test2.btcs.network
+CORE_RPC_URL=https://1114.rpc.thirdweb.com
 MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
 
 # Security
@@ -180,7 +180,7 @@ REDIS_PORT=6379
 
 # Core Blockchain
 NETWORK=testnet
-CORE_RPC_URL=https://rpc.test2.btcs.network
+CORE_RPC_URL=https://1114.rpc.thirdweb.com
 MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
 
 # API Services
@@ -221,8 +221,8 @@ REDIS_PORT=6379
 REDIS_PASSWORD=
 
 # Core Blockchain
-CORE_TESTNET_RPC=https://rpc.test2.btcs.network
-CORE_RPC_URL=https://rpc.test2.btcs.network
+CORE_TESTNET_RPC=https://1114.rpc.thirdweb.com
+CORE_RPC_URL=https://1114.rpc.thirdweb.com
 MEME_FACTORY_ADDRESS=0x0eeF9597a9B231b398c29717e2ee89eF6962b784
 
 # Security

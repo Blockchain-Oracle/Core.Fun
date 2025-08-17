@@ -1,26 +1,42 @@
-// PM2 Configuration for Core Meme Platform
-// Usage: pm2 start ecosystem.config.js
+// PM2 Configuration for Core Meme Platform - Coolify Compatible
+// Usage: pm2-runtime start ecosystem.config.js --env production
 
 module.exports = {
   apps: [
     {
-      name: 'api-gateway',
-      cwd: './backend/api',
-      script: 'dist/main.js',
+      name: 'frontend',
+      cwd: './core.fun_Frontend',
+      script: 'node_modules/.bin/next',
+      args: 'start',
       instances: 1,
-      exec_mode: 'cluster',
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000
+      },
+      error_file: '../logs/frontend-error.log',
+      out_file: '../logs/frontend-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '10s'
+    },
+    {
+      name: 'api-server',
+      cwd: './backend/api',
+      script: 'dist/index.js',
+      instances: 1,
+      exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
         PORT: 3001
       },
-      error_file: './logs/api-error.log',
-      out_file: './logs/api-out.log',
+      error_file: '../../logs/api-error.log',
+      out_file: '../../logs/api-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
       autorestart: true,
       max_restarts: 10,
-      min_uptime: '10s',
-      watch: false
+      min_uptime: '10s'
     },
     {
       name: 'websocket-server',
@@ -42,19 +58,20 @@ module.exports = {
     {
       name: 'blockchain-monitor',
       cwd: './backend/blockchain-monitor',
-      script: 'dist/index.js',
+      script: 'dist/main.js',
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3003
       },
-      error_file: './logs/monitor-error.log',
-      out_file: './logs/monitor-out.log',
+      error_file: '../../logs/monitor-error.log',
+      out_file: '../../logs/monitor-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       autorestart: true,
       max_restarts: 10,
       min_uptime: '30s',
-      cron_restart: '0 */6 * * *' // Restart every 6 hours
+      cron_restart: '0 */6 * * *'
     },
     {
       name: 'telegram-bot',
@@ -63,10 +80,11 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3004
       },
-      error_file: './logs/telegram-error.log',
-      out_file: './logs/telegram-out.log',
+      error_file: '../logs/telegram-error.log',
+      out_file: '../logs/telegram-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       autorestart: true,
       max_restarts: 50,

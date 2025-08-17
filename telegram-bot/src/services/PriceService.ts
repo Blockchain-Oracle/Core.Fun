@@ -50,16 +50,14 @@ interface PriceData {
   lastUpdate: Date;
 }
 
-// MemeFactory ABI - minimal for price calculation
+// MemeFactory ABI aligned with deployed contract
 const MEME_FACTORY_ABI = [
-  'function tokens(address) view returns (tuple(address tokenAddress, address creator, uint256 created, uint256 raised, uint256 sold, bool isGraduated, string name, string symbol, string description, string imageUrl))',
-  'function calculateTokensOut(uint256 currentSold, uint256 ethIn) view returns (uint256)',
-  'function calculateEthOut(uint256 currentSold, uint256 tokensIn) view returns (uint256)',
-  'function bondingCurveLimit() view returns (uint256)',
-  'function graduationTarget() view returns (uint256)',
-  'function platformFee() view returns (uint256)',
-  'function getAllTokens() view returns (address[])',
-  'function getTokenInfo(address token) view returns (tuple(address tokenAddress, address creator, uint256 created, uint256 raised, uint256 sold, bool isGraduated, string name, string symbol, string description, string imageUrl))',
+  'function buyToken(address _token, uint256 _minTokens) external payable',
+  'function sellToken(address _token, uint256 _amount, uint256 _minETH) external',
+  'function calculateTokensOut(uint256 _currentSold, uint256 _ethIn) public pure returns (uint256)',
+  'function calculateETHOut(uint256 _currentSold, uint256 _tokensIn) public pure returns (uint256)',
+  'function getTokenInfo(address _token) external view returns (tuple(address token, string name, string symbol, address creator, uint256 sold, uint256 raised, bool isOpen, bool isLaunched, uint256 createdAt, uint256 launchedAt))',
+  'function tokenToSale(address) external view returns (address token, string name, string symbol, address creator, uint256 sold, uint256 raised, bool isOpen, bool isLaunched, uint256 createdAt, uint256 launchedAt)'
 ];
 
 // MemeToken ABI for metadata and trading info
@@ -120,9 +118,38 @@ export class PriceService {
   }
 
   private async fetchCoreUsdPrice(): Promise<number> {
-    // TODO: Implement actual price fetching from oracle or API
-    // For now, return a default value
-    return 0.5; // Example: 1 CORE = $0.50
+    try {
+      // Use CoinGecko API to get real-time CORE price
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd', {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'CoreMemeplatform/1.0'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status}`);
+      }
+
+      const data: any = await response.json();
+      const price = data.coredaoorg?.usd;
+
+      if (typeof price === 'number' && price > 0) {
+        this.logger.info('Successfully fetched CORE price from CoinGecko', { price });
+        return price;
+      } else {
+        throw new Error('Invalid price data from CoinGecko');
+      }
+    } catch (error) {
+      this.logger.warn('Failed to fetch CORE price from CoinGecko, using fallback', { error });
+      return 0.50; // Fallback price - more realistic than $2.80
+    }
   }
 
   async getCoreUsdPrice(): Promise<number> {
@@ -137,35 +164,39 @@ export class PriceService {
     }
 
     try {
-      // Get token info from MemeFactory
-      const tokenInfo = await this.memeFactory.getTokenInfo(tokenAddress);
-      
-      if (!tokenInfo || tokenInfo.tokenAddress === ethers.ZeroAddress) {
-        throw new Error('Token not found in MemeFactory');
+      // Get token info from MemeFactory (try tokenToSale first, then getTokenInfo)
+      let saleInfo: any = await this.memeFactory.tokenToSale(tokenAddress).catch(() => null);
+      if (!saleInfo || saleInfo.token === ethers.ZeroAddress) {
+        const info = await this.memeFactory.getTokenInfo(tokenAddress);
+        if (!info || info.token === ethers.ZeroAddress) {
+          throw new Error('Token not found in MemeFactory');
+        }
+        saleInfo = info;
       }
 
-      const currentSold = BigInt(tokenInfo.sold);
-      const raised = BigInt(tokenInfo.raised);
+      const currentSold = BigInt(saleInfo.sold || 0);
+      const raised = BigInt(saleInfo.raised || 0);
       
-      // Calculate price from bonding curve
-      // Price = amount of CORE needed to buy 1 token
-      const oneToken = ethers.parseEther('1');
+      // Calculate price from bonding curve using correct formula
       let priceInCore = 0;
       
-      if (!tokenInfo.isGraduated) {
+      if (!saleInfo.isLaunched) {
         // Token is still on bonding curve
-        // To get price, calculate how much CORE is needed to buy 1 token
-        const smallAmount = ethers.parseEther('0.001'); // Buy 0.001 CORE worth
-        const tokensOut = await this.memeFactory.calculateTokensOut(currentSold, smallAmount);
+        // Use the bonding curve formula: BASE_PRICE + (PRICE_INCREMENT * steps)
+        const STEP_SIZE = ethers.parseEther('10000'); // 10,000 tokens
+        const BASE_PRICE = ethers.parseEther('0.0001'); // 0.0001 CORE
+        const PRICE_INCREMENT = ethers.parseEther('0.0001'); // 0.0001 CORE per step
         
-        if (tokensOut > 0n) {
-          // Price = CORE in / tokens out
-          priceInCore = parseFloat(ethers.formatEther(smallAmount)) / parseFloat(ethers.formatEther(tokensOut));
-        }
+        // Calculate current price based on tokens sold
+        const steps = currentSold / STEP_SIZE;
+        const currentPriceWei = BASE_PRICE + (PRICE_INCREMENT * steps);
+        priceInCore = parseFloat(ethers.formatEther(currentPriceWei));
       } else {
-        // Token has graduated - use last bonding curve price
-        const graduationTarget = await this.memeFactory.graduationTarget();
-        priceInCore = parseFloat(ethers.formatEther(graduationTarget)) / 500000; // Assuming 500k tokens at graduation
+        // Token has graduated - use max bonding curve price
+        // For graduated tokens, should ideally fetch from DEX
+        const MAX_STEPS = 50n; // 500k tokens / 10k per step
+        const maxPrice = ethers.parseEther('0.0001') + (ethers.parseEther('0.0001') * MAX_STEPS);
+        priceInCore = parseFloat(ethers.formatEther(maxPrice));
       }
 
       const priceData: PriceData = {
@@ -174,9 +205,9 @@ export class PriceService {
         priceInUsd: priceInCore * this.coreUsdPrice,
         liquidity: parseFloat(ethers.formatEther(raised)),
         volume24h: 0, // Would need event tracking to calculate
-      priceChange24h: 0, // Would need historical data
-      lastUpdate: new Date(),
-    };
+        priceChange24h: 0, // Would need historical data
+        lastUpdate: new Date(),
+      };
 
     // Cache the result
     this.priceCache.set(tokenAddress, {
@@ -199,11 +230,13 @@ export class PriceService {
     }
 
     try {
-      // Get basic info from MemeFactory
-      const factoryInfo = await this.memeFactory.getTokenInfo(tokenAddress);
-      
-      if (!factoryInfo || factoryInfo.tokenAddress === ethers.ZeroAddress) {
-        throw new Error('Token not found in MemeFactory');
+      // Get basic info from MemeFactory (try tokenToSale then fallback)
+      let factoryInfo: any = await this.memeFactory.tokenToSale(tokenAddress).catch(() => null);
+      if (!factoryInfo || factoryInfo.token === ethers.ZeroAddress) {
+        factoryInfo = await this.memeFactory.getTokenInfo(tokenAddress);
+        if (!factoryInfo || factoryInfo.token === ethers.ZeroAddress) {
+          throw new Error('Token not found in MemeFactory');
+        }
       }
 
       // Get metadata from token contract
@@ -239,8 +272,9 @@ export class PriceService {
       const priceData = await this.getTokenPrice(tokenAddress);
 
       // Calculate graduation progress
-      const graduationTarget = await this.memeFactory.graduationTarget();
-      const graduationPercentage = parseFloat(ethers.formatEther(factoryInfo.raised)) / parseFloat(ethers.formatEther(graduationTarget)) * 100;
+      // Graduation progress derived from raised (target assumed 3 CORE on testnet)
+      const targetCore = 3; // align with dashboard assumption
+      const graduationPercentage = (parseFloat(ethers.formatEther(factoryInfo.raised)) / targetCore) * 100;
 
       // Estimate holder count (would need indexer for real data)
       const holders = await this.estimateHolderCount(factoryInfo);
@@ -273,16 +307,16 @@ export class PriceService {
         maxWallet: metadata.maxWallet,
         maxTransaction: metadata.maxTransaction,
         tradingEnabled: metadata.tradingEnabled ?? true,
-        status: factoryInfo.isGraduated ? 'GRADUATED' : 'BONDING',
+        status: factoryInfo.isLaunched ? 'GRADUATED' : 'BONDING',
         graduationPercentage,
         bondingCurve: {
           progress: graduationPercentage,
           raisedAmount: parseFloat(ethers.formatEther(factoryInfo.raised)),
-          targetAmount: parseFloat(ethers.formatEther(graduationTarget)),
+          targetAmount: targetCore,
         },
         raised: parseFloat(ethers.formatEther(factoryInfo.raised)),
         sold: parseFloat(ethers.formatEther(factoryInfo.sold)),
-        isGraduated: factoryInfo.isGraduated,
+        isGraduated: factoryInfo.isLaunched,
       };
 
       // Cache the result

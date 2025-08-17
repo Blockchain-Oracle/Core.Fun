@@ -82,7 +82,7 @@ export class WalletManager {
 
       // Create wallet with provider
       const provider = new ethers.JsonRpcProvider(
-        process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network'
+        process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com'
       );
       const wallet = new ethers.Wallet(walletData.privateKey, provider);
       

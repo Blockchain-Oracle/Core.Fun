@@ -1,19 +1,22 @@
 import { Context } from 'telegraf'
 import { MemeFactoryCopyTrader } from '../trading/MemeFactoryCopyTrader'
-import { DatabaseService } from '../../../shared/src/services/DatabaseService'
-import { StakingService } from '../../../shared/src/services/StakingService'
+import { DatabaseService, ContractDataService } from '@core-meme/shared'
 import { ethers } from 'ethers'
+import { ApiService } from '../services/ApiService'
 
-const databaseService = DatabaseService.getInstance()
-const stakingService = StakingService.getInstance()
+const databaseService = new DatabaseService()
+const contractService = new ContractDataService(
+  process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com',
+  process.env.MEME_FACTORY_ADDRESS || '0x0eeF9597a9B231b398c29717e2ee89eF6962b784',
+  process.env.STAKING_ADDRESS || '0x3e3EeE193b0F4eae15b32B1Ee222B6B8dFC17ECa'
+)
+const apiService = new ApiService()
 
 export class CopyTradingCommands {
   private copyTrader: MemeFactoryCopyTrader
 
   constructor() {
-    const provider = new ethers.JsonRpcProvider(process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com')
-    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY || '', provider)
-    this.copyTrader = new MemeFactoryCopyTrader(wallet)
+    this.copyTrader = new MemeFactoryCopyTrader(databaseService)
   }
 
   async handleStartCopyTrading(ctx: Context) {
@@ -54,14 +57,18 @@ export class CopyTradingCommands {
       }
 
       // Check user's staking status
-      const user = await databaseService.getUser(telegramId)
+      const user = await databaseService.getUserByTelegramId(parseInt(telegramId!))
       if (!user) {
         await ctx.reply('❌ User not found. Please start with /start')
         return
       }
 
-      const stakingData = await stakingService.getUserStakingData(user.wallet_address)
-      if (!stakingData.isStaked) {
+      // Get staking status from API
+      const stakingResponse = await apiService.getStakingStatus(user.walletAddress)
+      const stakingData: any = stakingResponse.data || stakingResponse
+      
+      // Check if user has a valid tier (Bronze or higher = tierLevel > 0)
+      if (!stakingData?.subscription || stakingData.subscription.tierLevel === 0) {
         await ctx.reply(
           '❌ You need an active staking subscription to use copy trading.\n\n' +
           'Use `/subscribe` to view staking plans.',
@@ -71,13 +78,14 @@ export class CopyTradingCommands {
       }
 
       // Check available slots based on tier
-      const maxSlots = this.getMaxSlotsForTier(stakingData.tier)
+      const tierLevel = stakingData.subscription.tierLevel
+      const maxSlots = this.getMaxSlotsForTier(tierLevel.toString())
       const currentCopyTrades = await this.getCurrentCopyTrades(telegramId)
       
       if (currentCopyTrades.length >= maxSlots) {
         await ctx.reply(
           `❌ You've reached your copy trading limit.\n\n` +
-          `Current tier: *${stakingData.tier}*\n` +
+          `Current tier: *${stakingData.subscription.tier}*\n` +
           `Max slots: ${maxSlots}\n` +
           `Used slots: ${currentCopyTrades.length}\n\n` +
           `Upgrade your subscription for more slots!`,
@@ -89,12 +97,22 @@ export class CopyTradingCommands {
       // Start copy trading
       await ctx.reply('🔄 Starting copy trading...')
       
-      const success = await this.copyTrader.startCopyTrading(
-        user.wallet_address,
-        targetWallet
-      )
+      const success = await this.copyTrader.startCopyTrading({
+        userId: telegramId,
+        targetWallet: targetWallet,
+        enabled: true,
+        copyBuys: true,
+        copySells: true,
+        maxAmountPerTrade: 1.0,
+        percentageOfWallet: 10,
+        minTokenAge: 0,
+        maxSlippage: 5,
+        blacklistedTokens: [],
+        whitelistedTokens: [],
+        createdAt: new Date()
+      })
 
-      if (success) {
+      if (success && success.enabled) {
         // Store in database
         await this.storeCopyTradeRelation(telegramId, targetWallet)
         
@@ -139,25 +157,26 @@ export class CopyTradingCommands {
 
       const targetWallet = parts[1]
       
-      const user = await databaseService.getUser(telegramId)
+      const user = await databaseService.getUserByTelegramId(parseInt(telegramId!))
       if (!user) {
         await ctx.reply('❌ User not found')
         return
       }
 
       // Stop copy trading
-      const success = await this.copyTrader.stopCopyTrading(
-        user.wallet_address,
-        targetWallet
-      )
-
-      if (success) {
+      try {
+        await this.copyTrader.stopCopyTrading(
+          user.walletAddress,
+          targetWallet
+        )
+        
         await this.removeCopyTradeRelation(telegramId, targetWallet)
         await ctx.reply(
           `✅ Stopped copying trades from:\n\`${targetWallet}\``,
           { parse_mode: 'Markdown' }
         )
-      } else {
+      } catch (error) {
+        console.error('Error stopping copy trading:', error)
         await ctx.reply('❌ Failed to stop copy trading or not currently copying this wallet.')
       }
     } catch (error) {
@@ -174,15 +193,15 @@ export class CopyTradingCommands {
         return
       }
 
-      const user = await databaseService.getUser(telegramId)
+      const user = await databaseService.getUserByTelegramId(parseInt(telegramId!))
       if (!user) {
         await ctx.reply('❌ User not found')
         return
       }
 
       const copyTrades = await this.getCurrentCopyTrades(telegramId)
-      const stakingData = await stakingService.getUserStakingData(user.wallet_address)
-      const maxSlots = this.getMaxSlotsForTier(stakingData.tier)
+      const stakingData = await contractService.getUserStakingBenefits(user.walletAddress)
+      const maxSlots = this.getMaxSlotsForTier(stakingData.tier.toString())
 
       if (copyTrades.length === 0) {
         await ctx.reply(
@@ -278,11 +297,10 @@ export class CopyTradingCommands {
       const message = `📊 *Wallet Analysis*\n\n` +
         `Wallet: \`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}\`\n\n` +
         `📈 *Performance:*\n` +
-        `• Win Rate: ${(analysis.winRate * 100).toFixed(1)}%\n` +
         `• Total Trades: ${analysis.totalTrades}\n` +
-        `• Profitable: ${analysis.profitableTrades}\n` +
+        `• Win Rate: ${(analysis.winRate * 100).toFixed(1)}%\n` +
         `• Total Profit: ${analysis.totalProfit.toFixed(4)} CORE\n` +
-        `• Avg Profit: ${analysis.averageProfit.toFixed(4)} CORE\n\n` +
+        `• Avg Profit: ${analysis.avgProfit.toFixed(4)} CORE\n\n` +
         `🎯 *Rating:* ${this.getRatingEmoji(analysis.winRate)}\n\n` +
         `Use \`/copytrade ${walletAddress}\` to copy this trader!`
 
@@ -314,38 +332,47 @@ export class CopyTradingCommands {
 
   private async getCurrentCopyTrades(telegramId: string): Promise<any[]> {
     try {
-      const query = `
-        SELECT * FROM copy_trades 
-        WHERE telegram_id = $1 AND is_active = true
-        ORDER BY created_at DESC
-      `
-      const result = await databaseService.query(query, [telegramId])
-      return result.rows
+      // First get the user to get the userId
+      const user = await databaseService.getUserByTelegramId(parseInt(telegramId))
+      if (!user) {
+        return []
+      }
+      
+      // Get active copy trades for this user
+      const copyTrades = await databaseService.getUserActiveCopyTrades(user.id)
+      return copyTrades
     } catch (error) {
-      // Table might not exist yet
+      // Return empty array on error
       return []
     }
   }
 
   private async storeCopyTradeRelation(telegramId: string, targetWallet: string) {
     try {
-      // Create table if it doesn't exist
-      await databaseService.query(`
-        CREATE TABLE IF NOT EXISTS copy_trades (
-          id SERIAL PRIMARY KEY,
-          telegram_id VARCHAR(255) NOT NULL,
-          target_wallet VARCHAR(255) NOT NULL,
-          is_active BOOLEAN DEFAULT true,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `)
+      // Get user by telegram ID
+      const user = await databaseService.getUserByTelegramId(parseInt(telegramId))
+      if (!user) {
+        console.error('User not found for telegram ID:', telegramId)
+        return
+      }
 
-      // Insert the relationship
-      await databaseService.query(
-        `INSERT INTO copy_trades (telegram_id, target_wallet) VALUES ($1, $2)`,
-        [telegramId, targetWallet]
-      )
+      // Create copy trade settings using the existing method
+      const copyTradeSettings = {
+        userId: user.id,
+        targetWallet: targetWallet,
+        enabled: true,
+        copyBuys: true,
+        copySells: true,
+        maxAmountPerTrade: 1.0,
+        percentageOfWallet: 10,
+        minTokenAge: 0,
+        maxSlippage: 5,
+        blacklistedTokens: [],
+        whitelistedTokens: [],
+        createdAt: new Date()
+      }
+
+      await databaseService.saveCopyTradeSettings(copyTradeSettings)
     } catch (error) {
       console.error('Error storing copy trade relation:', error)
     }
@@ -353,11 +380,15 @@ export class CopyTradingCommands {
 
   private async removeCopyTradeRelation(telegramId: string, targetWallet: string) {
     try {
-      await databaseService.query(
-        `UPDATE copy_trades SET is_active = false, updated_at = CURRENT_TIMESTAMP 
-         WHERE telegram_id = $1 AND target_wallet = $2`,
-        [telegramId, targetWallet]
-      )
+      // Get user by telegram ID
+      const user = await databaseService.getUserByTelegramId(parseInt(telegramId))
+      if (!user) {
+        console.error('User not found for telegram ID:', telegramId)
+        return
+      }
+
+      // Update copy trade settings to disable
+      await databaseService.updateCopyTradeSettings(user.id, targetWallet, { enabled: false })
     } catch (error) {
       console.error('Error removing copy trade relation:', error)
     }

@@ -18,10 +18,14 @@ export function createRedisClient(config?: RedisConfig): Redis {
     db: config?.db || parseInt(process.env.REDIS_DB || '0'),
     keyPrefix: config?.keyPrefix || process.env.REDIS_KEY_PREFIX,
     connectTimeout: config?.connectTimeout || 10000,
-    lazyConnect: config?.lazyConnect ?? true,
+    // Connect immediately so commands won't fail early
+    lazyConnect: config?.lazyConnect ?? false,
     maxRetriesPerRequest: 3,
     autoResubscribe: true,
-    enableOfflineQueue: false,
+    // Keep commands queued until the connection is ready
+    enableOfflineQueue: true,
+    // Backoff retry strategy
+    retryStrategy: (times: number) => Math.min(times * 200, 2000),
   };
 
   const redis = new Redis(redisConfig);

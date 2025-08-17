@@ -57,7 +57,7 @@ services:
       POSTGRES_DB: core_meme_platform
       POSTGRES_USER: core_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
-      CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://1114.rpc.thirdweb.com}
       MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS:-0x0eeF9597a9B231b398c29717e2ee89eF6962b784}
       JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024}
       ENCRYPTION_SECRET: ${ENCRYPTION_SECRET:-core_meme_encryption_secret_2024}
@@ -91,7 +91,7 @@ services:
       POSTGRES_DB: core_meme_platform
       POSTGRES_USER: core_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-core_secure_pass_2024}
-      CORE_TESTNET_RPC: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      CORE_TESTNET_RPC: ${CORE_TESTNET_RPC:-https://1114.rpc.thirdweb.com}
       MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS:-0x0eeF9597a9B231b398c29717e2ee89eF6962b784}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
@@ -118,7 +118,7 @@ services:
       WS_PORT: 8081
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://rpc.test2.btcs.network}
+      CORE_RPC_URL: ${CORE_TESTNET_RPC:-https://1114.rpc.thirdweb.com}
       MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS:-0x0eeF9597a9B231b398c29717e2ee89eF6962b784}
       JWT_SECRET: ${JWT_SECRET:-core_meme_jwt_secret_2024}
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001

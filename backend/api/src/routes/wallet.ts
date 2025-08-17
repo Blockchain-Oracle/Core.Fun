@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { z } from 'zod';
 import { ethers } from 'ethers';
-import { createRedisClient, createLogger } from '@core-meme/shared';
+import { createRedisClient, createLogger, AirdropService, getAirdropService, DatabaseService } from '@core-meme/shared';
 
 // Extend Express Request type
 interface AuthRequest extends Request {
@@ -17,7 +17,7 @@ const logger = createLogger({ service: 'api-wallet', enableFileLogging: false })
 const network = process.env.NETWORK || 'testnet';
 const rpcUrl = network === 'mainnet' 
   ? process.env.CORE_MAINNET_RPC || 'https://rpc.coredao.org'
-  : process.env.CORE_TESTNET_RPC || 'https://rpc.test2.btcs.network';
+  : process.env.CORE_TESTNET_RPC || 'https://1114.rpc.thirdweb.com';
 const provider = new ethers.JsonRpcProvider(rpcUrl);
 
 // Middleware to authenticate requests
@@ -117,14 +117,37 @@ router.get('/wallet/info', async (req: Request, res: Response) => {
     const coreBalance = await provider.getBalance(userData.walletAddress);
     const coreBalanceFormatted = ethers.formatEther(coreBalance);
     
-    // Get CORE price from CoinGecko
+    // Get CORE price from CoinGecko API with improved error handling
     let corePrice = 0.50; // Default fallback
     try {
-      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd', {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'CoreMemeplatform/1.0'
+        }
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+      }
+
       const data: any = await response.json();
-      corePrice = data.coredaoorg?.usd || 0.50;
+      const price = data.coredaoorg?.usd;
+
+      if (typeof price === 'number' && price > 0) {
+        corePrice = price;
+        logger.info('Successfully fetched CORE price from CoinGecko', { price });
+      } else {
+        throw new Error('Invalid price data from CoinGecko');
+      }
     } catch (error) {
-      logger.warn('Failed to fetch CORE price:', error);
+      logger.warn('Failed to fetch CORE price, using fallback:', { error: error instanceof Error ? error.message : error });
     }
     
     const coreValueUsd = parseFloat(coreBalanceFormatted) * corePrice;
@@ -390,6 +413,50 @@ router.post('/wallet/send', authenticate, async (req: Request, res: Response) =>
     res.status(500).json({
       success: false,
       error: error.message || 'Transaction failed',
+    });
+  }
+});
+
+/**
+ * Get wallet balance (CMP tokens)
+ */
+router.get('/wallet/balance/:address', async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    
+    // Validate address
+    if (!ethers.isAddress(address)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid wallet address',
+      });
+    }
+    
+    // Get CMP balance using AirdropService
+    const db = new DatabaseService();
+    const airdropService = getAirdropService(db);
+    const cmpBalance = await airdropService.checkCMPBalance(address);
+    const balanceNum = parseFloat(cmpBalance);
+    
+    // Get tier information
+    const tierData = airdropService.getTierFromBalance(balanceNum);
+    
+    res.json({
+      success: true,
+      data: {
+        address,
+        cmpBalance: balanceNum,
+        tier: tierData.tier,
+        tierLevel: tierData.tierLevel,
+        feeDiscount: tierData.feeDiscount,
+        benefits: tierData.benefits,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Get balance failed:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get balance',
     });
   }
 });

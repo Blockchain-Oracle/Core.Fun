@@ -9,6 +9,7 @@ interface ApiResponse<T = any> {
 interface StakingStatus {
   wallet: string;
   stakedAmount: string;
+  cmpBalance?: string;  // New field for balance-based tiers
   tier: string;
   rewards: string;
   apy: number;
@@ -100,6 +101,7 @@ export class ApiService {
   private baseUrl: string;
   private logger = createLogger({ service: 'api-service' });
   private authToken?: string;
+  private telegramId?: number;
 
   constructor(baseUrl?: string) {
     this.baseUrl = baseUrl || process.env.API_URL || 'http://localhost:3001';
@@ -107,6 +109,10 @@ export class ApiService {
 
   setAuthToken(token: string) {
     this.authToken = token;
+  }
+
+  setTelegramId(telegramId: number) {
+    this.telegramId = telegramId;
   }
 
   private async request<T = any>(
@@ -121,6 +127,10 @@ export class ApiService {
 
       if (this.authToken) {
         headers['Authorization'] = `Bearer ${this.authToken}`;
+      }
+
+      if (this.telegramId) {
+        headers['X-Telegram-Id'] = String(this.telegramId);
       }
 
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
@@ -147,7 +157,7 @@ export class ApiService {
   // ==================== STAKING & SUBSCRIPTION ====================
 
   async getStakingStatus(walletAddress: string): Promise<ApiResponse<StakingStatus>> {
-    return this.request<StakingStatus>(`/api/subscription/status/${walletAddress}`);
+    return this.request<StakingStatus>(`/api/staking/status/${walletAddress}`);
   }
 
   async getStakingTiers(): Promise<ApiResponse<StakingTier[]>> {
@@ -170,6 +180,18 @@ export class ApiService {
 
   async claimRewards(): Promise<ApiResponse<{ txHash: string; amount: string }>> {
     return this.request('/api/staking/claim', {
+      method: 'POST',
+    });
+  }
+
+  async claimAirdrop(): Promise<ApiResponse<{
+    txHash: string;
+    amount: string;
+    newBalance: string;
+    newTier: string;
+    message: string;
+  }>> {
+    return this.request('/api/staking/airdrop', {
       method: 'POST',
     });
   }

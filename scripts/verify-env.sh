@@ -24,7 +24,7 @@ CRITICAL_VARS=(
     "POSTGRES_DB=core_meme_platform"
     "POSTGRES_USER=core_user"
     "NETWORK=testnet"
-    "CORE_RPC_URL=https://rpc.test2.btcs.network"
+    "CORE_RPC_URL=https://1114.rpc.thirdweb.com"
 )
 
 # Check if files exist

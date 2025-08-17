@@ -119,6 +119,90 @@ export class StakingCommands {
   }
 
   /**
+   * Handle /claimcmp command - Claim initial 1000 CMP airdrop
+   */
+  async handleClaimCMP(ctx: BotContext): Promise<void> {
+    if (!ctx.session?.userId) {
+      await ctx.reply('Please /start the bot first');
+      return;
+    }
+
+    const loadingMsg = await ctx.reply('🎁 Processing your CMP airdrop claim...');
+
+    try {
+      const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
+      if (!userWallet) {
+        await ctx.telegram.editMessageText(
+          ctx.chat!.id,
+          loadingMsg.message_id,
+          undefined,
+          '❌ No wallet found. Please use /wallet to create one first.'
+        );
+        return;
+      }
+
+      // Set authentication
+      if (ctx.session?.telegramId) {
+        this.apiService.setTelegramId(ctx.session.telegramId);
+      }
+
+      // Try to claim airdrop
+      const response = await this.apiService.claimAirdrop();
+      
+      if (response.success && response.data) {
+        const data = response.data;
+        
+        let message = `🎉 *Airdrop Claimed Successfully!*\n`;
+        message += `━━━━━━━━━━━━━━━━━━\n\n`;
+        message += `💰 *Amount:* ${data.amount} CMP\n`;
+        message += `📊 *New Balance:* ${data.newBalance} CMP\n`;
+        message += `🎖️ *New Tier:* ${data.newTier}\n\n`;
+        message += `📝 *Transaction:* \`${data.txHash}\`\n\n`;
+        message += `✨ You are now ${data.newTier} tier with all its benefits!\n\n`;
+        message += `💡 *Next Steps:*\n`;
+        message += `• Use /subscription to see your tier benefits\n`;
+        message += `• Want higher tier? Use /buycmp to get more CMP\n`;
+        message += `• Start trading meme tokens with fee discounts!`;
+
+        await ctx.telegram.editMessageText(
+          ctx.chat!.id,
+          loadingMsg.message_id,
+          undefined,
+          message,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        const errorMsg = response.error || 'Failed to claim airdrop';
+        
+        // Check if already claimed
+        if (errorMsg.includes('already claimed')) {
+          await ctx.telegram.editMessageText(
+            ctx.chat!.id,
+            loadingMsg.message_id,
+            undefined,
+            '❌ You have already claimed your initial 1000 CMP tokens!\n\nUse /subscription to check your current tier.'
+          );
+        } else {
+          await ctx.telegram.editMessageText(
+            ctx.chat!.id,
+            loadingMsg.message_id,
+            undefined,
+            `❌ ${errorMsg}`
+          );
+        }
+      }
+    } catch (error: any) {
+      this.logger.error('Claim CMP failed:', error);
+      await ctx.telegram.editMessageText(
+        ctx.chat!.id,
+        loadingMsg.message_id,
+        undefined,
+        `❌ Failed to claim airdrop: ${error.message || 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Handle /subscription command - Show COMPLETE staking status with tier
    */
   async handleSubscription(ctx: BotContext): Promise<void> {
@@ -144,32 +228,43 @@ export class StakingCommands {
       // Get staking status from backend API
       const response = await this.apiService.getStakingStatus(userWallet.address);
       
-      if (!response.success || !response.data) {
+      // Handle both response formats (wrapped and unwrapped)
+      const stakingData: any = response.data || response;
+      if (!stakingData || (!stakingData.subscription && !stakingData.cmpBalance)) {
         throw new Error(response.error || 'Failed to fetch staking status');
       }
-
-      const stakingData = response.data;
+      
+      // Normalize the data structure
+      if (stakingData.subscription) {
+        // Use subscription data as primary source
+        stakingData.cmpBalance = stakingData.subscription.cmpBalance;
+        stakingData.tier = stakingData.subscription.tier;
+        stakingData.feeDiscount = stakingData.subscription.feeDiscount;
+      }
       const tiers = await this.getTiers();
       
       // Format comprehensive status message
-      let message = `🏆 *Your Staking Status*\n`;
+      let message = `🏆 *Your Tier Status*\n`;
       message += `━━━━━━━━━━━━━━━━━━\n\n`;
       
-      // STAKING AMOUNT
-      message += `💰 *Staked Amount:*\n`;
-      message += `${parseFloat(stakingData.stakedAmount).toLocaleString()} ${this.TOKEN_SYMBOL}\n\n`;
+      // CMP BALANCE (not staked, just balance)
+      const cmpBalance = stakingData.cmpBalance || stakingData.stakedAmount || '0';
+      message += `💰 *CMP Balance:*\n`;
+      message += `${parseFloat(cmpBalance).toLocaleString()} ${this.TOKEN_SYMBOL}\n\n`;
       
       // CURRENT TIER
       const currentTier = tiers.find(t => t.name === stakingData.tier) || tiers[0];
       message += `🎖️ *Current Tier:*\n`;
       message += `${currentTier.color} ${currentTier.name}\n`;
-      message += `├ Fee Discount: ${stakingData.feeDiscount}%\n`;
-      message += `├ APY: ${stakingData.apy}%\n`;
-      message += `└ Status: ${parseFloat(stakingData.stakedAmount) > 0 ? '✅ Active' : '❌ Inactive'}\n\n`;
+      message += `├ Fee Discount: ${stakingData.feeDiscount || 0}%\n`;
+      message += `└ Status: ${parseFloat(cmpBalance) >= 1000 ? '✅ Active' : '❌ Inactive'}\n\n`;
       
-      // PENDING REWARDS
-      message += `🎁 *Pending Rewards:*\n`;
-      message += `${parseFloat(stakingData.rewards).toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+      // Check if airdrop is available
+      const hasBalance = parseFloat(cmpBalance) > 0;
+      if (!hasBalance) {
+        message += `🎁 *Get Started:*\n`;
+        message += `Use /claimcmp to claim your initial 1000 CMP tokens!\n\n`;
+      }
       
       if (stakingData.lastClaimTime > 0) {
         const lastClaim = new Date(stakingData.lastClaimTime * 1000);
@@ -245,7 +340,7 @@ export class StakingCommands {
   }
 
   /**
-   * Handle /stake command
+   * Handle /stake command - Now shows balance-based tier message
    */
   async handleStake(ctx: BotContext): Promise<void> {
     if (!ctx.session?.userId) {
@@ -253,88 +348,25 @@ export class StakingCommands {
       return;
     }
 
-    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
-    const args = text.split(' ').slice(1);
+    let message = `📢 *Staking System Update!*\n`;
+    message += `━━━━━━━━━━━━━━━━━━\n\n`;
+    message += `✨ *No more staking required!*\n\n`;
+    message += `Your tier is now automatically determined by your CMP token balance.\n\n`;
+    message += `🎖️ *Tier Requirements:*\n`;
+    message += `• 🥉 Bronze: 1,000+ CMP\n`;
+    message += `• 🥈 Silver: 5,000+ CMP\n`;
+    message += `• 🥇 Gold: 10,000+ CMP\n`;
+    message += `• 💎 Platinum: 50,000+ CMP\n\n`;
+    message += `💡 *How to get CMP:*\n`;
+    message += `• Use /claimcmp to get your initial 1000 CMP (one-time)\n`;
+    message += `• Use /buycmp to purchase more CMP tokens\n\n`;
+    message += `📊 Check your current tier with /subscription`;
 
-    if (args.length === 0) {
-      const tiers = await this.getTiers();
-      let message = `💎 *Stake ${this.TOKEN_SYMBOL} Tokens*\n\n`;
-      message += `Choose your staking amount to unlock tier benefits:\n\n`;
-      
-      for (const tier of tiers) {
-        message += `${tier.color} *${tier.name} Tier*\n`;
-        message += `├ Min Stake: ${tier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
-        message += `├ Fee Discount: ${tier.feeDiscount}%\n`;
-        message += `├ APY: ${tier.apy}%\n`;
-        message += `└ Copy Trades: ${tier.copyTradeSlots} slots\n\n`;
-      }
-      
-      message += `📝 *Usage:* /stake [amount]\n`;
-      message += `Example: /stake 5000`;
-      
-      await ctx.reply(message, { parse_mode: 'Markdown' });
-      return;
-    }
-
-    const amount = parseFloat(args[0]);
-    if (isNaN(amount) || amount <= 0) {
-      await ctx.reply('❌ Invalid amount. Please enter a positive number.');
-      return;
-    }
-
-    const loadingMsg = await ctx.reply(`🔄 Staking ${amount} ${this.TOKEN_SYMBOL}...`);
-
-    try {
-      const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
-      if (!userWallet) {
-        throw new Error('No wallet found');
-      }
-
-      // Set auth token for the API service
-      const authToken = ctx.session.authToken || ''; // You'll need to implement auth token management
-      this.apiService.setAuthToken(authToken);
-
-      // Execute stake through backend API
-      const response = await this.apiService.stake(amount.toString());
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Staking failed');
-      }
-
-      const tiers = await this.getTiers();
-      const newTier = tiers.find(t => amount >= t.minStake) || tiers[0];
-      
-      let successMessage = `✅ *Staking Successful!*\n\n`;
-      successMessage += `Amount: ${amount.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
-      successMessage += `Transaction: \`${response.data?.txHash}\`\n\n`;
-      successMessage += `🎖️ Your tier: ${newTier.color} ${newTier.name}\n`;
-      successMessage += `Benefits unlocked:\n`;
-      successMessage += `• ${newTier.feeDiscount}% trading fee discount\n`;
-      successMessage += `• ${newTier.copyTradeSlots} copy trade slots\n`;
-      successMessage += `• ${newTier.maxAlerts === -1 ? 'Unlimited' : newTier.maxAlerts} price alerts\n`;
-      successMessage += `• ${newTier.apy}% APY rewards`;
-
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        successMessage,
-        { parse_mode: 'Markdown' }
-      );
-
-    } catch (error: any) {
-      this.logger.error('Stake failed:', error);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        `❌ Staking failed: ${error.message || 'Unknown error'}`
-      );
-    }
+    await ctx.reply(message, { parse_mode: 'Markdown' });
   }
 
   /**
-   * Handle /unstake command
+   * Handle /unstake command - Now shows balance-based tier message
    */
   async handleUnstake(ctx: BotContext): Promise<void> {
     if (!ctx.session?.userId) {
@@ -342,89 +374,21 @@ export class StakingCommands {
       return;
     }
 
-    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
-    const args = text.split(' ').slice(1);
+    let message = `📢 *No Unstaking Needed!*\n`;
+    message += `━━━━━━━━━━━━━━━━━━\n\n`;
+    message += `✨ The new tier system is based on your CMP balance, not staked amounts.\n\n`;
+    message += `You can freely:\n`;
+    message += `• 💸 Transfer CMP tokens anytime\n`;
+    message += `• 📈 Trade CMP on DEX\n`;
+    message += `• 🔄 Send CMP to other wallets\n\n`;
+    message += `Your tier automatically adjusts based on your balance!\n\n`;
+    message += `📊 Check your current tier with /subscription`;
 
-    if (args.length === 0) {
-      await ctx.reply(
-        `📝 *Usage:* /unstake [amount]\n\nExample: /unstake 1000\n\nUse /unstake all to unstake everything`,
-        { parse_mode: 'Markdown' }
-      );
-      return;
-    }
-
-    const loadingMsg = await ctx.reply('🔄 Processing unstake request...');
-
-    try {
-      const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
-      if (!userWallet) {
-        throw new Error('No wallet found');
-      }
-
-      // Get current staking status
-      const statusResponse = await this.apiService.getStakingStatus(userWallet.address);
-      if (!statusResponse.success || !statusResponse.data) {
-        throw new Error('Failed to get staking status');
-      }
-
-      const currentStake = parseFloat(statusResponse.data.stakedAmount);
-      let unstakeAmount: number;
-
-      if (args[0].toLowerCase() === 'all') {
-        unstakeAmount = currentStake;
-      } else {
-        unstakeAmount = parseFloat(args[0]);
-        if (isNaN(unstakeAmount) || unstakeAmount <= 0) {
-          throw new Error('Invalid amount');
-        }
-        if (unstakeAmount > currentStake) {
-          throw new Error(`You only have ${currentStake} ${this.TOKEN_SYMBOL} staked`);
-        }
-      }
-
-      // Check if user can unstake (lock period)
-      if (!statusResponse.data.canUnstake) {
-        const unlockDate = new Date(statusResponse.data.lockEndTime * 1000);
-        throw new Error(`Your tokens are locked until ${unlockDate.toLocaleDateString()}`);
-      }
-
-      // Set auth token
-      const authToken = ctx.session.authToken || '';
-      this.apiService.setAuthToken(authToken);
-
-      // Execute unstake through backend API
-      const response = await this.apiService.unstake(unstakeAmount.toString());
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Unstaking failed');
-      }
-
-      let successMessage = `✅ *Unstaking Successful!*\n\n`;
-      successMessage += `Amount: ${unstakeAmount.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
-      successMessage += `Transaction: \`${response.data?.txHash}\`\n\n`;
-      successMessage += `Remaining Staked: ${(currentStake - unstakeAmount).toLocaleString()} ${this.TOKEN_SYMBOL}`;
-
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        successMessage,
-        { parse_mode: 'Markdown' }
-      );
-
-    } catch (error: any) {
-      this.logger.error('Unstake failed:', error);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        `❌ Unstaking failed: ${error.message || 'Unknown error'}`
-      );
-    }
+    await ctx.reply(message, { parse_mode: 'Markdown' });
   }
 
   /**
-   * Handle /claim command
+   * Handle /claim command - Now redirects to /claimcmp for initial airdrop
    */
   async handleClaim(ctx: BotContext): Promise<void> {
     if (!ctx.session?.userId) {
@@ -432,64 +396,15 @@ export class StakingCommands {
       return;
     }
 
-    const loadingMsg = await ctx.reply('🔄 Claiming rewards...');
+    let message = `📢 *Claim System Update!*\n`;
+    message += `━━━━━━━━━━━━━━━━━━\n\n`;
+    message += `🎁 *Initial CMP Airdrop Available!*\n\n`;
+    message += `You can claim 1000 CMP tokens (one-time only) to get started.\n\n`;
+    message += `Use /claimcmp to claim your initial tokens!\n\n`;
+    message += `💡 *Note:* There are no staking rewards in the new system.\n`;
+    message += `Your tier benefits are automatic based on your CMP balance.`;
 
-    try {
-      const userWallet = await this.walletService.getPrimaryWallet(ctx.session.userId);
-      if (!userWallet) {
-        throw new Error('No wallet found');
-      }
-
-      // Get current rewards
-      const statusResponse = await this.apiService.getStakingStatus(userWallet.address);
-      if (!statusResponse.success || !statusResponse.data) {
-        throw new Error('Failed to get staking status');
-      }
-
-      const pendingRewards = parseFloat(statusResponse.data.rewards);
-      if (pendingRewards <= 0) {
-        await ctx.telegram.editMessageText(
-          ctx.chat!.id,
-          loadingMsg.message_id,
-          undefined,
-          '❌ No rewards to claim yet. Keep staking to earn rewards!'
-        );
-        return;
-      }
-
-      // Set auth token
-      const authToken = ctx.session.authToken || '';
-      this.apiService.setAuthToken(authToken);
-
-      // Execute claim through backend API
-      const response = await this.apiService.claimRewards();
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Claim failed');
-      }
-
-      let successMessage = `✅ *Rewards Claimed!*\n\n`;
-      successMessage += `Amount: ${pendingRewards.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
-      successMessage += `Transaction: \`${response.data?.txHash}\`\n\n`;
-      successMessage += `🎯 Keep staking to earn more rewards!`;
-
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        successMessage,
-        { parse_mode: 'Markdown' }
-      );
-
-    } catch (error: any) {
-      this.logger.error('Claim failed:', error);
-      await ctx.telegram.editMessageText(
-        ctx.chat!.id,
-        loadingMsg.message_id,
-        undefined,
-        `❌ Claim failed: ${error.message || 'Unknown error'}`
-      );
-    }
+    await ctx.reply(message, { parse_mode: 'Markdown' });
   }
 
   /**
@@ -498,14 +413,13 @@ export class StakingCommands {
   async handleTiers(ctx: BotContext): Promise<void> {
     const tiers = await this.getTiers();
     
-    let message = `🏆 *Staking Tiers & Benefits*\n`;
+    let message = `🏆 *CMP Balance Tiers & Benefits*\n`;
     message += `━━━━━━━━━━━━━━━━━━\n\n`;
     
     for (const tier of tiers) {
       message += `${tier.color} *${tier.name} Tier*\n`;
-      message += `├ Min Stake: ${tier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
+      message += `├ Min Balance: ${tier.minStake.toLocaleString()} ${this.TOKEN_SYMBOL}\n`;
       message += `├ Trading Fee: ${tier.feeDiscount}% OFF\n`;
-      message += `├ APY: ${tier.apy}%\n`;
       message += `├ Copy Trades: ${tier.copyTradeSlots} slots\n`;
       message += `├ Price Alerts: ${tier.maxAlerts === -1 ? 'Unlimited' : tier.maxAlerts}\n`;
       message += `├ API Access: ${tier.apiAccess ? '✅' : '❌'}\n`;
@@ -513,11 +427,11 @@ export class StakingCommands {
     }
     
     message += `💡 *How it works:*\n`;
-    message += `• Stake ${this.TOKEN_SYMBOL} tokens to unlock benefits\n`;
-    message += `• Higher tiers = Better rewards\n`;
-    message += `• Earn APY on your staked tokens\n`;
-    message += `• Unstake anytime (after lock period)\n\n`;
-    message += `Use /stake to start earning!`;
+    message += `• Hold ${this.TOKEN_SYMBOL} tokens to unlock benefits\n`;
+    message += `• Higher balance = Better rewards\n`;
+    message += `• No staking required - just hold!\n`;
+    message += `• Tier updates automatically\n\n`;
+    message += `Use /claimcmp to get your initial 1000 CMP!`;
     
     await ctx.reply(message, { 
       parse_mode: 'Markdown',
@@ -539,5 +453,21 @@ export class StakingCommands {
     const filled = Math.floor(percentage / 10);
     const empty = 10 - filled;
     return '▰'.repeat(Math.min(filled, 10)) + '▱'.repeat(Math.max(empty, 0));
+  }
+
+  private formatStakeError(message?: string): string {
+    const CMP = process.env.PLATFORM_TOKEN_ADDRESS || '0x26EfC13dF039c6B4E084CEf627a47c348197b655';
+    if (!message) return '❌ Staking failed: Unknown error';
+    const lower = message.toLowerCase();
+    if (lower.includes('authentication required') || lower.includes('auth')) {
+      return '🔒 Please /start the bot to authenticate, then try staking again.';
+    }
+    if (lower.includes('invalid amount')) {
+      return '❌ Invalid amount. Please enter a positive number.';
+    }
+    if (lower.includes('insufficient token balance')) {
+      return `❌ Insufficient CMP balance. You need CMP to stake.\n\nQuick actions:\n• /buycmp 1 — Buy 1 CORE worth of CMP\n• /buy ${CMP} — Open CMP buy panel`;
+    }
+    return `❌ Staking failed: ${message}`;
   }
 }

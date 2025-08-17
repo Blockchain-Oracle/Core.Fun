@@ -260,12 +260,35 @@ export class AnalyticsService {
         const tokenReserve = isCoreToken0 ? reserves.reserve1 : reserves.reserve0;
         
         if (coreReserve > 0 && tokenReserve > 0) {
-          // Get CORE price in USD from CoinGecko
+          // Get CORE price in USD from CoinGecko with improved error handling
           let corePrice = 0.50; // Default fallback price
           try {
-            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd', {
+              signal: controller.signal,
+              headers: {
+                'Accept': 'application/json',
+                'User-Agent': 'CoreMemeplatform/1.0'
+              }
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+            }
+
             const data: any = await response.json();
-            corePrice = data.coredaoorg?.usd || 0.50;
+            const price = data.coredaoorg?.usd;
+
+            if (typeof price === 'number' && price > 0) {
+              corePrice = price;
+              this.logger.info('Successfully fetched CORE price from CoinGecko', { price });
+            } else {
+              throw new Error('Invalid price data from CoinGecko');
+            }
           } catch (error) {
             this.logger.warn('Failed to fetch CORE price from CoinGecko:', error);
           }

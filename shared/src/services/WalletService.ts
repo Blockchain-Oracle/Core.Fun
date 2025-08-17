@@ -523,9 +523,33 @@ export class WalletService {
    */
   private async getCorePrice(): Promise<number> {
     try {
-      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd');
+      // Use CoinGecko API with proper error handling and timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd', {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'CoreMemeplatform/1.0'
+        }
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+      }
+
       const data: any = await response.json();
-      return data.coredaoorg?.usd || 0.50; // Fallback to $0.50 if API fails
+      const price = data.coredaoorg?.usd;
+
+      if (typeof price === 'number' && price > 0) {
+        this.logger.info('Successfully fetched CORE price from CoinGecko', { price });
+        return price;
+      } else {
+        throw new Error('Invalid price data from CoinGecko API');
+      }
     } catch (error) {
       this.logger.warn('Failed to fetch CORE price, using fallback:', error);
       return 0.50; // Fallback price

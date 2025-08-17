@@ -26,7 +26,7 @@ export class TransactionService {
   private pendingTxs: Map<string, any> = new Map();
 
   constructor() {
-    const rpcUrl = process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network';
+    const rpcUrl = process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.encryptionSecret = process.env.ENCRYPTION_SECRET || process.env.SIGNATURE_SECRET || 'default_encryption_secret';
     

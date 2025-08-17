@@ -40,7 +40,7 @@ interface TradeRequest {
 
 interface TradeParams {
   userId: string;
-  walletAddress: string;
+  walletAddress?: string;
   tokenAddress: string;
   amount: string;
   type: 'buy' | 'sell';
@@ -226,13 +226,35 @@ export class TradingExecutor {
         status: 'completed',
       });
 
-      // Update position
-      await this.db.updatePosition({
-        userId: params.userId,
-        tokenAddress: params.tokenAddress,
-        amount: tokensFormatted,
-        avgBuyPrice: price,
-      });
+      // Create or update user position
+      const existingPosition = await this.db.getPosition(params.userId, params.tokenAddress);
+      if (existingPosition) {
+        const newAmount = existingPosition.amount + tokensFormatted;
+        const totalCost = (existingPosition.amount * existingPosition.avgBuyPrice) + (tokensFormatted * price);
+        const newAvgPrice = totalCost / newAmount;
+        await this.db.updatePosition({
+          userId: params.userId,
+          tokenAddress: params.tokenAddress,
+          amount: newAmount,
+          avgBuyPrice: newAvgPrice,
+          currentPrice: price,
+          currentValue: newAmount * price,
+          trades: (existingPosition.trades || 0) + 1,
+        });
+      } else {
+        await this.db.createPosition({
+          userId: params.userId,
+          tokenAddress: params.tokenAddress,
+          tokenSymbol: tokenInfo.symbol,
+          tokenName: tokenInfo.name,
+          amount: tokensFormatted,
+          avgBuyPrice: price,
+          currentPrice: price,
+          initialInvestment: tokensFormatted * price,
+          currentValue: tokensFormatted * price,
+          trades: 1,
+        });
+      }
 
       return {
         success: true,
@@ -462,14 +484,31 @@ export class TradingExecutor {
         // Metadata functions may not exist
       }
 
+      // Calculate price using PriceService
+      let priceInUsd = 0;
+      try {
+        const priceData = await this.priceService.getTokenPrice(tokenAddress);
+        priceInUsd = priceData.priceInUsd;
+      } catch (error) {
+        this.logger.warn('Failed to get price from PriceService, using fallback calculation');
+        // Fallback: calculate from bonding curve
+        const STEP_SIZE = ethers.parseEther('10000'); // 10,000 tokens
+        const BASE_PRICE = ethers.parseEther('0.0001'); // 0.0001 CORE
+        const PRICE_INCREMENT = ethers.parseEther('0.0001'); // 0.0001 CORE per step
+        const steps = saleInfo.sold / STEP_SIZE;
+        const priceInCore = parseFloat(ethers.formatEther(BASE_PRICE + (PRICE_INCREMENT * steps)));
+        const coreUsdPrice = await this.priceService.getCoreUsdPrice();
+        priceInUsd = priceInCore * coreUsdPrice;
+      }
+
       return {
         address: tokenAddress,
         name: saleInfo.name,
         symbol: saleInfo.symbol,
         decimals: 18,
-        price: 0,
+        price: priceInUsd,
         priceChange24h: 0,
-        marketCap: 0,
+        marketCap: priceInUsd * parseFloat(ethers.formatEther(saleInfo.totalSupply || ethers.parseEther('1000000000'))),
         liquidity: parseFloat(ethers.formatEther(saleInfo.raised)),
         volume24h: 0,
         holders: 0,

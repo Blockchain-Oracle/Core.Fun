@@ -48,7 +48,7 @@ class BlockchainMonitorService {
     // Initialize providers
     this.rpcUrl = this.network === 'mainnet'
       ? process.env.CORE_MAINNET_RPC || 'https://rpc.coredao.org'
-      : process.env.CORE_TESTNET_RPC || 'https://rpc.test2.btcs.network';
+      : process.env.CORE_TESTNET_RPC || 'https://1114.rpc.thirdweb.com';
     
     this.wsUrl = this.network === 'mainnet'
       ? process.env.CORE_MAINNET_WS

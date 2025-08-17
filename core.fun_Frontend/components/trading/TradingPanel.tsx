@@ -51,15 +51,16 @@ export function TradingPanel({
     rate: number
   } | null>(null)
   const [gasEstimate, setGasEstimate] = useState<{
-    gasEstimate: string
-    gasPriceGwei: string
-    totalCostCORE: string
+    gasLimit: string
+    gasPrice: string
+    totalCost: string
   } | null>(null)
   const [isLoadingQuote, setIsLoadingQuote] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [insufficientReason, setInsufficientReason] = useState<string | null>(null)
 
   // Fetch quote and gas estimate when amount changes
   useEffect(() => {
@@ -81,34 +82,46 @@ export function TradingPanel({
         } else {
           result = await apiClient.calculateSellReturn(tokenAddress, amount)
         }
-        
-        if (result.success && result.data) {
+        console.log('[TradingPanel] Quote result:', result)
+
+        if (result.success) {
           // Calculate price impact based on bonding curve
           const inputAmount = parseFloat(amount)
-          const outputAmount = parseFloat(tradeType === 'buy' ? result.data.tokenAmount : result.data.coreAmount)
+          const outputAmount = parseFloat(tradeType === 'buy' ? (result as any).tokenAmount : (result as any).coreAmount)
           const spotPrice = currentRaised > 0 ? currentSold / currentRaised : 1
           const executionPrice = tradeType === 'buy' ? inputAmount / outputAmount : outputAmount / inputAmount
           const priceImpact = Math.abs((executionPrice - spotPrice) / spotPrice) * 100
           
           setQuote({
-            expectedAmount: tradeType === 'buy' ? result.data.tokenAmount : result.data.coreAmount,
+            expectedAmount: tradeType === 'buy' ? (result as any).tokenAmount : (result as any).coreAmount,
             priceImpact: isNaN(priceImpact) ? 0 : priceImpact,
-            rate: result.data.rate
+            rate: (result as any).rate
           })
         } else {
-          setError(result.error || 'Failed to get quote')
+          setError((result as any).error || 'Failed to get quote')
         }
         
         // Fetch gas estimate
-        const gasResult = await apiClient.getGasEstimate(
-          tradeType === 'buy' ? 'buyToken' : 'sellToken',
-          { tokenAddress, amount }
-        )
-        
-        if (gasResult.success && gasResult.data) {
-          setGasEstimate(gasResult.data)
+        try {
+          const gasResult = await apiClient.estimateGas({
+            type: tradeType === 'buy' ? 'buyToken' : 'sellToken',
+            params: tradeType === 'buy' 
+              ? { tokenAddress, coreAmount: amount }
+              : { tokenAddress, tokenAmount: amount }
+          })
+          console.log('[TradingPanel] Gas estimate:', gasResult)
+          if (gasResult.success) {
+            setGasEstimate({
+              gasLimit: (gasResult as any).gasLimit,
+              gasPrice: (gasResult as any).gasPrice,
+              totalCost: (gasResult as any).totalCost
+            })
+          }
+        } catch (e) {
+          console.warn('[TradingPanel] Gas estimate failed (possibly unauthenticated):', e)
         }
       } catch (err) {
+        console.error('[TradingPanel] Failed to fetch quote:', err)
         setError('Failed to fetch quote')
       } finally {
         setIsLoadingQuote(false)
@@ -118,6 +131,47 @@ export function TradingPanel({
     const timer = setTimeout(fetchQuote, 500)
     return () => clearTimeout(timer)
   }, [amount, tradeType, tokenAddress, currentSold, currentRaised])
+
+  // Pre-validate balance and disable action if insufficient
+  useEffect(() => {
+    const validateBalance = async () => {
+      setInsufficientReason(null)
+      if (!isAuthenticated) return
+      if (!amount || parseFloat(amount) <= 0) return
+      try {
+        const walletInfo = await apiClient.getWalletInfo()
+        console.log('[TradingPanel] Wallet info:', walletInfo)
+        if (walletInfo.success) {
+          const tradeAmount = parseFloat(amount)
+          const userCoreBalance = parseFloat(walletInfo.coreBalance || '0')
+
+          if (tradeType === 'buy') {
+            if (userCoreBalance < tradeAmount) {
+              setInsufficientReason(`Insufficient CORE. You have ${userCoreBalance.toFixed(4)} CORE`)
+              return
+            }
+            const requiredBalance = tradeAmount * 1.1
+            if (userCoreBalance < requiredBalance) {
+              setInsufficientReason(`Not enough for gas. Need ~${requiredBalance.toFixed(4)} CORE`)
+              return
+            }
+          } else {
+            const tokenBalance = walletInfo.tokenBalances?.find((t) =>
+              (t.token || '').toLowerCase() === tokenAddress.toLowerCase()
+            )
+            const userTokenBalance = parseFloat(tokenBalance?.balance || '0')
+            if (userTokenBalance < tradeAmount) {
+              setInsufficientReason(`Insufficient tokens. You have ${userTokenBalance.toFixed(4)}`)
+              return
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[TradingPanel] Balance validation failed:', e)
+      }
+    }
+    validateBalance()
+  }, [isAuthenticated, amount, tradeType, tokenAddress])
 
   const handleTrade = async () => {
     if (!isAuthenticated) {
@@ -130,21 +184,56 @@ export function TradingPanel({
       return
     }
 
+    // Balance validation
+    try {
+      const walletInfo = await apiClient.getWalletInfo()
+      console.log('[TradingPanel] handleTrade walletInfo:', walletInfo)
+      if (walletInfo.success) {
+        const userCoreBalance = parseFloat(walletInfo.coreBalance || '0')
+        const tradeAmount = parseFloat(amount)
+        
+        if (tradeType === 'buy') {
+          // Check if user has enough CORE for buy order
+          if (userCoreBalance < tradeAmount) {
+            setError(`Insufficient balance. You have ${userCoreBalance.toFixed(4)} CORE but need ${tradeAmount} CORE`)
+            return
+          }
+          
+          // Add 10% buffer for gas fees
+          const requiredBalance = tradeAmount * 1.1
+          if (userCoreBalance < requiredBalance) {
+            setError(`Insufficient balance for gas fees. You need at least ${requiredBalance.toFixed(4)} CORE (including gas)`)
+            return
+          }
+        } else {
+          // For sell orders, check token balance
+          const tokenBalance = walletInfo.tokenBalances?.find((t) => 
+            (t.token || '').toLowerCase() === tokenAddress.toLowerCase()
+          )
+          const userTokenBalance = parseFloat(tokenBalance?.balance || '0')
+          
+          if (userTokenBalance < tradeAmount) {
+            setError(`Insufficient token balance. You have ${userTokenBalance.toFixed(4)} tokens but need ${tradeAmount}`)
+            return
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to check balance, proceeding with trade:', err)
+    }
+
     setIsExecuting(true)
     setError(null)
     setSuccess(null)
 
     try {
-      if (!session?.token) {
-        setError('Please login first')
-        return
-      }
-
       let result
       if (tradeType === 'buy') {
-        result = await apiClient.buyToken(tokenAddress, amount, session.token)
+        console.log('[TradingPanel] Executing BUY', { tokenAddress, amount })
+        result = await apiClient.buyToken(tokenAddress, amount)
       } else {
-        result = await apiClient.sellToken(tokenAddress, amount, session.token)
+        console.log('[TradingPanel] Executing SELL', { tokenAddress, amount })
+        result = await apiClient.sellToken(tokenAddress, amount)
       }
 
       if (result.success) {
@@ -152,7 +241,7 @@ export function TradingPanel({
         setAmount('')
         setQuote(null)
       } else {
-        setError(result.error || 'Transaction failed')
+        setError((result as any).error || 'Transaction failed')
       }
     } catch (err) {
       setError('Transaction failed')
@@ -301,7 +390,7 @@ export function TradingPanel({
                     <Separator className="my-2" />
                     <div className="flex justify-between text-sm">
                       <span className="text-white/60">Estimated gas</span>
-                      <span>{formatNumber(parseFloat(gasEstimate.totalCostCORE))} CORE</span>
+                      <span>{formatNumber(parseFloat(gasEstimate.totalCost))} CORE</span>
                     </div>
                     <div className="flex justify-between text-sm font-medium">
                       <span className="text-white/80">Total cost</span>
@@ -309,7 +398,7 @@ export function TradingPanel({
                         {formatNumber(
                           parseFloat(amount || '0') + 
                           calculateFee('trading', parseFloat(amount || '0'), stakingStatus?.tier) +
-                          parseFloat(gasEstimate.totalCostCORE)
+                          parseFloat(gasEstimate.totalCost)
                         )} CORE
                       </span>
                     </div>
@@ -352,6 +441,12 @@ export function TradingPanel({
             )}
 
             {/* Error/Success Messages */}
+            {insufficientReason && !error && (
+              <Alert className="bg-yellow-500/10 border-yellow-500/30">
+                <Info className="h-4 w-4" />
+                <AlertDescription>{insufficientReason}</AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert className="bg-red-500/10 border-red-500/30">
                 <AlertTriangle className="h-4 w-4" />
@@ -369,7 +464,7 @@ export function TradingPanel({
             {/* Trade Button */}
             <Button
               onClick={handleTrade}
-              disabled={!isAuthenticated || isExecuting || !quote || !amount}
+              disabled={!isAuthenticated || isExecuting || !quote || !amount || !!insufficientReason}
               className="w-full"
               size="lg"
             >

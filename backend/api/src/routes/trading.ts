@@ -42,7 +42,7 @@ const ERC20_ABI = [
 const database = new DatabaseService();
 const walletManager = new WalletManager(database);
 const provider = new ethers.JsonRpcProvider(
-  process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network'
+  process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com'
 );
 
 const factoryContract = new ethers.Contract(

@@ -32,7 +32,7 @@ export class StakingService extends EventEmitter {
     super();
     
     // Initialize providers
-    const rpcUrl = process.env.CORE_RPC_URL || 'https://rpc.test2.btcs.network';
+    const rpcUrl = process.env.CORE_RPC_URL || 'https://1114.rpc.thirdweb.com';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     
     // Try to initialize WebSocket provider

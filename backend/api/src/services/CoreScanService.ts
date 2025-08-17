@@ -314,20 +314,46 @@ export class CoreScanService {
    */
   async getCorePrice(): Promise<number> {
     try {
-      const url = `${this.baseUrl}?module=stats&action=coreprice&apikey=${this.apiKey}`;
+      // Try CoinGecko first for accurate price
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
+      const geckoResponse = await fetch(
+        'https://api.coingecko.com/api/v3/simple/price?ids=coredaoorg&vs_currencies=usd',
+        {
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'CoreMemePlatform/1.0'
+          }
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      
+      if (geckoResponse.ok) {
+        const geckoData = await geckoResponse.json();
+        const price = geckoData?.coredaoorg?.usd;
+        if (typeof price === 'number' && price > 0) {
+          this.logger.info(`Fetched CORE price from CoinGecko: $${price}`);
+          return price;
+        }
+      }
+      
+      // Fallback to CoreScan API
+      const url = `${this.baseUrl}?module=stats&action=coreprice&apikey=${this.apiKey}`;
       const response = await fetch(url);
       const data = await response.json() as any;
       
       if (data.status === '1' && data.result) {
-        return Number(data.result.coreusd || 50); // Default to $50 if not available
+        return Number(data.result.coreusd || 0.50); // More realistic default
       }
       
-      return 50; // Default price
+      return 0.50; // Default to more realistic price
       
     } catch (error) {
       this.logger.error(`Error getting CORE price: ${error}`);
-      return 50;
+      return 0.50; // More realistic default price
     }
   }
 }

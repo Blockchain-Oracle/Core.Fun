@@ -12,3 +12,4 @@ export type {
   StakingPosition 
 } from './DatabaseService';
 export { WalletService } from './WalletService';
+export { AirdropService, getAirdropService } from './AirdropService';

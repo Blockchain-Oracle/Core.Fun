@@ -12,7 +12,7 @@ export interface RedisConfig {
 
 export function createRedisClient(config?: RedisConfig): Redis {
   const redisConfig: RedisOptions = {
-    host: config?.host || process.env.REDIS_HOST || 'localhost',
+    host: config?.host || process.env.REDIS_HOST || 'redis',
     port: config?.port || parseInt(process.env.REDIS_PORT || '6379'),
     password: config?.password || process.env.REDIS_PASSWORD,
     db: config?.db || parseInt(process.env.REDIS_DB || '0'),

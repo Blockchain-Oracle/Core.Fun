@@ -13,7 +13,7 @@ export interface DatabaseConfig {
 
 export function createPostgresPool(config?: DatabaseConfig): Pool {
   const poolConfig: PoolConfig = {
-    host: config?.host || process.env.POSTGRES_HOST || 'localhost',
+    host: config?.host || process.env.POSTGRES_HOST || 'postgres',
     port: config?.port || parseInt(process.env.POSTGRES_PORT || '5432'),
     database: config?.database || process.env.POSTGRES_DB || 'core_meme_platform',
     user: config?.user || process.env.POSTGRES_USER || 'core_user',
@@ -30,7 +30,7 @@ export function createKnexConnection(config?: DatabaseConfig): Knex {
   const knexConfig: Knex.Config = {
     client: 'pg',
     connection: {
-      host: config?.host || process.env.POSTGRES_HOST || 'localhost',
+      host: config?.host || process.env.POSTGRES_HOST || 'postgres',
       port: config?.port || parseInt(process.env.POSTGRES_PORT || '5432'),
       database: config?.database || process.env.POSTGRES_DB || 'core_meme_platform',
       user: config?.user || process.env.POSTGRES_USER || 'core_user',

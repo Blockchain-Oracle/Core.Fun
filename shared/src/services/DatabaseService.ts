@@ -114,7 +114,7 @@ export class DatabaseService {
   constructor() {
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-      host: process.env.POSTGRES_HOST || 'localhost',
+      host: process.env.POSTGRES_HOST || 'postgres',
       port: parseInt(process.env.POSTGRES_PORT || '5432'),
       database: process.env.POSTGRES_DB || 'core_meme_platform',
       user: process.env.POSTGRES_USER || 'core_user',

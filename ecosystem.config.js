@@ -8,12 +8,13 @@ module.exports = {
       name: 'frontend',
       cwd: './core.fun_Frontend',
       script: 'node_modules/next/dist/bin/next',
-      args: 'start',
+      args: 'start -H 0.0.0.0 -p 3000',
       instances: 1,
       exec_mode: 'fork',
       env: {
         NODE_ENV: process.env.NODE_ENV || 'production',
-        PORT: process.env.PORT || 3000
+        PORT: process.env.PORT || 3000,
+        HOSTNAME: '0.0.0.0'
       },
       error_file: '../logs/frontend-error.log',
       out_file: '../logs/frontend-out.log',

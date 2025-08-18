@@ -54,7 +54,7 @@ export function getConfig(): AppConfig {
     logLevel: process.env.LOG_LEVEL || 'info',
     
     database: {
-      host: process.env.POSTGRES_HOST || 'localhost',
+      host: process.env.POSTGRES_HOST || 'postgres',
       port: parseInt(process.env.POSTGRES_PORT || '5432'),
       database: process.env.POSTGRES_DB || 'core_meme_platform',
       user: process.env.POSTGRES_USER || 'core_user',
@@ -62,7 +62,7 @@ export function getConfig(): AppConfig {
     },
     
     redis: {
-      host: process.env.REDIS_HOST || 'localhost',
+      host: process.env.REDIS_HOST || 'redis',
       port: parseInt(process.env.REDIS_PORT || '6379'),
       password: process.env.REDIS_PASSWORD,
       db: parseInt(process.env.REDIS_DB || '0'),

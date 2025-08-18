@@ -14,6 +14,18 @@ What sets us apart: **Complete trading functionality inside Telegram** - users n
 
 **🤖 Try our Telegram Bot**: [@core_dot_fun_bot](https://t.me/core_dot_fun_bot)
 
+## 🔗 Live Demo & Submission
+
+- **Live Preview**: [mwgoo4kg04w08ggswcc848so.35.208.71.32.sslip.io](http://mwgoo4kg04w08ggswcc848so.35.208.71.32.sslip.io)
+- **DoraHacks Submission**: [dorahacks.io/buidl/31248](https://dorahacks.io/buidl/31248)
+- **Demo Video**: [YouTube](https://www.youtube.com/watch?v=gR6joqu43zs)
+
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=gR6joqu43zs" target="_blank">
+    <img src="https://img.youtube.com/vi/gR6joqu43zs/hqdefault.jpg" alt="Core.Fun Demo Video" />
+  </a>
+</div>
+
 ## 📸 Platform Screenshots
 
 <div align="center">

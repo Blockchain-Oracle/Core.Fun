@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "description": "Professional meme token launcher platform on Core blockchain",
   "private": true,
+  "packageManager": "pnpm@10.13.1",
   "workspaces": [
-    "backend/api",
-    "backend/blockchain-monitor",
-    "backend/websocket",
+    "backend/*",
     "telegram-bot",
     "shared",
-    "contracts"
+    "contracts",
+    "core.fun_Frontend"
   ],
   "scripts": {
     "dev": "turbo run dev",
@@ -46,7 +46,6 @@
     "crypto-js": "^4.2.0",
     "dotenv": "^16.3.1",
     "hardhat": "^2.22.7",
-    "turbo": "^1.11.0",
     "typescript": "^5.3.0"
   },
   "engines": {
@@ -54,6 +53,7 @@
     "pnpm": ">=8.0.0"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.59"
+    "@napi-rs/canvas": "^0.1.59",
+    "turbo": "^1.11.0"
   }
 }

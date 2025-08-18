@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 import { DatabaseService } from './DatabaseService';
 import { createLogger } from '../logger';
 import { Wallet } from '../database/types';

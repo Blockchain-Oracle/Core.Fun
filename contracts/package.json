@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Smart contracts for Core Meme Platform",
   "scripts": {
+    "build": "hardhat compile",
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",

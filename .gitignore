@@ -67,6 +67,11 @@ redis-data/
 # Docker
 docker-compose.override.yml
 .dockerignore
+*.env.docker
+.env.docker
+**/.env.docker
+.env.coolify
+coolify-secrets.env
 
 # Private keys and secrets
 *.pem

@@ -1,30 +1,29 @@
 # Nixpacks Configuration for Core Meme Platform Monorepo
-# Deploys all services as a single Coolify application using PM2
+
+# Explicitly declare Node.js provider
+providers = ["node"]
 
 [phases.setup]
-# Install Node.js 20, pnpm, and required system dependencies
-nixPkgs = ['nodejs_20', 'pnpm']
-aptPkgs = ['python3', 'make', 'g++', 'git']
+nixPkgs = ['nodejs_20']
 
 [phases.install]
-# Install all workspace dependencies and build shared library
 cmds = [
-  'pnpm install',
-  'pnpm --filter @core-meme/shared build'
+  # Install pnpm and use npx to run it in the same command
+  'npm install -g pnpm@10.13.1 && npx pnpm@10.13.1 install --frozen-lockfile'
 ]
 
-[phases.build]
-# Build all services using Turborepo for optimal caching
+[phases.build]  
 cmds = [
-  'npx turbo run build',
-  'mkdir -p logs',
-  'npm install -g pm2@latest'
+  # Build shared library first using npx
+  'cd shared && npx pnpm@10.13.1 build && cd ..',
+  # Install turbo and build all services using npx
+  'npm install -g turbo && npx turbo run build',
+  # Install PM2 for production runtime
+  'npm install -g pm2'
 ]
-cacheDirectories = ['node_modules', '**/node_modules', '.pnpm-store', '.turbo']
 
 [start]
 cmd = 'pm2-runtime start ecosystem.config.js --env production'
 
 [variables]
 NODE_ENV = 'production'
-CI = 'true'

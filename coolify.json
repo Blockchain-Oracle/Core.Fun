@@ -1,0 +1,196 @@
+{
+  "name": "Core Meme Platform",
+  "description": "A decentralized meme token platform on Core blockchain",
+  "version": "1.0.0",
+  "type": "docker-compose",
+  "compose_file": "docker-compose.coolify.yml",
+  
+  "build": {
+    "type": "dockerfile",
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "cache": true
+  },
+  
+  "services": {
+    "postgres": {
+      "type": "database",
+      "engine": "postgresql",
+      "version": "15",
+      "persistent": true,
+      "backup": {
+        "enabled": true,
+        "schedule": "0 2 * * *",
+        "retention": 7
+      }
+    },
+    "redis": {
+      "type": "database",
+      "engine": "redis",
+      "version": "7",
+      "persistent": true,
+      "maxmemory": "256mb",
+      "maxmemory_policy": "allkeys-lru"
+    },
+    "app": {
+      "type": "application",
+      "healthcheck": {
+        "path": "/health",
+        "port": 3001,
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3
+      },
+      "resources": {
+        "limits": {
+          "memory": "2Gi",
+          "cpu": "2000m"
+        },
+        "requests": {
+          "memory": "512Mi",
+          "cpu": "500m"
+        }
+      },
+      "scaling": {
+        "min_replicas": 1,
+        "max_replicas": 3,
+        "target_cpu": 70,
+        "target_memory": 80
+      }
+    }
+  },
+  
+  "environment_variables": {
+    "required": [
+      "POSTGRES_PASSWORD",
+      "JWT_SECRET",
+      "ENCRYPTION_SECRET",
+      "SIGNATURE_SECRET",
+      "MEME_FACTORY_ADDRESS",
+      "TREASURY_ADDRESS",
+      "ADMIN_PRIVATE_KEY",
+      "TELEGRAM_BOT_TOKEN"
+    ],
+    "optional": [
+      "REDIS_PASSWORD",
+      "TELEGRAM_WEBHOOK_URL",
+      "TELEGRAM_ADMIN_IDS",
+      "CORS_ORIGINS",
+      "RATE_LIMIT_MAX",
+      "RATE_LIMIT_WINDOW_MS",
+      "MONITOR_INTERVAL_MS",
+      "BLOCK_CONFIRMATION_COUNT"
+    ],
+    "groups": {
+      "database": [
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD"
+      ],
+      "blockchain": [
+        "NETWORK",
+        "CORE_RPC_URL",
+        "MEME_FACTORY_ADDRESS",
+        "TREASURY_ADDRESS",
+        "ADMIN_PRIVATE_KEY"
+      ],
+      "security": [
+        "JWT_SECRET",
+        "JWT_EXPIRES_IN",
+        "ENCRYPTION_SECRET",
+        "SIGNATURE_SECRET"
+      ],
+      "telegram": [
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_WEBHOOK_URL",
+        "TELEGRAM_ADMIN_IDS"
+      ]
+    }
+  },
+  
+  "deployment": {
+    "strategy": "rolling",
+    "max_surge": 1,
+    "max_unavailable": 0,
+    "progress_deadline": 600,
+    "revision_history_limit": 3
+  },
+  
+  "monitoring": {
+    "endpoints": [
+      {
+        "name": "API Health",
+        "path": "/health",
+        "port": 3001,
+        "expected_status": 200
+      },
+      {
+        "name": "Frontend",
+        "path": "/",
+        "port": 3000,
+        "expected_status": 200
+      },
+      {
+        "name": "WebSocket",
+        "path": "/socket.io/",
+        "port": 8081,
+        "expected_status": 404
+      }
+    ],
+    "alerts": {
+      "enabled": true,
+      "channels": ["email", "webhook"],
+      "rules": [
+        {
+          "metric": "cpu",
+          "threshold": 80,
+          "duration": "5m",
+          "severity": "warning"
+        },
+        {
+          "metric": "memory",
+          "threshold": 90,
+          "duration": "5m",
+          "severity": "critical"
+        },
+        {
+          "metric": "error_rate",
+          "threshold": 5,
+          "duration": "1m",
+          "severity": "warning"
+        }
+      ]
+    }
+  },
+  
+  "domains": {
+    "frontend": {
+      "port": 3000,
+      "ssl": true,
+      "force_ssl": true
+    },
+    "api": {
+      "port": 3001,
+      "path": "/api",
+      "ssl": true,
+      "force_ssl": true
+    },
+    "websocket": {
+      "port": 8081,
+      "path": "/ws",
+      "ssl": true,
+      "force_ssl": false,
+      "websocket": true
+    }
+  },
+  
+  "hooks": {
+    "pre_deploy": [
+      "echo 'Starting deployment of Core Meme Platform'"
+    ],
+    "post_deploy": [
+      "echo 'Deployment completed successfully'"
+    ],
+    "health_check": "curl -f http://localhost:3001/health || exit 1"
+  }
+}

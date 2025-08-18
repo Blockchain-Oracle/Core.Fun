@@ -1,4 +1,5 @@
 // PM2 Configuration for Core Meme Platform - Coolify Compatible
+// This configuration reads all values from environment variables
 // Usage: pm2-runtime start ecosystem.config.js --env production
 
 module.exports = {
@@ -6,13 +7,13 @@ module.exports = {
     {
       name: 'frontend',
       cwd: './core.fun_Frontend',
-      script: 'node_modules/.bin/next',
+      script: 'node_modules/next/dist/bin/next',
       args: 'start',
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3000
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        PORT: process.env.PORT || 3000
       },
       error_file: '../logs/frontend-error.log',
       out_file: '../logs/frontend-out.log',
@@ -28,8 +29,8 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3001
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        PORT: process.env.API_PORT || 3001
       },
       error_file: '../../logs/api-error.log',
       out_file: '../../logs/api-out.log',
@@ -45,8 +46,8 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production',
-        WS_PORT: 8081
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        WS_PORT: process.env.WS_PORT || 8081
       },
       error_file: './logs/websocket-error.log',
       out_file: './logs/websocket-out.log',
@@ -62,8 +63,8 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3003
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        PORT: process.env.MONITOR_PORT || 3003
       },
       error_file: '../../logs/monitor-error.log',
       out_file: '../../logs/monitor-out.log',
@@ -80,8 +81,8 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3004
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        PORT: process.env.TELEGRAM_PORT || 3004
       },
       error_file: '../logs/telegram-error.log',
       out_file: '../logs/telegram-out.log',

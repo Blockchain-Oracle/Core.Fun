@@ -3,3 +3,4 @@ packages:
   - 'telegram-bot'
   - 'shared'
   - 'contracts'
+  - 'core.fun_Frontend'

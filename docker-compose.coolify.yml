@@ -1,0 +1,141 @@
+# Docker Compose Configuration for Coolify Deployment
+# This file uses environment variable interpolation for all sensitive data
+# All secrets should be configured in Coolify's UI, not committed to git
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-core_meme_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-core_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-core_user} -d ${POSTGRES_DB:-core_meme_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Main Application Container with all services
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=${NODE_ENV:-production}
+    ports:
+      - "${PORT_FRONTEND:-3000}:3000"
+      - "${PORT_API:-3001}:3001"
+      - "${PORT_WEBSOCKET:-8081}:8081"
+      - "${PORT_TELEGRAM:-3004}:3004"
+    environment:
+      # Node Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Service Ports
+      PORT: 3000
+      API_PORT: 3001
+      WS_PORT: 8081
+      TELEGRAM_PORT: 3004
+      
+      # Database Configuration
+      DATABASE_URL: postgresql://${POSTGRES_USER:-core_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-core_meme_platform}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-core_meme_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-core_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      
+      # Redis Configuration
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      
+      # Core Blockchain Configuration
+      NETWORK: ${NETWORK:-testnet}
+      CORE_RPC_URL: ${CORE_RPC_URL:-https://rpc.test2.btcs.network}
+      CORE_TESTNET_RPC: ${CORE_RPC_URL:-https://rpc.test2.btcs.network}
+      MEME_FACTORY_ADDRESS: ${MEME_FACTORY_ADDRESS}
+      TREASURY_ADDRESS: ${TREASURY_ADDRESS}
+      
+      # Security & Authentication
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET}
+      SIGNATURE_SECRET: ${SIGNATURE_SECRET}
+      ADMIN_PRIVATE_KEY: ${ADMIN_PRIVATE_KEY}
+      
+      # Telegram Configuration
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_URL: ${TELEGRAM_WEBHOOK_URL:-}
+      TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS}
+      
+      # Service URLs (internal)
+      API_URL: http://localhost:3001
+      WEBSOCKET_URL: ws://localhost:8081
+      FRONTEND_URL: ${COOLIFY_FQDN:-http://localhost:3000}
+      
+      # CORS Configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      
+      # Rate Limiting
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      
+      # Monitoring
+      MONITOR_INTERVAL_MS: ${MONITOR_INTERVAL_MS:-10000}
+      BLOCK_CONFIRMATION_COUNT: ${BLOCK_CONFIRMATION_COUNT:-3}
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - app-storage:/app/storage
+    restart: unless-stopped
+    networks:
+      - app-network
+    labels:
+      # Coolify Labels for automatic configuration
+      - "coolify.managed=true"
+      - "coolify.type=application"
+      - "coolify.name=core-meme-platform"
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  app-storage:
+    driver: local

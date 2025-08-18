@@ -14,7 +14,7 @@ const CONFIG = {
     treasury: "0xe397a72377F43645Cd4DA02d709c378df6e9eE5a"
   },
   deployer: "0xe397a72377F43645Cd4DA02d709c378df6e9eE5a",
-  privateKey: "96f4c91749c35b74a1642694b53161aa97c46f654bd80aac0e126d3ec2114566"
+  privateKey: "96f4c91749c35b74a1642694b53161aa97c46f654bd80aac0e126d3ec2114566"//DUMMY KEY
 };
 
 // Contract ABIs (simplified for interaction)

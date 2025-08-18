@@ -332,7 +332,7 @@ export class CoreScanService {
       clearTimeout(timeoutId);
       
       if (geckoResponse.ok) {
-        const geckoData = await geckoResponse.json();
+        const geckoData = await geckoResponse.json() as any;
         const price = geckoData?.coredaoorg?.usd;
         if (typeof price === 'number' && price > 0) {
           this.logger.info(`Fetched CORE price from CoinGecko: $${price}`);

@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { createLogger } from '../logger';
 import MemeFactoryABI from '../abis/MemeFactory.json';
 import MemeTokenABI from '../abis/MemeToken.json';
-import EventEmitter from 'events';
+import { EventEmitter } from 'events';
 
 interface TokenInfo {
   creator: string;

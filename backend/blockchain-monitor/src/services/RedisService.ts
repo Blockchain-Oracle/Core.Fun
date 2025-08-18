@@ -7,12 +7,20 @@ export class RedisService {
   private subscriber: Redis;
   private logger = createLogger({ service: 'redis-service' });
 
-  constructor(redisUrl?: string) {
-    const url = redisUrl || process.env.REDIS_URL || 'redis://localhost:6379';
-    
-    this.redis = new Redis(url);
-    this.publisher = new Redis(url);
-    this.subscriber = new Redis(url);
+  constructor(redisUrlOrInstance?: string | Redis) {
+    if (redisUrlOrInstance instanceof Redis) {
+      // Clone the Redis instance configuration
+      const options = (redisUrlOrInstance as any).options;
+      this.redis = new Redis(options);
+      this.publisher = new Redis(options);
+      this.subscriber = new Redis(options);
+    } else {
+      const url = redisUrlOrInstance || process.env.REDIS_URL || 'redis://redis:6379';
+      
+      this.redis = new Redis(url);
+      this.publisher = new Redis(url);
+      this.subscriber = new Redis(url);
+    }
     
     this.setupEventHandlers();
   }

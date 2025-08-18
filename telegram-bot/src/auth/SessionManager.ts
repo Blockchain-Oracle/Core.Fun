@@ -29,7 +29,7 @@ export class SessionManager {
   private logger = createLogger({ service: 'session-manager' });
 
   constructor() {
-    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+    this.redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
     this.jwtSecret = process.env.JWT_SECRET || this.generateSecret();
     
     if (!process.env.JWT_SECRET) {

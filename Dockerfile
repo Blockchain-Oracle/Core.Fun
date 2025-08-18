@@ -39,8 +39,8 @@ WORKDIR /app
 # Production stage
 FROM node:20-alpine
 
-# Install runtime dependencies
-RUN apk add --no-cache git && \
+# Install runtime dependencies including curl for healthchecks
+RUN apk add --no-cache git curl && \
     npm install -g pm2@latest pnpm@10.13.1
 
 WORKDIR /app

@@ -4,6 +4,10 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+# Build arguments for environment variables
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_WEBSOCKET_URL
+
 # Install build dependencies
 RUN apk add --no-cache python3 make g++ git
 
@@ -27,6 +31,10 @@ RUN pnpm install --frozen-lockfile
 
 # Copy all source code
 COPY . .
+
+# Set environment variables for Next.js build
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ENV NEXT_PUBLIC_WEBSOCKET_URL=${NEXT_PUBLIC_WEBSOCKET_URL}
 
 # Build all projects using turbo
 RUN turbo run build

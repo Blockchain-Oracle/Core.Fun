@@ -2,7 +2,25 @@ import { useEffect } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { create } from 'zustand'
 
-const WEBSOCKET_URL = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8081'
+const getWebSocketUrl = () => {
+  // Check for environment variable first
+  if (process.env.NEXT_PUBLIC_WEBSOCKET_URL) {
+    return process.env.NEXT_PUBLIC_WEBSOCKET_URL
+  }
+  
+  // In browser, use same domain with WebSocket port
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.hostname
+    // Use port 8081 for WebSocket
+    return `${protocol}//${host}:8081`
+  }
+  
+  // Server-side default
+  return 'ws://localhost:8081'
+}
+
+const WEBSOCKET_URL = getWebSocketUrl()
 
 interface WebSocketState {
   socket: Socket | null

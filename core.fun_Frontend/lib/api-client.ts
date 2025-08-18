@@ -1,5 +1,23 @@
 // Enhanced API client for MemeFactory integration  
-const API_BASE_URL = 'http://localhost:3001' // Hardcoded temporarily to debug
+const getApiBaseUrl = () => {
+  // Check for environment variable first
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL
+  }
+  
+  // In browser, use same domain with /api path
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol
+    const host = window.location.host
+    // For production, API is on same domain
+    return `${protocol}//${host}`
+  }
+  
+  // Server-side default
+  return 'http://localhost:3001'
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 // Debug: log the API base URL to console (remove in production)
 if (typeof window !== 'undefined') {

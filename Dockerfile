@@ -31,6 +31,11 @@ COPY . .
 # Build all projects using turbo
 RUN turbo run build
 
+# Ensure Next.js standalone build for production
+WORKDIR /app/core.fun_Frontend
+RUN pnpm run build
+WORKDIR /app
+
 # Production stage
 FROM node:20-alpine
 
@@ -53,11 +58,15 @@ COPY --from=builder /app/telegram-bot ./telegram-bot
 COPY --from=builder /app/contracts ./contracts
 COPY --from=builder /app/core.fun_Frontend ./core.fun_Frontend
 
+# Copy startup script
+COPY startup.sh ./
+RUN chmod +x startup.sh
+
 # Create necessary directories
 RUN mkdir -p logs
 
 # Expose all service ports
 EXPOSE 3000 3001 3002 3003 3004 3005
 
-# Start with PM2
-CMD ["pm2-runtime", "start", "ecosystem.config.js", "--env", "production"]
+# Start with startup script
+CMD ["./startup.sh"]

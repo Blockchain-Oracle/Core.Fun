@@ -60,6 +60,7 @@ services:
       API_PORT: 3001
       WS_PORT: 8081
       TELEGRAM_PORT: 3004
+      HOSTNAME: 0.0.0.0
       
       # Database Configuration
       DATABASE_URL: postgresql://${POSTGRES_USER:-core_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-core_meme_platform}

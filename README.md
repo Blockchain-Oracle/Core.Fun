@@ -30,7 +30,7 @@ What sets us apart: **Complete trading functionality inside Telegram** - users n
 
 <div align="center">
 
-### 🏠 Landing Page & Hero Section
+### 🏠 Landing Page & Hero Sectionx
 ![Hero Section](Images/hero.png)
 
 ### 🎯 Why Choose Core.Fun

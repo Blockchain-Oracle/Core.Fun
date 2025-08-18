@@ -3,24 +3,22 @@ import { io, Socket } from 'socket.io-client'
 import { create } from 'zustand'
 
 const getWebSocketUrl = () => {
-  // Check for environment variable first
-  if (process.env.NEXT_PUBLIC_WEBSOCKET_URL) {
-    return process.env.NEXT_PUBLIC_WEBSOCKET_URL
-  }
-  
-  // In browser, use same domain with WebSocket port
+  // In browser, determine URL dynamically
   if (typeof window !== 'undefined') {
+    // Check for environment variable first
+    if (process.env.NEXT_PUBLIC_WEBSOCKET_URL) {
+      return process.env.NEXT_PUBLIC_WEBSOCKET_URL
+    }
+    
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.hostname
     // Use port 8081 for WebSocket
     return `${protocol}//${host}:8081`
   }
   
-  // Server-side default
-  return 'ws://localhost:8081'
+  // Server-side: use environment variable or default
+  return process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8081'
 }
-
-const WEBSOCKET_URL = getWebSocketUrl()
 
 interface WebSocketState {
   socket: Socket | null
@@ -59,7 +57,11 @@ export const useWebSocket = create<WebSocketState>((set, get) => ({
     // Don't connect if already connected
     if (socket?.connected) return
 
-    const newSocket = io(WEBSOCKET_URL, {
+    // Get URL dynamically when connecting
+    const wsUrl = getWebSocketUrl()
+    console.log('Connecting to WebSocket:', wsUrl)
+    
+    const newSocket = io(wsUrl, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: 5,

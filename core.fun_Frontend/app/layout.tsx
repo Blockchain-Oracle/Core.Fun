@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "sonner"
 import { StoreInitializer } from "@/components/providers/StoreInitializer"
+import "../lib/uuid-polyfill"
 
 const inter = Inter({ subsets: ["latin"] })
 
